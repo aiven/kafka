@@ -2536,6 +2536,10 @@ class PartitionReassignmentHandler(eventManager: ControllerEventManager) extends
   // handleDeletion(). This approach is more robust as it doesn't depend on the watcher being re-registered after
   // it's consumed during data changes (we ensure re-registration when the znode is deleted).
   override def handleCreation(): Unit = eventManager.put(ZkPartitionReassignment)
+
+  // TODO this is a hotfix for the partition reassignment issue, should be replaced with a proper fix to the upstream
+  // https://issues.apache.org/jira/browse/KAFKA-9478
+  override def handleDataChange(): Unit = eventManager.put(ZkPartitionReassignment)
 }
 
 class PartitionReassignmentIsrChangeHandler(eventManager: ControllerEventManager, partition: TopicPartition) extends ZNodeChangeHandler {
