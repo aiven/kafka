@@ -839,14 +839,23 @@ class Partition(val topicPartition: TopicPartition,
           if (outOfSyncReplicaIds.nonEmpty) {
             val newInSyncReplicaIds = inSyncReplicaIds -- outOfSyncReplicaIds
             assert(newInSyncReplicaIds.nonEmpty)
+
+            val outOfSyncReplicaStr = outOfSyncReplicaIds.map { replicaId =>
+              getReplica(replicaId) match {
+                case Some(replica) =>
+                  s"(brokerId: $replicaId, endOffset: ${replica.logEndOffset})"
+                case None =>
+                  // This is a patch for https://issues.apache.org/jira/browse/KAFKA-9672
+                s"(brokerId: $replicaId (dead))"
+              }
+            }.mkString(" ")
+
             info("Shrinking ISR from %s to %s. Leader: (highWatermark: %d, endOffset: %d). Out of sync replicas: %s."
               .format(inSyncReplicaIds.mkString(","),
                 newInSyncReplicaIds.mkString(","),
                 leaderLog.highWatermark,
                 leaderLog.logEndOffset,
-                outOfSyncReplicaIds.map { replicaId =>
-                  s"(brokerId: $replicaId, endOffset: ${getReplicaOrException(replicaId).logEndOffset})"
-                }.mkString(" ")
+                outOfSyncReplicaStr
               )
             )
 
@@ -872,9 +881,17 @@ class Partition(val topicPartition: TopicPartition,
                                   leaderEndOffset: Long,
                                   currentTimeMs: Long,
                                   maxLagMs: Long): Boolean = {
-    val followerReplica = getReplicaOrException(replicaId)
-    followerReplica.logEndOffset != leaderEndOffset &&
-      (currentTimeMs - followerReplica.lastCaughtUpTimeMs) > maxLagMs
+    getReplica(replicaId) match {
+      case Some(followerReplica) =>
+        followerReplica.logEndOffset != leaderEndOffset &&
+          (currentTimeMs - followerReplica.lastCaughtUpTimeMs) > maxLagMs
+
+      case None =>
+        // This is a patch for https://issues.apache.org/jira/browse/KAFKA-9672
+        error(s"Replica with id $replicaId is not available on broker $localBrokerId, " +
+          s"considering it out of sync to be removed")
+        true
+    }
   }
 
   def getOutOfSyncReplicas(maxLagMs: Long): Set[Int] = {
