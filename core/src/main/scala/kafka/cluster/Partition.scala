@@ -886,9 +886,17 @@ class Partition(val topicPartition: TopicPartition,
                                   leaderEndOffset: Long,
                                   currentTimeMs: Long,
                                   maxLagMs: Long): Boolean = {
-    val followerReplica = getReplicaOrException(replicaId)
-    followerReplica.logEndOffset != leaderEndOffset &&
-      (currentTimeMs - followerReplica.lastCaughtUpTimeMs) > maxLagMs
+    try {
+      val followerReplica = getReplicaOrException(replicaId)
+      followerReplica.logEndOffset != leaderEndOffset &&
+        (currentTimeMs - followerReplica.lastCaughtUpTimeMs) > maxLagMs
+    } catch {
+      case ex: ReplicaNotAvailableException =>
+        // This is a patch for https://issues.apache.org/jira/browse/KAFKA-9672
+        error(s"Replica with id $replicaId is not available on broker $localBrokerId, " +
+          s"considering it out of sync to be removed", ex)
+        true
+    }
   }
 
   def getOutOfSyncReplicas(maxLagMs: Long): Set[Int] = {
