@@ -947,7 +947,13 @@ class Partition(val topicPartition: TopicPartition,
         val outOfSyncReplicaIds = getOutOfSyncReplicas(replicaLagTimeMaxMs)
         if (outOfSyncReplicaIds.nonEmpty) {
           val outOfSyncReplicaLog = outOfSyncReplicaIds.map { replicaId =>
-            s"(brokerId: $replicaId, endOffset: ${getReplicaOrException(replicaId).logEndOffset})"
+            getReplica(replicaId) match {
+              case Some(replica) =>
+                s"(brokerId: $replicaId, endOffset: ${replica.logEndOffset})"
+              case None =>
+                // This is a patch for https://issues.apache.org/jira/browse/KAFKA-9672
+                s"(brokerId: $replicaId (dead))"
+            }
           }.mkString(" ")
           val newIsrLog = (isrState.isr -- outOfSyncReplicaIds).mkString(",")
           info(s"Shrinking ISR from ${isrState.isr.mkString(",")} to $newIsrLog. " +
@@ -977,9 +983,17 @@ class Partition(val topicPartition: TopicPartition,
                                   leaderEndOffset: Long,
                                   currentTimeMs: Long,
                                   maxLagMs: Long): Boolean = {
-    val followerReplica = getReplicaOrException(replicaId)
-    followerReplica.logEndOffset != leaderEndOffset &&
-      (currentTimeMs - followerReplica.lastCaughtUpTimeMs) > maxLagMs
+    getReplica(replicaId) match {
+      case Some(followerReplica) =>
+        followerReplica.logEndOffset != leaderEndOffset &&
+          (currentTimeMs - followerReplica.lastCaughtUpTimeMs) > maxLagMs
+
+      case None =>
+        // This is a patch for https://issues.apache.org/jira/browse/KAFKA-9672
+        error(s"Replica with id $replicaId is not available on broker $localBrokerId, " +
+          s"considering it out of sync to be removed")
+        true
+    }
   }
 
   /**
