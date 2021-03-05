@@ -74,11 +74,14 @@ public class MirrorSourceConnectorTest {
     public void testNoCycles() {
         MirrorSourceConnector connector = new MirrorSourceConnector(new SourceAndTarget("source", "target"),
             new DefaultReplicationPolicy(), x -> true, x -> true);
+        assertFalse("should not allow cycles", connector.shouldReplicateTopic("source.topic1"));
         assertFalse("should not allow cycles", connector.shouldReplicateTopic("target.topic1"));
         assertFalse("should not allow cycles", connector.shouldReplicateTopic("target.source.topic1"));
         assertFalse("should not allow cycles", connector.shouldReplicateTopic("source.target.topic1"));
         assertTrue("should allow anything else", connector.shouldReplicateTopic("topic1"));
-        assertTrue("should allow anything else", connector.shouldReplicateTopic("source.topic1"));
+        assertTrue("should allow anything else", connector.shouldReplicateTopic("othersource.topic1"));
+        assertTrue("should allow anything else", connector.shouldReplicateTopic("othertarget.topic1"));
+        assertTrue("should allow anything else", connector.shouldReplicateTopic("other.another.topic1"));
     }
 
     @Test
