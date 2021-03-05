@@ -143,6 +143,7 @@ public class MirrorSourceConnectorTest {
         assertTrue(connector.shouldReplicateTopic("othertarget.topic1"), "should allow anything else");
         assertTrue(connector.shouldReplicateTopic("other.another.topic1"), "should allow anything else");
 
+
         final IdentityReplicationPolicy identityReplicationPolicy = new IdentityReplicationPolicy();
         final HashMap<String, String> props = new HashMap<>();
         props.put("source.cluster.alias", "source");
