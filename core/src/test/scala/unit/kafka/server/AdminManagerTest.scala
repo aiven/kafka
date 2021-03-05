@@ -98,7 +98,6 @@ class AdminManagerTest {
       .setResourceType(ConfigResource.Type.TOPIC.id)
       .setConfigurationKeys(List("retention.ms", "retention.bytes", "segment.bytes").asJava)
     )
-
     val adminManager = createAdminManager()
     val results: List[DescribeConfigsResponseData.DescribeConfigsResult] = adminManager.describeConfigs(resources, true, true)
     assertEquals(Errors.NONE.code, results.head.errorCode())

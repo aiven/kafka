@@ -77,6 +77,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.Executor;
 
 import static java.util.Collections.emptyMap;
 import static java.util.Collections.singletonList;
@@ -236,9 +237,6 @@ public class ErrorHandlingTaskTest {
 
         createSourceTask(initialState, retryWithToleranceOperator);
 
-        sourceTask.stop();
-        PowerMock.expectLastCall();
-
         expectClose();
 
         reporter.close();
@@ -262,9 +260,6 @@ public class ErrorHandlingTaskTest {
         retryWithToleranceOperator.reporters(Arrays.asList(reporterA, reporterB));
 
         createSourceTask(initialState, retryWithToleranceOperator);
-
-        sourceTask.stop();
-        PowerMock.expectLastCall();
 
         expectClose();
 
@@ -569,7 +564,7 @@ public class ErrorHandlingTaskTest {
                 producer, admin, null,
                 offsetReader, offsetWriter, workerConfig,
                 ClusterConfigState.EMPTY, metrics, pluginLoader, time, retryWithToleranceOperator,
-                statusBackingStore);
+                statusBackingStore, (Executor) Runnable::run);
     }
 
     private ConsumerRecords<byte[], byte[]> records(ConsumerRecord<byte[], byte[]> record) {

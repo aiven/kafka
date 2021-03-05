@@ -80,6 +80,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -221,7 +222,7 @@ public class WorkerSourceTaskWithTopicCreationTest extends ThreadedTest {
         workerTask = new WorkerSourceTask(taskId, sourceTask, statusListener, initialState, keyConverter, valueConverter, headerConverter,
                 transformationChain, producer, admin, TopicCreationGroup.configuredGroups(sourceConfig),
                 offsetReader, offsetWriter, config, clusterConfigState, metrics, plugins.delegatingLoader(), Time.SYSTEM,
-                RetryWithToleranceOperatorTest.NOOP_OPERATOR, statusBackingStore);
+                RetryWithToleranceOperatorTest.NOOP_OPERATOR, statusBackingStore, Runnable::run);
     }
 
     @Test
@@ -762,6 +763,9 @@ public class WorkerSourceTaskWithTopicCreationTest extends ThreadedTest {
         offsetReader.close();
         PowerMock.expectLastCall();
 
+        producer.close(Duration.ZERO);
+        PowerMock.expectLastCall();
+
         PowerMock.replayAll();
 
         workerTask.cancel();
@@ -956,7 +960,7 @@ public class WorkerSourceTaskWithTopicCreationTest extends ThreadedTest {
         expectPreliminaryCalls();
         EasyMock.expect(admin.describeTopics(TOPIC)).andReturn(Collections.emptyMap());
         Capture<NewTopic> newTopicCapture = EasyMock.newCapture();
-        EasyMock.expect(admin.createTopic(EasyMock.capture(newTopicCapture)))
+        EasyMock.expect(admin.createOrFindTopics(EasyMock.capture(newTopicCapture)))
                 .andThrow(new RetriableException(new TimeoutException("timeout")));
 
         // Second round
@@ -1034,7 +1038,7 @@ public class WorkerSourceTaskWithTopicCreationTest extends ThreadedTest {
         EasyMock.expect(admin.describeTopics(OTHER_TOPIC)).andReturn(Collections.emptyMap());
         // First call to create the topic times out
         Capture<NewTopic> newTopicCapture = EasyMock.newCapture();
-        EasyMock.expect(admin.createTopic(EasyMock.capture(newTopicCapture)))
+        EasyMock.expect(admin.createOrFindTopics(EasyMock.capture(newTopicCapture)))
                 .andThrow(new RetriableException(new TimeoutException("timeout")));
 
         // Second round
@@ -1085,7 +1089,7 @@ public class WorkerSourceTaskWithTopicCreationTest extends ThreadedTest {
         EasyMock.expect(admin.describeTopics(TOPIC)).andReturn(Collections.emptyMap());
 
         Capture<NewTopic> newTopicCapture = EasyMock.newCapture();
-        EasyMock.expect(admin.createTopic(EasyMock.capture(newTopicCapture)))
+        EasyMock.expect(admin.createOrFindTopics(EasyMock.capture(newTopicCapture)))
                 .andThrow(new ConnectException(new TopicAuthorizationException("unauthorized")));
 
         PowerMock.replayAll();
@@ -1096,7 +1100,7 @@ public class WorkerSourceTaskWithTopicCreationTest extends ThreadedTest {
     }
 
     @Test(expected = ConnectException.class)
-    public void testTopicCreateFailsWithExceptionWhenCreateReturnsFalse() throws Exception {
+    public void testTopicCreateFailsWithExceptionWhenCreateReturnsTopicNotCreatedOrFound() throws Exception {
         createWorkerTask();
 
         SourceRecord record1 = new SourceRecord(PARTITION, OFFSET, TOPIC, 1, KEY_SCHEMA, KEY, RECORD_SCHEMA, RECORD);
@@ -1106,13 +1110,69 @@ public class WorkerSourceTaskWithTopicCreationTest extends ThreadedTest {
         EasyMock.expect(admin.describeTopics(TOPIC)).andReturn(Collections.emptyMap());
 
         Capture<NewTopic> newTopicCapture = EasyMock.newCapture();
-        EasyMock.expect(admin.createTopic(EasyMock.capture(newTopicCapture))).andReturn(false);
+        EasyMock.expect(admin.createOrFindTopics(EasyMock.capture(newTopicCapture))).andReturn(TopicAdmin.EMPTY_CREATION);
 
         PowerMock.replayAll();
 
         Whitebox.setInternalState(workerTask, "toSend", Arrays.asList(record1, record2));
         Whitebox.invokeMethod(workerTask, "sendRecords");
         assertNotNull(newTopicCapture.getValue());
+    }
+
+    @Test
+    public void testTopicCreateSucceedsWhenCreateReturnsExistingTopicFound() throws Exception {
+        createWorkerTask();
+
+        SourceRecord record1 = new SourceRecord(PARTITION, OFFSET, TOPIC, 1, KEY_SCHEMA, KEY, RECORD_SCHEMA, RECORD);
+        SourceRecord record2 = new SourceRecord(PARTITION, OFFSET, TOPIC, 2, KEY_SCHEMA, KEY, RECORD_SCHEMA, RECORD);
+
+        expectPreliminaryCalls();
+        EasyMock.expect(admin.describeTopics(TOPIC)).andReturn(Collections.emptyMap());
+
+        Capture<NewTopic> newTopicCapture = EasyMock.newCapture();
+        EasyMock.expect(admin.createOrFindTopics(EasyMock.capture(newTopicCapture))).andReturn(foundTopic(TOPIC));
+
+        expectSendRecordTaskCommitRecordSucceed(false, false);
+        expectSendRecordTaskCommitRecordSucceed(false, false);
+
+        PowerMock.replayAll();
+
+        Whitebox.setInternalState(workerTask, "toSend", Arrays.asList(record1, record2));
+        Whitebox.invokeMethod(workerTask, "sendRecords");
+    }
+
+    @Test
+    public void testTopicCreateSucceedsWhenCreateReturnsNewTopicFound() throws Exception {
+        createWorkerTask();
+
+        SourceRecord record1 = new SourceRecord(PARTITION, OFFSET, TOPIC, 1, KEY_SCHEMA, KEY, RECORD_SCHEMA, RECORD);
+        SourceRecord record2 = new SourceRecord(PARTITION, OFFSET, TOPIC, 2, KEY_SCHEMA, KEY, RECORD_SCHEMA, RECORD);
+
+        expectPreliminaryCalls();
+        EasyMock.expect(admin.describeTopics(TOPIC)).andReturn(Collections.emptyMap());
+
+        Capture<NewTopic> newTopicCapture = EasyMock.newCapture();
+        EasyMock.expect(admin.createOrFindTopics(EasyMock.capture(newTopicCapture))).andReturn(createdTopic(TOPIC));
+
+        expectSendRecordTaskCommitRecordSucceed(false, false);
+        expectSendRecordTaskCommitRecordSucceed(false, false);
+
+        PowerMock.replayAll();
+
+        Whitebox.setInternalState(workerTask, "toSend", Arrays.asList(record1, record2));
+        Whitebox.invokeMethod(workerTask, "sendRecords");
+    }
+
+    private TopicAdmin.TopicCreationResponse createdTopic(String topic) {
+        Set<String> created = Collections.singleton(topic);
+        Set<String> existing = Collections.emptySet();
+        return new TopicAdmin.TopicCreationResponse(created, existing);
+    }
+
+    private TopicAdmin.TopicCreationResponse foundTopic(String topic) {
+        Set<String> created = Collections.emptySet();
+        Set<String> existing = Collections.singleton(topic);
+        return new TopicAdmin.TopicCreationResponse(created, existing);
     }
 
     private void expectPreliminaryCalls() {
@@ -1431,7 +1491,7 @@ public class WorkerSourceTaskWithTopicCreationTest extends ThreadedTest {
         if (config.topicCreationEnable()) {
             EasyMock.expect(admin.describeTopics(topic)).andReturn(Collections.emptyMap());
             Capture<NewTopic> newTopicCapture = EasyMock.newCapture();
-            EasyMock.expect(admin.createTopic(EasyMock.capture(newTopicCapture))).andReturn(true);
+            EasyMock.expect(admin.createOrFindTopics(EasyMock.capture(newTopicCapture))).andReturn(createdTopic(topic));
         }
     }
 }

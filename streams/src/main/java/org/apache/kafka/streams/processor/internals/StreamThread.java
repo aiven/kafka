@@ -190,6 +190,10 @@ public class StreamThread extends Thread {
         return state;
     }
 
+    void setPartitionAssignedTime(final long lastPartitionAssignedMs) {
+        this.lastPartitionAssignedMs = lastPartitionAssignedMs;
+    }
+
     /**
      * Sets the state
      *
@@ -266,9 +270,16 @@ public class StreamThread extends Thread {
     private final Sensor punctuateRatioSensor;
     private final Sensor commitRatioSensor;
 
+    private static final long LOG_SUMMARY_INTERVAL_MS = 2 * 60 * 1000L; // log a summary of processing every 2 minutes
+    private long lastLogSummaryMs = -1L;
+    private long totalRecordsProcessedSinceLastSummary = 0L;
+    private long totalPunctuatorsSinceLastSummary = 0L;
+    private long totalCommittedSinceLastSummary = 0L;
+
     private long now;
     private long lastPollMs;
     private long lastCommitMs;
+    private long lastPartitionAssignedMs = -1L;
     private int numIterations;
     private volatile State state = State.CREATED;
     private volatile ThreadMetadata threadMetadata;
@@ -629,8 +640,6 @@ public class StreamThread extends Thread {
         advanceNowAndComputeLatency();
 
         int totalProcessed = 0;
-        int totalPunctuated = 0;
-        int totalCommitted = 0;
         long totalCommitLatency = 0L;
         long totalProcessLatency = 0L;
         long totalPunctuateLatency = 0L;
@@ -661,6 +670,7 @@ public class StreamThread extends Thread {
                     processLatencySensor.record(processLatency / (double) processed, now);
 
                     totalProcessed += processed;
+                    totalRecordsProcessedSinceLastSummary += processed;
                 }
 
                 log.debug("Processed {} records with {} iterations; invoking punctuators if necessary",
@@ -668,7 +678,7 @@ public class StreamThread extends Thread {
                           numIterations);
 
                 final int punctuated = taskManager.punctuate();
-                totalPunctuated += punctuated;
+                totalPunctuatorsSinceLastSummary += punctuated;
                 final long punctuateLatency = advanceNowAndComputeLatency();
                 totalPunctuateLatency += punctuateLatency;
                 if (punctuated > 0) {
@@ -677,9 +687,10 @@ public class StreamThread extends Thread {
 
                 log.debug("{} punctuators ran.", punctuated);
 
+                final long beforeCommitMs = now;
                 final int committed = maybeCommit();
-                totalCommitted += committed;
-                final long commitLatency = advanceNowAndComputeLatency();
+                totalCommittedSinceLastSummary += committed;
+                final long commitLatency = Math.max(now - beforeCommitMs, 0);
                 totalCommitLatency += commitLatency;
                 if (committed > 0) {
                     commitSensor.record(commitLatency / (double) committed, now);
@@ -691,7 +702,7 @@ public class StreamThread extends Thread {
                 }
 
                 if (processed == 0) {
-                    // if there is no records to be processed, exit after punctuate / commit
+                    // if there are no records to be processed, exit after punctuate / commit
                     break;
                 } else if (Math.max(now - lastPollMs, 0) > maxPollTimeMs / 2) {
                     numIterations = numIterations > 1 ? numIterations / 2 : numIterations;
@@ -706,10 +717,6 @@ public class StreamThread extends Thread {
             // we record the ratio out of the while loop so that the accumulated latency spans over
             // multiple iterations with reasonably large max.num.records and hence is less vulnerable to outliers
             taskManager.recordTaskProcessRatio(totalProcessLatency, now);
-
-            log.info("Processed {} total records, ran {} punctuators, and committed {} total tasks " +
-                        "for active tasks {} and standby tasks {}",
-                     totalProcessed, totalPunctuated, totalCommitted, taskManager.activeTaskIds(), taskManager.standbyTaskIds());
         }
 
         now = time.milliseconds();
@@ -719,6 +726,17 @@ public class StreamThread extends Thread {
         punctuateRatioSensor.record((double) totalPunctuateLatency / runOnceLatency, now);
         pollRatioSensor.record((double) pollLatency / runOnceLatency, now);
         commitRatioSensor.record((double) totalCommitLatency / runOnceLatency, now);
+
+        final boolean logProcessingSummary = now - lastLogSummaryMs > LOG_SUMMARY_INTERVAL_MS;
+        if (logProcessingSummary) {
+            log.info("Processed {} total records, ran {} punctuators, and committed {} total tasks since the last update",
+                 totalRecordsProcessedSinceLastSummary, totalPunctuatorsSinceLastSummary, totalCommittedSinceLastSummary);
+
+            totalRecordsProcessedSinceLastSummary = 0L;
+            totalPunctuatorsSinceLastSummary = 0L;
+            totalCommittedSinceLastSummary = 0L;
+            lastLogSummaryMs = now;
+        }
     }
 
     private void initializeAndRestorePhase() {
@@ -735,7 +753,8 @@ public class StreamThread extends Thread {
 
             if (taskManager.tryToCompleteRestoration()) {
                 changelogReader.transitToUpdateStandby();
-
+                log.info("Restoration took {} ms for all tasks {}", time.milliseconds() - lastPartitionAssignedMs,
+                    taskManager.tasks().keySet());
                 setState(State.RUNNING);
             }
 
@@ -782,7 +801,9 @@ public class StreamThread extends Thread {
         final long pollLatency = advanceNowAndComputeLatency();
 
         final int numRecords = records.count();
-        log.info("Main Consumer poll completed in {} ms and fetched {} records", pollLatency, numRecords);
+        if (numRecords > 0) {
+            log.debug("Main Consumer poll completed in {} ms and fetched {} records", pollLatency, numRecords);
+        }
 
         pollSensor.record(pollLatency, now);
 

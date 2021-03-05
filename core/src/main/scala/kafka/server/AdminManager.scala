@@ -390,7 +390,7 @@ class AdminManager(val config: KafkaConfig,
       }
       def createResponseConfig(configs: Map[String, Any],
                                createConfigEntry: (String, Any) => DescribeConfigsResponseData.DescribeConfigsResourceResult): DescribeConfigsResponseData.DescribeConfigsResult = {
-        val filteredConfigPairs = if (resource.configurationKeys == null || resource.configurationKeys.isEmpty)
+        val filteredConfigPairs = if (resource.configurationKeys == null || resource.configurationKeys().isEmpty)
           configs.toBuffer
         else
           configs.filter { case (configName, _) =>
