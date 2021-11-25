@@ -124,16 +124,9 @@ class RemoteLogManagerTest {
     cache.assign(1, 30)
     cache.assign(2, 100)
 
-    val logConfig: LogConfig = mock(classOf[LogConfig])
-    when(logConfig.compact).thenReturn(false)
-    val remoteLogConfig = mock(classOf[logConfig.RemoteLogConfig])
-    when(logConfig.compact).thenReturn(false)
-    when(remoteLogConfig.remoteStorageEnable).thenReturn(true)
-    when(logConfig.remoteLogConfig).thenReturn(remoteLogConfig)
-
     val log: UnifiedLog = mock(classOf[UnifiedLog])
     when(log.leaderEpochCache).thenReturn(Option(cache))
-    when(log.config).thenReturn(logConfig)
+    when(log.remoteLogEnabled()).thenReturn(true)
 
     val nextSegmentLeaderEpochs = new util.HashMap[Integer, lang.Long]
     nextSegmentLeaderEpochs.put(0, 0)
@@ -242,16 +235,10 @@ class RemoteLogManagerTest {
   def testCollectAbortedTransactionsIteratesNextRemoteSegment(): Unit = {
     cache.assign(0, 0)
 
-    val logConfig: LogConfig = mock(classOf[LogConfig])
-    val remoteLogConfig = mock(classOf[logConfig.RemoteLogConfig])
-    when(logConfig.compact).thenReturn(false)
-    when(remoteLogConfig.remoteStorageEnable).thenReturn(true)
-    when(logConfig.remoteLogConfig).thenReturn(remoteLogConfig)
-
     val log: UnifiedLog = mock(classOf[UnifiedLog])
     when(log.leaderEpochCache).thenReturn(Option(cache))
-    when(log.config).thenReturn(logConfig)
     when(log.logSegments).thenReturn(Iterable.empty)
+    when(log.remoteLogEnabled()).thenReturn(true)
 
     val baseOffset = 45
     val timeIdx = new TimeIndex(nonExistentTempFile(), baseOffset, maxIndexSize = 30 * 12)
@@ -330,13 +317,6 @@ class RemoteLogManagerTest {
   def testCollectAbortedTransactionsIteratesNextLocalSegment(): Unit = {
     cache.assign(0, 0)
 
-    val logConfig: LogConfig = mock(classOf[LogConfig])
-    when(logConfig.compact).thenReturn(false)
-    val remoteLogConfig = mock(classOf[logConfig.RemoteLogConfig])
-    when(logConfig.compact).thenReturn(false)
-    when(remoteLogConfig.remoteStorageEnable).thenReturn(true)
-    when(logConfig.remoteLogConfig).thenReturn(remoteLogConfig)
-
     val baseOffset = 45
     val timeIdx = new TimeIndex(nonExistentTempFile(), baseOffset, maxIndexSize = 30 * 12)
     val txnIdx = new TransactionIndex(baseOffset, TestUtils.tempFile())
@@ -358,8 +338,8 @@ class RemoteLogManagerTest {
 
     val log: UnifiedLog = mock(classOf[UnifiedLog])
     when(log.leaderEpochCache).thenReturn(Option(cache))
-    when(log.config).thenReturn(logConfig)
     when(log.logSegments).thenReturn(List(logSegment))
+    when(log.remoteLogEnabled()).thenReturn(true)
 
     val rlmmManager: RemoteLogMetadataManager = mock(classOf[RemoteLogMetadataManager])
     when(rlmmManager.remoteLogSegmentMetadata(ArgumentMatchers.eq(topicIdPartition), anyInt(), anyLong()))

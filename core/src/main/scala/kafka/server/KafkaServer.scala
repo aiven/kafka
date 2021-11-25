@@ -263,7 +263,8 @@ class KafkaServer(
           brokerTopicStats,
           logDirFailureChannel,
           config.usesTopicId,
-          remoteLogManagerConfig
+          remoteLogManagerConfig,
+          replicaManager
         )
         _brokerState = BrokerState.RECOVERY
         logManager.startup(zkClient.getAllTopicsInCluster())

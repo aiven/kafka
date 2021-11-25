@@ -22,6 +22,7 @@ import kafka.log.LogConfig;
 import kafka.log.LogManager;
 import kafka.server.BrokerTopicStats;
 import kafka.server.LogDirFailureChannel;
+import kafka.server.ReplicaManager;
 import kafka.server.metadata.ConfigRepository;
 import kafka.utils.Scheduler;
 import org.apache.kafka.common.utils.Time;
@@ -55,6 +56,8 @@ public class LogManagerBuilder {
     private boolean keepPartitionMetadataFile = true;
 
     private RemoteLogManagerConfig remoteLogManagerConfig = null;
+
+    private ReplicaManager replicaManager = null;
 
     public LogManagerBuilder setLogDirs(List<File> logDirs) {
         this.logDirs = logDirs;
@@ -151,6 +154,11 @@ public class LogManagerBuilder {
         return this;
     }
 
+    public LogManagerBuilder setReplicaManager(ReplicaManager replicaManager) {
+        this.replicaManager = replicaManager;
+        return this;
+    }
+
     public LogManager build() {
         if (logDirs == null) throw new RuntimeException("you must set logDirs");
         if (configRepository == null) throw new RuntimeException("you must set configRepository");
@@ -178,6 +186,7 @@ public class LogManagerBuilder {
                               logDirFailureChannel,
                               time,
                               keepPartitionMetadataFile,
-                              remoteLogManagerConfig);
+                              remoteLogManagerConfig,
+                              replicaManager);
     }
 }

@@ -73,7 +73,12 @@ class LogManager(logDirs: Seq[File],
                  logDirFailureChannel: LogDirFailureChannel,
                  time: Time,
                  val keepPartitionMetadataFile: Boolean,
-                 remoteLogManagerConfig: RemoteLogManagerConfig) extends Logging with KafkaMetricsGroup {
+                 remoteLogManagerConfig: RemoteLogManagerConfig,
+                 var replicaManager: ReplicaManager = null) extends Logging with KafkaMetricsGroup {
+
+  def setupReplicaManager(replicaManager: ReplicaManager): Unit = {
+    this.replicaManager = replicaManager
+  }
 
   import LogManager._
 
@@ -865,12 +870,32 @@ class LogManager(logDirs: Seq[File],
     if (logs.nonEmpty) {
       // Combine the default properties with the overrides in zk to create the new LogConfig
       val newLogConfig = LogConfig.fromProps(currentDefaultConfig.originals, newTopicConfig)
+      val isRemoteLogEnabledBeforeUpdate = logs.head.remoteLogEnabled()
       logs.foreach { log =>
         val oldLogConfig = log.updateConfig(newLogConfig)
         if (oldLogConfig.compact && !newLogConfig.compact) {
           abortCleaning(log.topicPartition)
         }
       }
+      maybeEnableRemoteLogStorage(topic, logs, isRemoteLogEnabledBeforeUpdate)
+    }
+  }
+
+  private[kafka] def maybeEnableRemoteLogStorage(topic: String, logs: Seq[UnifiedLog], isRemoteLogEnabledBeforeUpdate: Boolean): Unit = {
+    // Topic configs gets updated incrementally. If the remote log storage was already enabled for this topic prior to
+    // this update, then this call is a no-op.
+    if (!isRemoteLogEnabledBeforeUpdate && logs.head.remoteLogEnabled()) {
+      val topicId = logs.head.topicId
+      if (topicId.isEmpty) {
+        warn(s"Could not enable remote log storage for topic $topic because we did not know the corresponding topicId.")
+        return
+      }
+
+      val topicIds = Map(topic -> topicId.get).asJava
+      val (leaderPartitions, followerPartitions) =
+        logs.flatMap(log => replicaManager.onlinePartition(log.topicPartition)).partition(_.isLeader)
+      replicaManager.remoteLogManager.foreach(rlm =>
+        rlm.onLeadershipChange(leaderPartitions.toSet, followerPartitions.toSet, topicIds))
     }
   }
 
@@ -1362,7 +1387,8 @@ object LogManager {
             brokerTopicStats: BrokerTopicStats,
             logDirFailureChannel: LogDirFailureChannel,
             keepPartitionMetadataFile: Boolean,
-            remoteLogManagerConfig: RemoteLogManagerConfig): LogManager = {
+            remoteLogManagerConfig: RemoteLogManagerConfig,
+            replicaManager: ReplicaManager): LogManager = {
     val defaultProps = LogConfig.extractLogConfigMap(config)
 
     LogConfig.validateValues(defaultProps)
@@ -1388,7 +1414,8 @@ object LogManager {
       time = time,
       keepPartitionMetadataFile = keepPartitionMetadataFile,
       interBrokerProtocolVersion = config.interBrokerProtocolVersion,
-      remoteLogManagerConfig = remoteLogManagerConfig)
+      remoteLogManagerConfig = remoteLogManagerConfig,
+      replicaManager = replicaManager)
   }
 
 }

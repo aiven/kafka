@@ -16,22 +16,27 @@
   */
 package kafka.server
 
+import kafka.api.LeaderAndIsr
+import kafka.cluster.Partition
+import kafka.controller.{ControllerContext, KafkaController, LeaderIsrAndControllerEpoch}
+
 import java.net.InetAddress
 import java.nio.charset.StandardCharsets
 import java.util
 import java.util.Collections.{singletonList, singletonMap}
 import java.util.{Collections, Properties}
 import java.util.concurrent.ExecutionException
-
 import kafka.integration.KafkaServerTestHarness
 import kafka.log.LogConfig._
+import kafka.log.{LogManager, UnifiedLog}
+import kafka.log.remote.RemoteLogManager
 import kafka.utils._
 import kafka.server.Constants._
 import kafka.zk.ConfigEntityChangeNotificationZNode
 import org.apache.kafka.clients.CommonClientConfigs
 import org.apache.kafka.clients.admin.AlterConfigOp.OpType.SET
 import org.apache.kafka.clients.admin.{Admin, AlterConfigOp, Config, ConfigEntry}
-import org.apache.kafka.common.TopicPartition
+import org.apache.kafka.common.{TopicPartition, Uuid}
 import org.apache.kafka.common.config.ConfigResource
 import org.apache.kafka.common.config.internals.QuotaConfigs
 import org.apache.kafka.common.errors.{InvalidRequestException, UnknownTopicOrPartitionException}
@@ -41,13 +46,15 @@ import org.apache.kafka.common.quota.ClientQuotaEntity.{CLIENT_ID, IP, USER}
 import org.apache.kafka.common.quota.{ClientQuotaAlteration, ClientQuotaEntity}
 import org.apache.kafka.common.record.{CompressionType, RecordVersion}
 import org.apache.kafka.common.security.auth.KafkaPrincipal
+import org.apache.kafka.metadata.LeaderRecoveryState
 import org.apache.kafka.server.common.MetadataVersion.IBP_3_0_IV1
 import org.junit.jupiter.api.Assertions._
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.ValueSource
+import org.mockito.ArgumentCaptor
 import org.mockito.ArgumentMatchers.{any, anyString}
-import org.mockito.Mockito.{mock, verify}
+import org.mockito.Mockito.{mock, times, verify, when}
 
 import scala.annotation.nowarn
 import scala.collection.{Map, Seq}
@@ -539,4 +546,78 @@ class DynamicConfigChangeUnitTest {
     //Then
     assertEquals(Seq(), result)
   }
+
+  @Test
+  def testMaybeEnableRemoteLogStorage(): Unit = {
+    val topic = "test-remote-log-storage-config-update"
+    val tp = new TopicPartition(topic, 0)
+    val leaderIsrAndControllerEpoch = LeaderIsrAndControllerEpoch(LeaderAndIsr(0, 0, List(0, 1, 2), LeaderRecoveryState.RECOVERED, 2), 0)
+
+    val partition: Partition = mock(classOf[Partition])
+    when(partition.topicPartition).thenReturn(tp)
+    when(partition.isLeader).thenReturn(true)
+
+    val rlm: RemoteLogManager = mock(classOf[RemoteLogManager])
+    val leaderPartitionsCapture= ArgumentCaptor.forClass(classOf[Set[Partition]])
+    val followerPartitionsCapture: ArgumentCaptor[Set[Partition]] = ArgumentCaptor.forClass(classOf[Set[Partition]])
+    verify(rlm, times(1)).onLeadershipChange(leaderPartitionsCapture.capture(), followerPartitionsCapture.capture(), any())
+
+    val replicaManager: ReplicaManager = mock(classOf[ReplicaManager])
+    when(replicaManager.remoteLogManager).thenReturn(Some(rlm))
+    when(replicaManager.onlinePartition(tp)).thenReturn(Some(partition))
+
+    val controllerContext: ControllerContext = mock(classOf[ControllerContext])
+    when(controllerContext.partitionLeadershipInfo(tp)).thenReturn(Some(leaderIsrAndControllerEpoch))
+    val controller: KafkaController = mock(classOf[KafkaController])
+    when(controller.controllerContext).thenReturn(controllerContext)
+
+    val log: UnifiedLog = mock(classOf[UnifiedLog])
+    when(log.remoteLogEnabled()).thenReturn(true)
+    when(log.topicId).thenReturn(Option(Uuid.randomUuid()))
+    when(log.topicPartition).thenReturn(tp)
+
+    val isRemoteLogEnabledBeforeUpdate = false
+    val logManager: LogManager = TestUtils.createLogManager()
+    logManager.setupReplicaManager(replicaManager)
+    logManager.maybeEnableRemoteLogStorage(topic, Seq(log), isRemoteLogEnabledBeforeUpdate)
+    assertTrue(followerPartitionsCapture.getValue.isEmpty)
+    assertEquals(Set(partition), leaderPartitionsCapture.getValue)
+  }
+
+  @Test
+  def testDoesNotEnableRemoteLogStorageWhenNoTopicIdPresent(): Unit = {
+    val topic = "test-remote-log-storage-config-update"
+    val tp = new TopicPartition(topic, 0)
+    val leaderIsrAndControllerEpoch = LeaderIsrAndControllerEpoch(LeaderAndIsr(0, 0, List(0, 1, 2), LeaderRecoveryState.RECOVERED, 2), 0)
+
+    val partition: Partition = mock(classOf[Partition])
+    when(partition.topicPartition).thenReturn(tp)
+    when(partition.isLeader).thenReturn(true)
+
+    val rlm: RemoteLogManager = mock(classOf[RemoteLogManager])
+
+    val replicaManager: ReplicaManager = mock(classOf[ReplicaManager])
+    when(replicaManager.remoteLogManager).thenReturn(Some(rlm))
+    when(replicaManager.onlinePartition(tp)).thenReturn(Some(partition))
+
+    val controllerContext: ControllerContext = mock(classOf[ControllerContext])
+    when(controllerContext.partitionLeadershipInfo(tp)).thenReturn(Some(leaderIsrAndControllerEpoch))
+    val controller: KafkaController = mock(classOf[KafkaController])
+    when(controller.controllerContext).thenReturn(controllerContext)
+
+    val log: UnifiedLog = mock(classOf[UnifiedLog])
+    when(log.remoteLogEnabled()).thenReturn(true)
+    // TopicId not found for corresponding topic
+    when(log.topicId).thenReturn(None)
+    when(log.topicPartition).thenReturn(tp)
+
+    val isRemoteLogEnabledBeforeUpdate = false
+    val logManager: LogManager = TestUtils.createLogManager()
+    logManager.setupReplicaManager(replicaManager)
+    logManager.maybeEnableRemoteLogStorage(topic, Seq(log), isRemoteLogEnabledBeforeUpdate)
+
+    // Expect no calls to be made to RLM
+    verify(rlm, times(0))
+  }
+
 }
