@@ -118,7 +118,8 @@ class LogLoaderTest {
         logDirFailureChannel = logDirFailureChannel,
         time = time,
         keepPartitionMetadataFile = config.usesTopicId,
-        remoteLogManagerConfig = remoteLogManagerConfig) {
+        remoteLogManagerConfig = remoteLogManagerConfig,
+        replicaManager = null) {
 
         override def loadLog(logDir: File, hadCleanShutdown: Boolean, recoveryPoints: Map[TopicPartition, Long],
                              logStartOffsets: Map[TopicPartition, Long], defaultConfig: LogConfig,

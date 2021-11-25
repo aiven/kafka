@@ -207,7 +207,7 @@ class BrokerServer(
       // until we catch up on the metadata log and have up-to-date topic and broker configs.
       val remoteLogManagerConfig = new RemoteLogManagerConfig(config)
       logManager = LogManager(config, initialOfflineDirs, metadataCache, kafkaScheduler, time,
-        brokerTopicStats, logDirFailureChannel, keepPartitionMetadataFile = true, remoteLogManagerConfig)
+        brokerTopicStats, logDirFailureChannel, keepPartitionMetadataFile = true, remoteLogManagerConfig, replicaManager)
       remoteLogManager = createRemoteLogManager(remoteLogManagerConfig)
 
       // Enable delegation token cache for all SCRAM mechanisms to simplify dynamic update.

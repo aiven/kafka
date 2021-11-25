@@ -306,7 +306,8 @@ class UnifiedLog(@volatile var logStartOffset: Long,
   locally {
     initializePartitionMetadata()
     updateLocalLogStartOffset(logStartOffset)
-    if (!remoteLogEnabled()) logStartOffset = localLogStartOffset
+    if (!remoteLogEnabled())
+      logStartOffset = localLogStartOffset
     maybeIncrementFirstUnstableOffset()
     initializeTopicId()
   }
@@ -1871,15 +1872,9 @@ class UnifiedLog(@volatile var logStartOffset: Long,
             val deletedSegments = localLog.truncateTo(targetOffset)
             deleteProducerSnapshots(deletedSegments, asyncDelete = true)
             leaderEpochCache.foreach(_.truncateFromEnd(targetOffset))
-
-            // TODO: @kamalcph check the logic again.
             logStartOffset = math.min(targetOffset, logStartOffset)
-            if (remoteLogEnabled()) {
-              updateLocalLogStartOffset(logStartOffset)
-            } else {
-              updateLogStartOffset(logStartOffset)
-            }
-
+            updateLogStartOffset(logStartOffset)
+            updateLocalLogStartOffset(math.min(targetOffset, localLogStartOffset))
             rebuildProducerState(targetOffset, producerStateManager)
             if (highWatermark >= localLog.logEndOffset)
               updateHighWatermark(localLog.logEndOffsetMetadata)
@@ -1903,14 +1898,8 @@ class UnifiedLog(@volatile var logStartOffset: Long,
         leaderEpochCache.foreach(_.clearAndFlush())
         producerStateManager.truncateFullyAndStartAt(newOffset)
         logStartOffset = newOffset
-
-        // TODO: @kamalcph check the logic again.
-        if (remoteLogEnabled()) {
-          updateLocalLogStartOffset(logStartOffset)
-        } else {
-          updateLogStartOffset(logStartOffset)
-        }
-
+        updateLogStartOffset(logStartOffset)
+        updateLocalLogStartOffset(newOffset)
         rebuildProducerState(newOffset, producerStateManager)
         updateHighWatermark(localLog.logEndOffsetMetadata)
       }
