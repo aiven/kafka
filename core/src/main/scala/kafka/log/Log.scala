@@ -318,7 +318,7 @@ class Log(@volatile private var _dir: File,
 
   @volatile private var highestOffsetWithRemoteIndex: Long = -1L
 
-  def remoteLogEnabled(): Boolean = {
+  private[kafka] def remoteLogEnabled(): Boolean = {
     // remote logging is enabled only for non-compact and non-internal topics
     rlmEnabled && !(config.compact || Topic.isInternal(topicPartition.topic())) && config.remoteStorageEnable
   }
@@ -326,7 +326,8 @@ class Log(@volatile private var _dir: File,
   locally {
     initializePartitionMetadata()
     updateLocalLogStartOffset(logStartOffset)
-    if (!remoteLogEnabled()) logStartOffset = localLogStartOffset
+    if (!remoteLogEnabled())
+      logStartOffset = localLogStartOffset
     maybeIncrementFirstUnstableOffset()
     initializeTopicId()
   }
@@ -2007,6 +2008,7 @@ class Log(@volatile private var _dir: File,
 
             completeTruncation(
               startOffset = math.min(targetOffset, logStartOffset),
+              localLogStartOffset = math.min(targetOffset, localLogStartOffset),
               endOffset = targetOffset
             )
           }
@@ -2038,6 +2040,7 @@ class Log(@volatile private var _dir: File,
 
         completeTruncation(
           startOffset = newOffset,
+          localLogStartOffset = newOffset,
           endOffset = newOffset
         )
       }
@@ -2046,14 +2049,11 @@ class Log(@volatile private var _dir: File,
 
   private def completeTruncation(
     startOffset: Long,
+    localLogStartOffset: Long,
     endOffset: Long
   ): Unit = {
-    // TODO: @kamalcph check the logic again.
-    if (remoteLogEnabled()) {
-      updateLocalLogStartOffset(startOffset)
-    } else {
-      updateLogStartOffset(startOffset)
-    }
+    updateLogStartOffset(startOffset)
+    updateLocalLogStartOffset(localLogStartOffset)
     // logStartOffset = startOffset
     nextOffsetMetadata = LogOffsetMetadata(endOffset, activeSegment.baseOffset, activeSegment.size)
     recoveryPoint = math.min(recoveryPoint, endOffset)
