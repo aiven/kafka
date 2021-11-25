@@ -206,6 +206,8 @@ class ReplicaManager(val config: KafkaConfig,
                      threadNamePrefix: Option[String] = None,
                      ) extends Logging with KafkaMetricsGroup {
 
+  logManager.setupReplicaManager(this)
+
   val delayedProducePurgatory = delayedProducePurgatoryParam.getOrElse(
     DelayedOperationPurgatory[DelayedProduce](
       purgatoryName = "Produce", brokerId = config.brokerId,
