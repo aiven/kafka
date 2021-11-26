@@ -16,9 +16,7 @@
   */
 package kafka.server
 
-import kafka.api.LeaderAndIsr
 import kafka.cluster.Partition
-import kafka.controller.{ControllerContext, KafkaController, LeaderIsrAndControllerEpoch}
 
 import java.net.InetAddress
 import java.nio.charset.StandardCharsets
@@ -46,7 +44,6 @@ import org.apache.kafka.common.quota.ClientQuotaEntity.{CLIENT_ID, IP, USER}
 import org.apache.kafka.common.quota.{ClientQuotaAlteration, ClientQuotaEntity}
 import org.apache.kafka.common.record.{CompressionType, RecordVersion}
 import org.apache.kafka.common.security.auth.KafkaPrincipal
-import org.apache.kafka.metadata.LeaderRecoveryState
 import org.apache.kafka.server.common.MetadataVersion.IBP_3_0_IV1
 import org.junit.jupiter.api.Assertions._
 import org.junit.jupiter.api.Test
@@ -548,76 +545,74 @@ class DynamicConfigChangeUnitTest {
   }
 
   @Test
-  def testMaybeEnableRemoteLogStorage(): Unit = {
-    val topic = "test-remote-log-storage-config-update"
+  def testEnableRemoteLogStorageOnTopic(): Unit = {
+    val topic = "test-topic"
     val tp = new TopicPartition(topic, 0)
-    val leaderIsrAndControllerEpoch = LeaderIsrAndControllerEpoch(LeaderAndIsr(0, 0, List(0, 1, 2), LeaderRecoveryState.RECOVERED, 2), 0)
-
     val partition: Partition = mock(classOf[Partition])
-    when(partition.topicPartition).thenReturn(tp)
     when(partition.isLeader).thenReturn(true)
-
     val rlm: RemoteLogManager = mock(classOf[RemoteLogManager])
     val leaderPartitionsCapture= ArgumentCaptor.forClass(classOf[Set[Partition]])
     val followerPartitionsCapture: ArgumentCaptor[Set[Partition]] = ArgumentCaptor.forClass(classOf[Set[Partition]])
     verify(rlm, times(1)).onLeadershipChange(leaderPartitionsCapture.capture(), followerPartitionsCapture.capture(), any())
-
     val replicaManager: ReplicaManager = mock(classOf[ReplicaManager])
     when(replicaManager.remoteLogManager).thenReturn(Some(rlm))
     when(replicaManager.onlinePartition(tp)).thenReturn(Some(partition))
-
-    val controllerContext: ControllerContext = mock(classOf[ControllerContext])
-    when(controllerContext.partitionLeadershipInfo(tp)).thenReturn(Some(leaderIsrAndControllerEpoch))
-    val controller: KafkaController = mock(classOf[KafkaController])
-    when(controller.controllerContext).thenReturn(controllerContext)
-
     val log: UnifiedLog = mock(classOf[UnifiedLog])
     when(log.remoteLogEnabled()).thenReturn(true)
     when(log.topicId).thenReturn(Option(Uuid.randomUuid()))
     when(log.topicPartition).thenReturn(tp)
-
     val isRemoteLogEnabledBeforeUpdate = false
     val logManager: LogManager = TestUtils.createLogManager()
     logManager.setupReplicaManager(replicaManager)
-    logManager.maybeEnableRemoteLogStorage(topic, Seq(log), isRemoteLogEnabledBeforeUpdate)
+    logManager.maybeBootstrapRemoteLogComponents(topic, Seq(log), isRemoteLogEnabledBeforeUpdate)
     assertTrue(followerPartitionsCapture.getValue.isEmpty)
     assertEquals(Set(partition), leaderPartitionsCapture.getValue)
+    verify(partition, rlm, replicaManager, log)
+  }
+
+  @Test
+  def testDisableRemoteLogStorageOnTopic(): Unit = {
+    val topic = "test-topic"
+    val tp = new TopicPartition(topic, 0)
+    val partition: Partition = mock(classOf[Partition])
+    when(partition.isLeader).thenReturn(true)
+    when(partition.isLeader).thenReturn(false)
+    val rlm: RemoteLogManager = mock(classOf[RemoteLogManager])
+    verify(rlm, times(1)).stopPartitions(Set(tp), delete = true)
+    verify(rlm, times(1)).stopPartitions(Set(tp), delete = false)
+    val replicaManager: ReplicaManager = mock(classOf[ReplicaManager])
+    when(replicaManager.remoteLogManager).thenReturn(Some(rlm))
+    when(replicaManager.onlinePartition(tp)).thenReturn(Some(partition))
+    val log: UnifiedLog = mock(classOf[UnifiedLog])
+    when(log.remoteLogEnabled()).thenReturn(false)
+    when(log.maybeIncrementLogStartOffsetAsRemoteLogStorageDisabled()).thenReturn(true)
+    when(log.topicPartition).thenReturn(tp)
+    val isRemoteLogEnabledBeforeUpdate = true
+    val logManager: LogManager = TestUtils.createLogManager()
+    logManager.setupReplicaManager(replicaManager)
+    logManager.maybeBootstrapRemoteLogComponents(topic, Seq(log), isRemoteLogEnabledBeforeUpdate)
+    logManager.maybeBootstrapRemoteLogComponents(topic, Seq(log), isRemoteLogEnabledBeforeUpdate)
+    verify(partition)
+    verify(rlm)
+    verify(replicaManager)
+    verify(log)
   }
 
   @Test
   def testDoesNotEnableRemoteLogStorageWhenNoTopicIdPresent(): Unit = {
     val topic = "test-remote-log-storage-config-update"
-    val tp = new TopicPartition(topic, 0)
-    val leaderIsrAndControllerEpoch = LeaderIsrAndControllerEpoch(LeaderAndIsr(0, 0, List(0, 1, 2), LeaderRecoveryState.RECOVERED, 2), 0)
-
     val partition: Partition = mock(classOf[Partition])
-    when(partition.topicPartition).thenReturn(tp)
-    when(partition.isLeader).thenReturn(true)
-
-    val rlm: RemoteLogManager = mock(classOf[RemoteLogManager])
-
-    val replicaManager: ReplicaManager = mock(classOf[ReplicaManager])
-    when(replicaManager.remoteLogManager).thenReturn(Some(rlm))
-    when(replicaManager.onlinePartition(tp)).thenReturn(Some(partition))
-
-    val controllerContext: ControllerContext = mock(classOf[ControllerContext])
-    when(controllerContext.partitionLeadershipInfo(tp)).thenReturn(Some(leaderIsrAndControllerEpoch))
-    val controller: KafkaController = mock(classOf[KafkaController])
-    when(controller.controllerContext).thenReturn(controllerContext)
-
     val log: UnifiedLog = mock(classOf[UnifiedLog])
     when(log.remoteLogEnabled()).thenReturn(true)
     // TopicId not found for corresponding topic
     when(log.topicId).thenReturn(None)
-    when(log.topicPartition).thenReturn(tp)
-
     val isRemoteLogEnabledBeforeUpdate = false
+    // Expect no calls to be made to ReplicaManager or RLM, so passing null
     val logManager: LogManager = TestUtils.createLogManager()
-    logManager.setupReplicaManager(replicaManager)
-    logManager.maybeEnableRemoteLogStorage(topic, Seq(log), isRemoteLogEnabledBeforeUpdate)
-
-    // Expect no calls to be made to RLM
-    verify(rlm, times(0))
+    logManager.setupReplicaManager(null)
+    logManager.maybeBootstrapRemoteLogComponents(topic, Seq(log), isRemoteLogEnabledBeforeUpdate)
+    verify(partition)
+    verify(log)
   }
 
 }
