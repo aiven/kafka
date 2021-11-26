@@ -212,6 +212,9 @@ case object SegmentDeletion extends LogStartOffsetIncrementReason {
 case object SnapshotGenerated extends LogStartOffsetIncrementReason {
   override def toString: String = "snapshot generated"
 }
+case object RemoteLogStorageDisabled extends LogStartOffsetIncrementReason {
+  override def toString: String = "remote log storage disabled"
+}
 
 /**
  * A log which presents a unified view of local and tiered log segments.
@@ -1119,6 +1122,10 @@ class UnifiedLog(@volatile var logStartOffset: Long,
 
   private def maybeIncrementLocalLogStartOffset(newLogStartOffset: Long, reason: LogStartOffsetIncrementReason): Unit = {
     maybeIncrementLogStartOffset(newLogStartOffset, reason, onlyLocalLogStartOffsetUpdate = true)
+  }
+
+  def maybeIncrementLogStartOffsetAsRemoteLogStorageDisabled(): Boolean = {
+    maybeIncrementLogStartOffset(localLogStartOffset, RemoteLogStorageDisabled)
   }
 
   /**
