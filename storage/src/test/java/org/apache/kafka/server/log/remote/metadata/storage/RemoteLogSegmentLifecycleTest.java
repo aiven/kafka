@@ -59,7 +59,7 @@ public class RemoteLogSegmentLifecycleTest {
     private final TopicIdPartition topicIdPartition = new TopicIdPartition(Uuid.randomUuid(), new TopicPartition("foo", 0));
     private final Time time = new MockTime(1);
 
-    @ParameterizedTest(name = "remoteLogSegmentLifecycleManager = {0}")
+    @ParameterizedTest(name = "testRemoteLogSegmentLifeCycle = {0}")
     @MethodSource("remoteLogSegmentLifecycleManagers")
     public void testRemoteLogSegmentLifeCycle(RemoteLogSegmentLifecycleManager remoteLogSegmentLifecycleManager) throws Exception {
         try {
@@ -278,7 +278,7 @@ public class RemoteLogSegmentLifecycleTest {
         Assertions.assertTrue(allSegmentsIter.hasNext() && Objects.equals(allSegmentsIter.next(), expectedSegment));
     }
 
-    @ParameterizedTest(name = "remoteLogSegmentLifecycleManager = {0}")
+    @ParameterizedTest(name = "testCacheSegmentWithCopySegmentStartedState = {0}")
     @MethodSource("remoteLogSegmentLifecycleManagers")
     public void testCacheSegmentWithCopySegmentStartedState(RemoteLogSegmentLifecycleManager remoteLogSegmentLifecycleManager) throws Exception {
 
@@ -303,7 +303,7 @@ public class RemoteLogSegmentLifecycleTest {
         }
     }
 
-    @ParameterizedTest(name = "remoteLogSegmentLifecycleManager = {0}")
+    @ParameterizedTest(name = "testCacheSegmentWithCopySegmentFinishedState = {0}")
     @MethodSource("remoteLogSegmentLifecycleManagers")
     public void testCacheSegmentWithCopySegmentFinishedState(RemoteLogSegmentLifecycleManager remoteLogSegmentLifecycleManager) throws Exception {
         try {
@@ -326,7 +326,7 @@ public class RemoteLogSegmentLifecycleTest {
         }
     }
 
-    @ParameterizedTest(name = "remoteLogSegmentLifecycleManager = {0}")
+    @ParameterizedTest(name = "testCacheSegmentWithDeleteSegmentStartedState = {0}")
     @MethodSource("remoteLogSegmentLifecycleManagers")
     public void testCacheSegmentWithDeleteSegmentStartedState(RemoteLogSegmentLifecycleManager remoteLogSegmentLifecycleManager) throws Exception {
         try {
@@ -348,7 +348,7 @@ public class RemoteLogSegmentLifecycleTest {
         }
     }
 
-    @ParameterizedTest(name = "remoteLogSegmentLifecycleManager = {0}")
+    @ParameterizedTest(name = "testCacheSegmentsWithDeleteSegmentFinishedState = {0}")
     @MethodSource("remoteLogSegmentLifecycleManagers")
     public void testCacheSegmentsWithDeleteSegmentFinishedState(RemoteLogSegmentLifecycleManager remoteLogSegmentLifecycleManager) throws Exception {
         try {
@@ -377,7 +377,7 @@ public class RemoteLogSegmentLifecycleTest {
         }
     }
 
-    @ParameterizedTest(name = "remoteLogSegmentLifecycleManager = {0}")
+    @ParameterizedTest(name = "testCacheListSegments = {0}")
     @MethodSource("remoteLogSegmentLifecycleManagers")
     public void testCacheListSegments(RemoteLogSegmentLifecycleManager remoteLogSegmentLifecycleManager) throws Exception {
         try {
@@ -474,7 +474,7 @@ public class RemoteLogSegmentLifecycleTest {
 
         @Override
         public void close() throws IOException {
-            tearDown();
+            super.close();
         }
 
         @Override
