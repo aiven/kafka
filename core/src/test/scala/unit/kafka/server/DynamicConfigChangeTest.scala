@@ -49,7 +49,7 @@ import org.junit.jupiter.api.Assertions._
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.ValueSource
-import org.mockito.ArgumentCaptor
+import org.mockito.{ArgumentCaptor, ArgumentMatchers}
 import org.mockito.ArgumentMatchers.{any, anyString}
 import org.mockito.Mockito.{mock, times, verify, when}
 
@@ -578,8 +578,8 @@ class DynamicConfigChangeUnitTest {
     when(partition.isLeader).thenReturn(true)
     when(partition.isLeader).thenReturn(false)
     val rlm: RemoteLogManager = mock(classOf[RemoteLogManager])
-    verify(rlm, times(1)).stopPartitions(Set(tp), delete = true)
-    verify(rlm, times(1)).stopPartitions(Set(tp), delete = false)
+    verify(rlm, times(1)).stopPartitions(ArgumentMatchers.eq(Set(tp)), ArgumentMatchers.eq(true), any())
+    verify(rlm, times(1)).stopPartitions(ArgumentMatchers.eq(Set(tp)), ArgumentMatchers.eq( false), any())
     val replicaManager: ReplicaManager = mock(classOf[ReplicaManager])
     when(replicaManager.remoteLogManager).thenReturn(Some(rlm))
     when(replicaManager.onlinePartition(tp)).thenReturn(Some(partition))
