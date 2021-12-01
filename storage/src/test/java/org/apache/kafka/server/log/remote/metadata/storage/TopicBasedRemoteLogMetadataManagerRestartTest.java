@@ -69,7 +69,7 @@ public class TopicBasedRemoteLogMetadataManagerRestartTest {
     }
 
     private void startTopicBasedRemoteLogMetadataManagerHarness(boolean startConsumerThread) {
-        remoteLogMetadataManagerHarness.initializeRemoteLogMetadataManager(Collections.emptySet(), startConsumerThread);
+        remoteLogMetadataManagerHarness.initializeRemoteLogMetadataManager(Collections.emptySet(), startConsumerThread, null);
     }
 
     @AfterEach
