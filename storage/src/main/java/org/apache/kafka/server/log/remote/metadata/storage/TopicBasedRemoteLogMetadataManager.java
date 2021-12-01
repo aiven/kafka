@@ -341,7 +341,9 @@ public class TopicBasedRemoteLogMetadataManager implements RemoteLogMetadataMana
             log.info("Started initializing with configs: {}", configs);
 
             rlmmConfig = new TopicBasedRemoteLogMetadataManagerConfig(configs);
-            rlmmTopicPartitioner = new RemoteLogMetadataTopicPartitioner(rlmmConfig.metadataTopicPartitionsCount());
+            if (rlmmTopicPartitioner == null) {
+                rlmmTopicPartitioner = new RemoteLogMetadataTopicPartitioner(rlmmConfig.metadataTopicPartitionsCount());
+            }
             remotePartitionMetadataStore = new RemotePartitionMetadataStore(new File(rlmmConfig.logDir()).toPath());
             configured = true;
             log.info("Successfully initialized with rlmmConfig: {}", rlmmConfig);
@@ -511,6 +513,15 @@ public class TopicBasedRemoteLogMetadataManager implements RemoteLogMetadataMana
         if (consumerManager != null) {
             consumerManager.startConsumerThread();
         }
+    }
+
+    // Visible for testing.
+    void setRlmmTopicPartitioner(RemoteLogMetadataTopicPartitioner rlmmTopicPartitioner) {
+        this.rlmmTopicPartitioner = Objects.requireNonNull(rlmmTopicPartitioner);
+    }
+
+    boolean isUserPartitionAssignedToPrimary(TopicIdPartition partition) {
+        return consumerManager.isUserPartitionAssignedToPrimary(partition);
     }
 
     @Override
