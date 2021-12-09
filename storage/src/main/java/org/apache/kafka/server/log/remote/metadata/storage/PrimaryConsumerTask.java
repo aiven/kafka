@@ -130,9 +130,7 @@ class PrimaryConsumerTask implements Runnable, Closeable {
         File file = committedOffsetsPath.toFile();
         try {
             offsetsFile = new CommittedOffsetsFile(file);
-            if (file.createNewFile()) {
-                log.info("Created file: [{}] successfully", file);
-            } else {
+            if (file.exists()) {
                 // load committed offset and assign them in the consumer
                 final Map<Integer, Long> committedOffsets = offsetsFile.readEntries();
                 if (!committedOffsets.isEmpty()) {

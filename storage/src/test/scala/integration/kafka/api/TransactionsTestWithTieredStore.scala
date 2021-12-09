@@ -39,7 +39,7 @@ class TransactionsTestWithTieredStore extends TransactionsTest {
    * Hence, we need to wait at least that amount of time before segments eligible for deletion
    * gets physically removed.
    */
-  private val storageWaitTimeoutSec = 35
+  private val storageWaitTimeoutSec = 40
 
   def storageConfigPrefix(key: String = ""): String = {
     STORAGE_CONFIG_PREFIX + key
@@ -82,6 +82,8 @@ class TransactionsTestWithTieredStore extends TransactionsTest {
     metadataConfigPrefix(TopicBasedRemoteLogMetadataManagerConfig.REMOTE_LOG_METADATA_TOPIC_PARTITIONS_PROP), 3.toString)
   serverConfig.setProperty(
     metadataConfigPrefix(TopicBasedRemoteLogMetadataManagerConfig.REMOTE_LOG_METADATA_TOPIC_REPLICATION_FACTOR_PROP), 2.toString)
+  serverConfig.setProperty(
+    metadataConfigPrefix(TopicBasedRemoteLogMetadataManagerConfig.REMOTE_LOG_METADATA_SECONDARY_CONSUMER_SUBSCRIPTION_INTERVAL_MS_PROP), 2000.toString)
 
   //
   // This configuration ensures inactive log segments are deleted fast enough so that
@@ -132,6 +134,14 @@ class TransactionsTestWithTieredStore extends TransactionsTest {
       createReadUncommittedConsumer("non-transactional-group")
   }
 
+  /**
+   * Waits upto {@link storageWaitTimeoutSec}  for all the brokers to upload at-least one log segment and expects the
+   * segment to be removed from the local log storage, so that the subsequent consumption will read data from both
+   * local and remote storage.
+   *
+   * @param topicPartitions partitions whose segments to be uploaded to remote storage and to wait for local log
+   *                        segment deletion
+   */
   override def maybeWaitForAtLeastOneSegmentUpload(topicPartitions: TopicPartition*): Unit = {
     topicPartitions.foreach(topicPartition => {
       val localStorages = servers.map(s => new BrokerLocalStorage(s.config.brokerId, s.config.logDirs.head,
