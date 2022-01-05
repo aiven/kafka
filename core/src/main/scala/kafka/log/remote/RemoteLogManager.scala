@@ -463,6 +463,8 @@ class RemoteLogManager(fetchLog: TopicPartition => Option[UnifiedLog],
                 }).get()
                 brokerTopicStats.topicStats(tpId.topicPartition().topic())
                   .remoteBytesOutRate.mark(remoteLogSegmentMetadata.segmentSizeInBytes())
+                brokerTopicStats.allTopicsStats
+                  .remoteBytesOutRate.mark(remoteLogSegmentMetadata.segmentSizeInBytes())
                 readOffsetOption = Some(endOffset)
                 //todo-tier-storage
                 log.updateRemoteIndexHighestOffset(endOffset)
@@ -476,6 +478,7 @@ class RemoteLogManager(fetchLog: TopicPartition => Option[UnifiedLog],
       } catch {
         case ex: Exception =>
           brokerTopicStats.topicStats(tpId.topicPartition().topic()).failedRemoteWriteRequestRate.mark()
+          brokerTopicStats.allTopicsStats.failedRemoteWriteRequestRate.mark()
           if (!isCancelled()) {
             error(s"Error occurred while copying log segments of partition: $tpId", ex)
           }
