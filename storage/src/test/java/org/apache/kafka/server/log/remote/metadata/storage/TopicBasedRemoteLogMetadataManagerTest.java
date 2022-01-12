@@ -39,6 +39,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeoutException;
 
 @SuppressWarnings("deprecation") // Added for Scala 2.12 compatibility for usages of JavaConverters
@@ -99,8 +100,9 @@ public class TopicBasedRemoteLogMetadataManagerTest {
             followerTopic, JavaConverters.mapAsScalaMap(assignedFollowerTopicReplicas),
             remoteLogMetadataManagerHarness.listenerName());
 
-        final TopicIdPartition newLeaderTopicIdPartition = new TopicIdPartition(Uuid.randomUuid(), new TopicPartition(leaderTopic, 0));
-        final TopicIdPartition newFollowerTopicIdPartition = new TopicIdPartition(Uuid.randomUuid(), new TopicPartition(followerTopic, 0));
+        Map<String, Uuid> allTopicUuids = JavaConverters.mapAsJavaMap(remoteLogMetadataManagerHarness.getTopicIds());
+        final TopicIdPartition newLeaderTopicIdPartition = new TopicIdPartition(allTopicUuids.get(leaderTopic), new TopicPartition(leaderTopic, 0));
+        final TopicIdPartition newFollowerTopicIdPartition = new TopicIdPartition(allTopicUuids.get(followerTopic), new TopicPartition(followerTopic, 0));
 
         // Add segments for these partitions but an exception is received as they have not yet been subscribed.
         // These messages would have been published to the respective metadata topic partitions but the ConsumerManager
@@ -157,7 +159,7 @@ public class TopicBasedRemoteLogMetadataManagerTest {
                 // If the leader partition and the follower partition are mapped to different metadata partitions then
                 // each of those metadata partitions will have at least 1 message. That means, received offset should
                 // be >= 0 (including duplicate messages if any).
-                if (topicBasedRlmm().receivedOffsetForPartition(leaderMetadataPartition).orElse(-1L) >= 0 ||
+                if (topicBasedRlmm().receivedOffsetForPartition(leaderMetadataPartition).orElse(-1L) >= 0 &&
                         topicBasedRlmm().receivedOffsetForPartition(followerMetadataPartition).orElse(-1L) >= 0) {
                     break;
                 }
