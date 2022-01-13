@@ -218,7 +218,6 @@ public class RemoteLogSegmentMetadata extends RemoteLogMetadata {
                 segmentSizeInBytes, rlsmUpdate.state(), segmentLeaderEpochs);
     }
 
-    @Override
     public TopicIdPartition topicIdPartition() {
         return remoteLogSegmentId.topicIdPartition();
     }

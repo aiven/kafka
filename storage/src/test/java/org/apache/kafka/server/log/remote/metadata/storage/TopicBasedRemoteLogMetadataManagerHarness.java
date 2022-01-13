@@ -21,6 +21,7 @@ import kafka.utils.EmptyTestInfo;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.common.KafkaException;
 import org.apache.kafka.common.TopicIdPartition;
+import org.apache.kafka.common.config.TopicConfig;
 import org.apache.kafka.common.utils.Utils;
 import org.apache.kafka.test.TestUtils;
 import org.slf4j.Logger;
@@ -32,6 +33,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeoutException;
 
@@ -133,6 +135,13 @@ public class TopicBasedRemoteLogMetadataManagerHarness extends IntegrationTestHa
 
     protected TopicBasedRemoteLogMetadataManager remoteLogMetadataManager() {
         return topicBasedRemoteLogMetadataManager;
+    }
+
+    private void createMetadataTopic() {
+        Properties topicConfigs = new Properties();
+        topicConfigs.put(TopicConfig.RETENTION_MS_CONFIG, Long.toString(METADATA_TOPIC_RETENTION_MS));
+        kafka.utils.TestUtils.createTopic(zkClient(), topicBasedRemoteLogMetadataManager.config().remoteLogMetadataTopicName(),
+            METADATA_TOPIC_PARTITIONS_COUNT, METADATA_TOPIC_REPLICATION_FACTOR, brokers(), topicConfigs);
     }
 
     public void close() throws IOException {
