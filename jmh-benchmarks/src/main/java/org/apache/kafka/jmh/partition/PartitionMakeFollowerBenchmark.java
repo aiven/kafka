@@ -41,6 +41,7 @@ import org.apache.kafka.common.record.SimpleRecord;
 import org.apache.kafka.common.utils.Time;
 import org.apache.kafka.common.utils.Utils;
 import org.apache.kafka.server.common.MetadataVersion;
+import org.apache.kafka.server.log.remote.storage.RemoteLogManagerConfig;
 import org.mockito.Mockito;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
@@ -95,6 +96,7 @@ public class PartitionMakeFollowerBenchmark {
 
         scheduler.startup();
         LogConfig logConfig = createLogConfig();
+        RemoteLogManagerConfig rlmConfig = createRemoteLogManagerConfig();
 
         BrokerTopicStats brokerTopicStats = new BrokerTopicStats();
         LogDirFailureChannel logDirFailureChannel = Mockito.mock(LogDirFailureChannel.class);
@@ -114,7 +116,9 @@ public class PartitionMakeFollowerBenchmark {
             setScheduler(scheduler).
             setBrokerTopicStats(brokerTopicStats).
             setLogDirFailureChannel(logDirFailureChannel).
-            setTime(Time.SYSTEM).setKeepPartitionMetadataFile(true).
+            setTime(Time.SYSTEM)
+            .setKeepPartitionMetadataFile(true)
+            .setRemoteLogManagerConfig(rlmConfig).
             build();
 
         TopicPartition tp = new TopicPartition("topic", 0);
@@ -176,5 +180,9 @@ public class PartitionMakeFollowerBenchmark {
         logProps.put(LogConfig.SegmentIndexBytesProp(), Defaults.MaxIndexSize());
         logProps.put(LogConfig.FileDeleteDelayMsProp(), Defaults.FileDeleteDelayMs());
         return LogConfig.apply(logProps, new scala.collection.immutable.HashSet<>());
+    }
+
+    private static RemoteLogManagerConfig createRemoteLogManagerConfig() {
+        return new RemoteLogManagerConfig(new Properties());
     }
 }

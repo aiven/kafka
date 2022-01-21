@@ -948,6 +948,48 @@ class UnifiedLogTest {
     assertEquals(0, log.deleteOldSegments())
   }
 
+  @Test
+  def testSegmentDeletionDisabledBeforeUploadToRemoteTier(): Unit = {
+    val logConfig = LogTestUtils.createLogConfig(indexIntervalBytes = 1, segmentIndexBytes = 12, retentionBytes = 1,
+      fileDeleteDelayMs = 0)
+    val log = createLog(logDir, logConfig, remoteLogEnable = true)
+    val pid = 1L
+    val epoch = 0.toShort
+
+    log.appendAsLeader(TestUtils.records(List(new SimpleRecord("a".getBytes)),
+      producerId = pid, producerEpoch = epoch, sequence = 0), leaderEpoch = 0)
+    log.roll()
+    log.appendAsLeader(TestUtils.records(List(new SimpleRecord("b".getBytes)),
+      producerId = pid, producerEpoch = epoch, sequence = 1), leaderEpoch = 0)
+    log.updateHighWatermark(log.logEndOffset)
+    assertEquals(2, log.logSegments.size)
+
+    log.deleteOldSegments()
+    mockTime.sleep(1)
+    assertEquals(2, log.logSegments.size)
+  }
+
+  @Test
+  def testSegmentDeletionEnabledAfterUploadToRemoteTier(): Unit = {
+    val logConfig = LogTestUtils.createLogConfig(indexIntervalBytes = 1, segmentIndexBytes = 12,
+      retentionBytes = 1, fileDeleteDelayMs = 0)
+    val log = createLog(logDir, logConfig, remoteLogEnable = true)
+    val pid = 1L
+    val epoch = 0.toShort
+
+    log.appendAsLeader(TestUtils.records(List(new SimpleRecord("a".getBytes)),
+      producerId = pid, producerEpoch = epoch, sequence = 0), leaderEpoch = 0)
+    log.roll()
+    log.appendAsLeader(TestUtils.records(List(new SimpleRecord("b".getBytes)),
+      producerId = pid, producerEpoch = epoch, sequence = 1), leaderEpoch = 0)
+    log.updateHighWatermark(log.logEndOffset)
+    assertEquals(2, log.logSegments.size)
+
+    log.updateRemoteIndexHighestOffset(0L)
+    log.deleteOldSegments()
+    mockTime.sleep(1)
+    assertEquals(1, log.logSegments.size)
+  }
 
   @Test
   def testLogStartOffsetMovementDeletesSnapshots(): Unit = {
@@ -3508,10 +3550,11 @@ class UnifiedLogTest {
                         producerIdExpirationCheckIntervalMs: Int = LogManager.ProducerIdExpirationCheckIntervalMs,
                         lastShutdownClean: Boolean = true,
                         topicId: Option[Uuid] = None,
-                        keepPartitionMetadataFile: Boolean = true): UnifiedLog = {
+                        keepPartitionMetadataFile: Boolean = true,
+                        remoteLogEnable: Boolean = false): UnifiedLog = {
     LogTestUtils.createLog(dir, config, brokerTopicStats, scheduler, time, logStartOffset, recoveryPoint,
       maxTransactionTimeoutMs, maxProducerIdExpirationMs, producerIdExpirationCheckIntervalMs,
-      lastShutdownClean, topicId, keepPartitionMetadataFile)
+      lastShutdownClean, topicId, keepPartitionMetadataFile, remoteLogEnable = remoteLogEnable)
   }
 
   private def createLogWithOffsetOverflow(logConfig: LogConfig): (UnifiedLog, LogSegment) = {

@@ -64,7 +64,7 @@ class LocalLog(@volatile private var _dir: File,
                @volatile private[log] var config: LogConfig,
                private[log] val segments: LogSegments,
                @volatile private[log] var recoveryPoint: Long,
-               @volatile private var nextOffsetMetadata: LogOffsetMetadata,
+               @volatile private[log] var nextOffsetMetadata: LogOffsetMetadata,
                private[log] val scheduler: Scheduler,
                private[log] val time: Time,
                private[log] val topicPartition: TopicPartition,
@@ -437,7 +437,7 @@ class LocalLog(@volatile private var _dir: File,
     updateLogEndOffset(lastOffset + 1)
   }
 
-  private def addAbortedTransactions(startOffset: Long, segment: LogSegment,
+  private[log] def addAbortedTransactions(startOffset: Long, segment: LogSegment,
                                      fetchInfo: FetchDataInfo): FetchDataInfo = {
     val fetchSize = fetchInfo.records.sizeInBytes
     val startOffsetPosition = OffsetPosition(fetchInfo.fetchOffsetMetadata.messageOffset,
@@ -1029,7 +1029,7 @@ object LocalLog extends Logging {
    * @tparam T the type of object held within the iterator
    * @return Some(iterator.next) if a next element exists, None otherwise.
    */
-  private def nextOption[T](iterator: Iterator[T]): Option[T] = {
+  private[log] def nextOption[T](iterator: Iterator[T]): Option[T] = {
     if (iterator.hasNext)
       Some(iterator.next())
     else

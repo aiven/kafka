@@ -120,7 +120,7 @@ class LogCleanerManagerTest extends Logging {
     val localLog = new LocalLog(tpDir, config, segments, offsets.recoveryPoint,
       offsets.nextOffsetMetadata, time.scheduler, time, tp, logDirFailureChannel)
     // the exception should be caught and the partition that caused it marked as uncleanable
-    class LogMock extends UnifiedLog(offsets.logStartOffset, localLog, new BrokerTopicStats,
+    class LogMock extends UnifiedLog(offsets.logStartOffset, localLog, segments, new BrokerTopicStats,
         LogManager.ProducerIdExpirationCheckIntervalMs, leaderEpochCache,
         producerStateManager, _topicId = None, keepPartitionMetadataFile = true) {
       // Throw an error in getFirstBatchTimestampForSegments since it is called in grabFilthiestLog()

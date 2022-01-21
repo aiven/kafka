@@ -43,10 +43,10 @@ case class FetchPartitionStatus(startOffsetMetadata: LogOffsetMetadata, fetchInf
  */
 class DelayedFetch(
   params: FetchParams,
-  fetchPartitionStatus: Seq[(TopicIdPartition, FetchPartitionStatus)],
+  val fetchPartitionStatus: Seq[(TopicIdPartition, FetchPartitionStatus)],
   replicaManager: ReplicaManager,
   quota: ReplicaQuota,
-  responseCallback: Seq[(TopicIdPartition, FetchPartitionData)] => Unit
+  val responseCallback: Seq[(TopicIdPartition, FetchPartitionData)] => Unit
 ) extends DelayedOperation(params.maxWaitMs) {
 
   override def toString: String = {
