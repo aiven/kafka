@@ -128,6 +128,7 @@ class LogCleanerTest {
       offsets.nextOffsetMetadata, time.scheduler, time, topicPartition, logDirFailureChannel)
     val log = new UnifiedLog(offsets.logStartOffset,
                       localLog,
+                      logSegments,
                       brokerTopicStats = new BrokerTopicStats,
                       producerIdExpirationCheckIntervalMs = LogManager.ProducerIdExpirationCheckIntervalMs,
                       leaderEpochCache = leaderEpochCache,

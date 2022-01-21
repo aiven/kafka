@@ -27,6 +27,7 @@ import kafka.common.{GenerateBrokerIdException, InconsistentBrokerIdException, I
 import kafka.controller.KafkaController
 import kafka.coordinator.group.GroupCoordinator
 import kafka.coordinator.transaction.{ProducerIdManager, TransactionCoordinator}
+import kafka.log.remote.RemoteLogManager
 import kafka.log.LogManager
 import kafka.metrics.KafkaMetricsReporter
 import kafka.network.{ControlPlaneAcceptor, DataPlaneAcceptor, RequestChannel, SocketServer}
@@ -46,11 +47,12 @@ import org.apache.kafka.common.security.scram.internals.ScramMechanism
 import org.apache.kafka.common.security.token.delegation.internals.DelegationTokenCache
 import org.apache.kafka.common.security.{JaasContext, JaasUtils}
 import org.apache.kafka.common.utils.{AppInfoParser, LogContext, Time, Utils}
-import org.apache.kafka.common.{Endpoint, Node}
+import org.apache.kafka.common.{Endpoint, Node, TopicPartition}
 import org.apache.kafka.metadata.BrokerState
 import org.apache.kafka.server.authorizer.Authorizer
 import org.apache.kafka.server.common.MetadataVersion._
 import org.apache.kafka.server.metrics.KafkaYammerMetrics
+import org.apache.kafka.server.log.remote.storage.RemoteLogManagerConfig
 import org.apache.zookeeper.client.ZKClientConfig
 
 import scala.collection.{Map, Seq}
@@ -118,6 +120,7 @@ class KafkaServer(
 
   var logDirFailureChannel: LogDirFailureChannel = null
   @volatile private var _logManager: LogManager = null
+  var remoteLogManager: RemoteLogManager = null
 
   @volatile private var _replicaManager: ReplicaManager = null
   var adminManager: ZkAdminManager = null
@@ -250,6 +253,7 @@ class KafkaServer(
         logDirFailureChannel = new LogDirFailureChannel(config.logDirs.size)
 
         /* start log manager */
+        val remoteLogManagerConfig = new RemoteLogManagerConfig(config)
         _logManager = LogManager(
           config,
           initialOfflineDirs,
@@ -258,9 +262,12 @@ class KafkaServer(
           time,
           brokerTopicStats,
           logDirFailureChannel,
-          config.usesTopicId)
+          config.usesTopicId,
+          remoteLogManagerConfig
+        )
         _brokerState = BrokerState.RECOVERY
         logManager.startup(zkClient.getAllTopicsInCluster())
+        remoteLogManager = createRemoteLogManager(remoteLogManagerConfig)
 
         metadataCache = MetadataCache.zkMetadataCache(config.brokerId, config.interBrokerProtocolVersion, brokerFeatures)
         val controllerNodeProvider = MetadataCacheControllerNodeProvider(config, metadataCache)
@@ -452,6 +459,24 @@ class KafkaServer(
         dynamicConfigManager = new ZkConfigManager(zkClient, dynamicConfigHandlers)
         dynamicConfigManager.startup()
 
+        // better to start RLM (RSM and RLMM) before processing any requests so that we may avoid missing any
+        //leader/isr requests.
+
+        val serverEndpoint = Option.apply(remoteLogManagerConfig.remoteLogMetadataManagerListenerName())
+          .map(ListenerName.normalised)
+          .flatMap(normalisedName =>
+              brokerInfo.broker.endPoints
+                .find(x => x.listenerName.equals(normalisedName))
+          )
+          // if no listener is configured, then return the first endpoint.
+          .orElse(Some(brokerInfo.broker.endPoints.head))
+          .map(x => new Endpoint(x.listenerName.value(), x.securityProtocol, x.host, x.port))
+          .get
+
+        if (remoteLogManager != null) {
+          remoteLogManager.onEndpointCreated(serverEndpoint)
+        }
+
         socketServer.enableRequestProcessing(authorizerFutures)
 
         _brokerState = BrokerState.RUNNING
@@ -471,6 +496,20 @@ class KafkaServer(
     }
   }
 
+  protected def createRemoteLogManager(remoteLogManagerConfig: RemoteLogManagerConfig): RemoteLogManager = {
+    if (remoteLogManagerConfig.enableRemoteStorageSystem()) {
+      def updateRemoteLogStartOffset(tp: TopicPartition, remoteLogStartOffset: Long) : Unit = {
+        logManager.getLog(tp).foreach(log => {
+          log.updateLogStartOffsetFromRemoteTier(remoteLogStartOffset)
+        })
+      }
+      new RemoteLogManager(tp => logManager.getLog(tp), updateRemoteLogStartOffset, remoteLogManagerConfig, time,
+        config.brokerId, clusterId, config.logDirs.head, brokerTopicStats)
+    } else {
+      null
+    }
+  }
+
   protected def createReplicaManager(isShuttingDown: AtomicBoolean): ReplicaManager = {
     new ReplicaManager(
       metrics = metrics,
@@ -478,6 +517,7 @@ class KafkaServer(
       time = time,
       scheduler = kafkaScheduler,
       logManager = logManager,
+      remoteLogManager = Option(remoteLogManager),
       quotaManagers = quotaManagers,
       metadataCache = metadataCache,
       logDirFailureChannel = logDirFailureChannel,
@@ -716,6 +756,12 @@ class KafkaServer(
 
         if (dynamicConfigManager != null)
           CoreUtils.swallow(dynamicConfigManager.shutdown(), this)
+
+        // Close remote log manager before stopping processing requests, to give a change to any
+        // of its underlying clients (especially in the remote metadata manager) to close gracefully.
+        if (remoteLogManager != null) {
+          CoreUtils.swallow(remoteLogManager.close(), this)
+        }
 
         // Stop socket server to stop accepting any more connections and requests.
         // Socket server will be shutdown towards the end of the sequence.

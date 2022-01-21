@@ -22,11 +22,11 @@ import java.util
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.locks.ReentrantLock
 import java.util.concurrent.{CompletableFuture, ExecutionException, TimeUnit, TimeoutException}
-
 import kafka.cluster.Broker.ServerInfo
 import kafka.coordinator.group.GroupCoordinator
 import kafka.coordinator.transaction.{ProducerIdManager, TransactionCoordinator}
 import kafka.log.LogManager
+import kafka.log.remote.RemoteLogManager
 import kafka.network.{DataPlaneAcceptor, SocketServer}
 import kafka.raft.RaftManager
 import kafka.security.CredentialProvider
@@ -43,7 +43,7 @@ import org.apache.kafka.common.security.auth.SecurityProtocol
 import org.apache.kafka.common.security.scram.internals.ScramMechanism
 import org.apache.kafka.common.security.token.delegation.internals.DelegationTokenCache
 import org.apache.kafka.common.utils.{AppInfoParser, LogContext, Time, Utils}
-import org.apache.kafka.common.{ClusterResource, Endpoint}
+import org.apache.kafka.common.{ClusterResource, Endpoint, TopicPartition}
 import org.apache.kafka.metadata.authorizer.ClusterMetadataAuthorizer
 import org.apache.kafka.metadata.{BrokerState, VersionRange}
 import org.apache.kafka.raft.RaftConfig.AddressSpec
@@ -51,6 +51,7 @@ import org.apache.kafka.raft.{RaftClient, RaftConfig}
 import org.apache.kafka.server.authorizer.Authorizer
 import org.apache.kafka.server.common.ApiMessageAndVersion
 import org.apache.kafka.server.fault.FaultHandler
+import org.apache.kafka.server.log.remote.storage.RemoteLogManagerConfig
 import org.apache.kafka.server.metrics.KafkaYammerMetrics
 import org.apache.kafka.snapshot.SnapshotWriter
 
@@ -112,6 +113,7 @@ class BrokerServer(
 
   var logDirFailureChannel: LogDirFailureChannel = null
   var logManager: LogManager = null
+  var remoteLogManager: RemoteLogManager = null
 
   var tokenManager: DelegationTokenManager = null
 
@@ -203,8 +205,10 @@ class BrokerServer(
 
       // Create log manager, but don't start it because we need to delay any potential unclean shutdown log recovery
       // until we catch up on the metadata log and have up-to-date topic and broker configs.
+      val remoteLogManagerConfig = new RemoteLogManagerConfig(config)
       logManager = LogManager(config, initialOfflineDirs, metadataCache, kafkaScheduler, time,
-        brokerTopicStats, logDirFailureChannel, keepPartitionMetadataFile = true)
+        brokerTopicStats, logDirFailureChannel, keepPartitionMetadataFile = true, remoteLogManagerConfig)
+      remoteLogManager = createRemoteLogManager(remoteLogManagerConfig)
 
       // Enable delegation token cache for all SCRAM mechanisms to simplify dynamic update.
       // This keeps the cache up-to-date if new SCRAM mechanisms are enabled dynamically.
@@ -260,6 +264,7 @@ class BrokerServer(
         time = time,
         scheduler = kafkaScheduler,
         logManager = logManager,
+        remoteLogManager = Option(remoteLogManager),
         quotaManagers = quotaManagers,
         metadataCache = metadataCache,
         logDirFailureChannel = logDirFailureChannel,
@@ -428,6 +433,19 @@ class BrokerServer(
       // Block until we've caught up with the latest metadata from the controller quorum.
       lifecycleManager.initialCatchUpFuture.get()
 
+      // better to start RLM (RSM and RLMM) before processing any requests so that we may avoid missing any
+      // leader/isr requests.
+      val serverEndpoint = Option.apply(remoteLogManagerConfig.remoteLogMetadataManagerListenerName())
+        .flatMap(value => {
+          val normalisedName = ListenerName.normalised(value)
+          endpoints.asScala.find(endpoint => normalisedName.value().equals(endpoint.listenerName().get()))
+        }).getOrElse(endpoints.asScala.head)
+
+
+      if (remoteLogManager != null) {
+        remoteLogManager.onEndpointCreated(serverEndpoint)
+      }
+
       // Apply the metadata log changes that we've accumulated.
       metadataPublisher = new BrokerMetadataPublisher(config,
         metadataCache,
@@ -484,6 +502,20 @@ class BrokerServer(
         shutdown()
         throw if (e.isInstanceOf[ExecutionException]) e.getCause else e
     }
+  }
+
+  protected def createRemoteLogManager(remoteLogManagerConfig: RemoteLogManagerConfig): RemoteLogManager = {
+    if (remoteLogManagerConfig.enableRemoteStorageSystem()) {
+      def updateRemoteLogStartOffset(tp: TopicPartition, remoteLogStartOffset: Long): Unit = {
+        logManager.getLog(tp).foreach(log => {
+          log.updateLogStartOffsetFromRemoteTier(remoteLogStartOffset)
+        })
+      }
+
+      new RemoteLogManager(tp => logManager.getLog(tp), updateRemoteLogStartOffset, remoteLogManagerConfig, time,
+        config.brokerId, clusterId, config.logDirs.head, brokerTopicStats)
+    }
+    null
   }
 
   override def shutdown(): Unit = {

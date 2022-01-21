@@ -19,10 +19,12 @@ package kafka.server
 
 import kafka.api.Request
 import org.apache.kafka.common.IsolationLevel
+import org.apache.kafka.common.TopicPartition
 import org.apache.kafka.common.message.FetchResponseData
 import org.apache.kafka.common.record.{MemoryRecords, Records}
 import org.apache.kafka.common.replica.ClientMetadata
 import org.apache.kafka.common.requests.FetchRequest
+import org.apache.kafka.common.requests.FetchRequest.PartitionData
 
 sealed trait FetchIsolation
 case object FetchLogEnd extends FetchIsolation
@@ -91,4 +93,8 @@ case class FetchDataInfo(
   records: Records,
   firstEntryIncomplete: Boolean = false,
   abortedTransactions: Option[List[FetchResponseData.AbortedTransaction]] = None
-)
+,
+                         delayedRemoteStorageFetch: Option[RemoteStorageFetchInfo] = None)
+
+case class RemoteStorageFetchInfo(fetchMaxBytes: Int, minOneMessage: Boolean, topicPartition: TopicPartition,
+                                  fetchInfo: PartitionData, fetchIsolation: FetchIsolation)

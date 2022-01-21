@@ -45,6 +45,7 @@ import org.apache.kafka.common.metrics.Metrics;
 import org.apache.kafka.common.utils.Time;
 import org.apache.kafka.common.utils.Utils;
 import org.apache.kafka.server.common.MetadataVersion;
+import org.apache.kafka.server.log.remote.storage.RemoteLogManagerConfig;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
 import org.openjdk.jmh.annotations.Fork;
@@ -141,6 +142,7 @@ public class PartitionCreationBench {
             setLogDirFailureChannel(failureChannel).
             setTime(Time.SYSTEM).
             setKeepPartitionMetadataFile(true).
+            setRemoteLogManagerConfig(createRemoteLogManagerConfig()).
             build();
         scheduler.startup();
         this.quotaManagers = QuotaFactory.instantiate(this.brokerProperties, this.metrics, this.time, "");
@@ -194,6 +196,10 @@ public class PartitionCreationBench {
         logProps.put(LogConfig.SegmentIndexBytesProp(), Defaults.MaxIndexSize());
         logProps.put(LogConfig.FileDeleteDelayMsProp(), Defaults.FileDeleteDelayMs());
         return LogConfig.apply(logProps, new scala.collection.immutable.HashSet<>());
+    }
+
+    private static RemoteLogManagerConfig createRemoteLogManagerConfig() {
+        return new RemoteLogManagerConfig(new Properties());
     }
 
     @Benchmark

@@ -29,9 +29,11 @@ import org.apache.kafka.common.TopicPartition
 import org.apache.kafka.common.errors.KafkaStorageException
 import org.apache.kafka.common.record.{CompressionType, ControlRecordType, DefaultRecordBatch, MemoryRecords, RecordBatch, RecordVersion, SimpleRecord, TimestampType}
 import org.apache.kafka.common.utils.{Time, Utils}
+import org.apache.kafka.server.log.remote.storage.RemoteLogManagerConfig
+import org.junit.jupiter.api.Assertions.{assertEquals, assertFalse, assertNotEquals, assertThrows, assertTrue}
 import org.apache.kafka.server.common.MetadataVersion
 import org.apache.kafka.server.common.MetadataVersion.IBP_0_11_0_IV0
-import org.junit.jupiter.api.Assertions.{assertDoesNotThrow, assertEquals, assertFalse, assertNotEquals, assertThrows, assertTrue}
+import org.junit.jupiter.api.Assertions.assertDoesNotThrow
 import org.junit.jupiter.api.function.Executable
 import org.junit.jupiter.api.{AfterEach, BeforeEach, Test}
 import org.mockito.ArgumentMatchers
@@ -78,6 +80,7 @@ class LogLoaderTest {
     val logDir: File = TestUtils.tempDir()
     val logProps = new Properties()
     val logConfig = LogConfig(logProps)
+    val remoteLogManagerConfig = new RemoteLogManagerConfig(new Properties())
     val logDirs = Seq(logDir)
     val topicPartition = new TopicPartition("foo", 0)
     var log: UnifiedLog = null
@@ -114,7 +117,8 @@ class LogLoaderTest {
         brokerTopicStats = new BrokerTopicStats(),
         logDirFailureChannel = logDirFailureChannel,
         time = time,
-        keepPartitionMetadataFile = config.usesTopicId) {
+        keepPartitionMetadataFile = config.usesTopicId,
+        remoteLogManagerConfig = remoteLogManagerConfig) {
 
         override def loadLog(logDir: File, hadCleanShutdown: Boolean, recoveryPoints: Map[TopicPartition, Long],
                              logStartOffsets: Map[TopicPartition, Long], defaultConfig: LogConfig,
@@ -148,7 +152,7 @@ class LogLoaderTest {
           val localLog = new LocalLog(logDir, logConfig, segments, offsets.recoveryPoint,
             offsets.nextOffsetMetadata, mockTime.scheduler, mockTime, topicPartition,
             logDirFailureChannel)
-          new UnifiedLog(offsets.logStartOffset, localLog, brokerTopicStats,
+          new UnifiedLog(offsets.logStartOffset, localLog, segments, brokerTopicStats,
             LogManager.ProducerIdExpirationCheckIntervalMs, leaderEpochCache,
             producerStateManager, None, true)
         }
@@ -372,7 +376,7 @@ class LogLoaderTest {
       val localLog = new LocalLog(logDir, logConfig, interceptedLogSegments, offsets.recoveryPoint,
         offsets.nextOffsetMetadata, mockTime.scheduler, mockTime, topicPartition,
         logDirFailureChannel)
-      new UnifiedLog(offsets.logStartOffset, localLog, brokerTopicStats,
+      new UnifiedLog(offsets.logStartOffset, localLog, interceptedLogSegments, brokerTopicStats,
         LogManager.ProducerIdExpirationCheckIntervalMs, leaderEpochCache, producerStateManager,
         None, keepPartitionMetadataFile = true)
     }
@@ -436,6 +440,7 @@ class LogLoaderTest {
       logDirFailureChannel)
     val log = new UnifiedLog(offsets.logStartOffset,
       localLog,
+      segments,
       brokerTopicStats = brokerTopicStats,
       producerIdExpirationCheckIntervalMs = 30000,
       leaderEpochCache = leaderEpochCache,
@@ -545,6 +550,7 @@ class LogLoaderTest {
       logDirFailureChannel)
     new UnifiedLog(offsets.logStartOffset,
       localLog,
+      segments,
       brokerTopicStats = brokerTopicStats,
       producerIdExpirationCheckIntervalMs = 30000,
       leaderEpochCache = leaderEpochCache,
@@ -599,6 +605,7 @@ class LogLoaderTest {
       logDirFailureChannel)
     new UnifiedLog(offsets.logStartOffset,
       localLog,
+      segments,
       brokerTopicStats = brokerTopicStats,
       producerIdExpirationCheckIntervalMs = 30000,
       leaderEpochCache = leaderEpochCache,
@@ -652,6 +659,7 @@ class LogLoaderTest {
       logDirFailureChannel)
     new UnifiedLog(offsets.logStartOffset,
       localLog,
+      segments,
       brokerTopicStats = brokerTopicStats,
       producerIdExpirationCheckIntervalMs = 30000,
       leaderEpochCache = leaderEpochCache,

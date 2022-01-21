@@ -18,6 +18,7 @@ package kafka.server
 
 import java.io.File
 import java.util.concurrent.CompletableFuture
+
 import kafka.common.InconsistentNodeIdException
 import kafka.log.{LogConfig, UnifiedLog}
 import kafka.metrics.KafkaMetricsReporter

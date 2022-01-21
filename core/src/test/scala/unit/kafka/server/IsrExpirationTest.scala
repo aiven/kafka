@@ -70,6 +70,7 @@ class IsrExpirationTest {
       time = time,
       scheduler = null,
       logManager = logManager,
+      remoteLogManager = None,
       quotaManagers = quotaManager,
       metadataCache = MetadataCache.zkMetadataCache(configs.head.brokerId, configs.head.interBrokerProtocolVersion),
       logDirFailureChannel = new LogDirFailureChannel(configs.head.logDirs.size),
@@ -249,7 +250,11 @@ class IsrExpirationTest {
 
   private def logMock: UnifiedLog = {
     val log: UnifiedLog = mock(classOf[UnifiedLog])
+    when(log.dir).thenReturn(TestUtils.tempDir())
+    when(log.logEndOffsetMetadata).thenReturn(LogOffsetMetadata(leaderLogEndOffset))
     when(log.logEndOffset).thenReturn(leaderLogEndOffset)
+    when(log.highWatermark).thenReturn(leaderLogHighWatermark)
+    when(log)
     log
   }
 }
