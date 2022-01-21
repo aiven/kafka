@@ -114,6 +114,7 @@ class ReplicaManagerTest {
       time = time,
       scheduler = new MockScheduler(time),
       logManager = mockLogMgr,
+      remoteLogManager = None,
       quotaManagers = quotaManager,
       metadataCache = MetadataCache.zkMetadataCache(config.brokerId, config.interBrokerProtocolVersion),
       logDirFailureChannel = new LogDirFailureChannel(config.logDirs.size),
@@ -141,6 +142,7 @@ class ReplicaManagerTest {
       time = time,
       scheduler = new MockScheduler(time),
       logManager = mockLogMgr,
+      remoteLogManager = None,
       quotaManagers = quotaManager,
       metadataCache = MetadataCache.zkMetadataCache(config.brokerId, config.interBrokerProtocolVersion),
       logDirFailureChannel = new LogDirFailureChannel(config.logDirs.size),
@@ -165,6 +167,7 @@ class ReplicaManagerTest {
       time = time,
       scheduler = new MockScheduler(time),
       logManager = mockLogMgr,
+      remoteLogManager = None,
       quotaManagers = quotaManager,
       metadataCache = MetadataCache.zkMetadataCache(config.brokerId, config.interBrokerProtocolVersion),
       logDirFailureChannel = new LogDirFailureChannel(config.logDirs.size),
@@ -221,6 +224,7 @@ class ReplicaManagerTest {
       time = time,
       scheduler = new MockScheduler(time),
       logManager = mockLogMgr,
+      remoteLogManager = None,
       quotaManagers = quotaManager,
       metadataCache = metadataCache,
       logDirFailureChannel = new LogDirFailureChannel(config.logDirs.size),
@@ -1909,6 +1913,7 @@ class ReplicaManagerTest {
     val mockLog = new UnifiedLog(
       logStartOffset = offsets.logStartOffset,
       localLog = localLog,
+      segments,
       brokerTopicStats = mockBrokerTopicStats,
       producerIdExpirationCheckIntervalMs = 30000,
       leaderEpochCache = leaderEpochCache,
@@ -1961,6 +1966,8 @@ class ReplicaManagerTest {
       purgatoryName = "DeleteRecords", timer, reaperEnabled = false)
     val mockElectLeaderPurgatory = new DelayedOperationPurgatory[DelayedElectLeader](
       purgatoryName = "ElectLeader", timer, reaperEnabled = false)
+    val mockDelayedRemoteFetchPurgatory = new DelayedOperationPurgatory[DelayedRemoteFetch](
+      purgatoryName = "RemoteFetch", timer, reaperEnabled = false)
 
     // Mock network client to show leader offset of 5
     val blockingSend = new MockBlockingSender(
@@ -1976,6 +1983,7 @@ class ReplicaManagerTest {
       time = time,
       scheduler = mockScheduler,
       logManager = mockLogMgr,
+      remoteLogManager = None,
       quotaManagers = quotaManager,
       brokerTopicStats = mockBrokerTopicStats,
       metadataCache = metadataCache,
@@ -1985,6 +1993,7 @@ class ReplicaManagerTest {
       delayedFetchPurgatoryParam = Some(mockFetchPurgatory),
       delayedDeleteRecordsPurgatoryParam = Some(mockDeleteRecordsPurgatory),
       delayedElectLeaderPurgatoryParam = Some(mockElectLeaderPurgatory),
+      delayedRemoteFetchPurgatoryParam = Some(mockDelayedRemoteFetchPurgatory),
       threadNamePrefix = Option(this.getClass.getName)) {
 
       override protected def createReplicaFetcherManager(metrics: Metrics,
@@ -2232,6 +2241,8 @@ class ReplicaManagerTest {
       purgatoryName = "Fetch", timer, reaperEnabled = false)
     val mockDeleteRecordsPurgatory = new DelayedOperationPurgatory[DelayedDeleteRecords](
       purgatoryName = "DeleteRecords", timer, reaperEnabled = false)
+    val mockDelayedRemoteFetchPurgatory = new DelayedOperationPurgatory[DelayedRemoteFetch](
+      purgatoryName = "RemoteFetch", timer, reaperEnabled = false)
     val mockDelayedElectLeaderPurgatory = new DelayedOperationPurgatory[DelayedElectLeader](
       purgatoryName = "DelayedElectLeader", timer, reaperEnabled = false)
 
@@ -2241,6 +2252,7 @@ class ReplicaManagerTest {
       time = time,
       scheduler = scheduler,
       logManager = mockLogMgr,
+      remoteLogManager = None,
       quotaManagers = quotaManager,
       metadataCache = metadataCache,
       logDirFailureChannel = new LogDirFailureChannel(config.logDirs.size),
@@ -2248,6 +2260,7 @@ class ReplicaManagerTest {
       delayedProducePurgatoryParam = Some(mockProducePurgatory),
       delayedFetchPurgatoryParam = Some(mockFetchPurgatory),
       delayedDeleteRecordsPurgatoryParam = Some(mockDeleteRecordsPurgatory),
+      delayedRemoteFetchPurgatoryParam = Some(mockDelayedRemoteFetchPurgatory),
       delayedElectLeaderPurgatoryParam = Some(mockDelayedElectLeaderPurgatory),
       threadNamePrefix = Option(this.getClass.getName)) {
 
@@ -2487,6 +2500,7 @@ class ReplicaManagerTest {
       time = time,
       scheduler = new MockScheduler(time),
       logManager = mockLogMgr0,
+      remoteLogManager = None,
       quotaManagers = quotaManager,
       brokerTopicStats = brokerTopicStats1,
       metadataCache = metadataCache0,
@@ -2498,6 +2512,7 @@ class ReplicaManagerTest {
       time = time,
       scheduler = new MockScheduler(time),
       logManager = mockLogMgr1,
+      remoteLogManager = None,
       quotaManagers = quotaManager,
       brokerTopicStats = brokerTopicStats2,
       metadataCache = metadataCache1,
@@ -2750,6 +2765,7 @@ class ReplicaManagerTest {
         time = time,
         scheduler = new MockScheduler(time),
         logManager = mockLogMgr,
+        remoteLogManager = None,
         quotaManagers = quotaManager,
         metadataCache = MetadataCache.zkMetadataCache(config.brokerId, config.interBrokerProtocolVersion),
         logDirFailureChannel = new LogDirFailureChannel(config.logDirs.size),

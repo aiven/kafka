@@ -20,6 +20,7 @@ package kafka.server
 import com.yammer.metrics.core.MetricName
 import kafka.coordinator.group.GroupCoordinator
 import kafka.log.LogManager
+import kafka.log.remote.RemoteLogManager
 import kafka.metrics.{KafkaMetricsGroup, LinuxIoMetricsCollector}
 import kafka.network.SocketServer
 import kafka.security.CredentialProvider
@@ -77,6 +78,7 @@ trait KafkaBroker extends KafkaMetricsGroup {
   def kafkaScheduler: KafkaScheduler
   def kafkaYammerMetrics: KafkaYammerMetrics
   def logManager: LogManager
+  def remoteLogManager: RemoteLogManager
   def metrics: Metrics
   def quotaManagers: QuotaFactory.QuotaManagers
   def replicaManager: ReplicaManager

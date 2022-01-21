@@ -85,7 +85,8 @@ object LogTestUtils {
                 lastShutdownClean: Boolean = true,
                 topicId: Option[Uuid] = None,
                 keepPartitionMetadataFile: Boolean = true,
-                numRemainingSegments: ConcurrentMap[String, Int] = new ConcurrentHashMap[String, Int]): UnifiedLog = {
+                numRemainingSegments: ConcurrentMap[String, Int] = new ConcurrentHashMap[String, Int],
+                remoteLogEnable: Boolean = false): UnifiedLog = {
     UnifiedLog(
       dir = dir,
       config = config,
@@ -101,7 +102,8 @@ object LogTestUtils {
       lastShutdownClean = lastShutdownClean,
       topicId = topicId,
       keepPartitionMetadataFile = keepPartitionMetadataFile,
-      numRemainingSegments = numRemainingSegments
+      numRemainingSegments = numRemainingSegments,
+      remoteLogEnable = remoteLogEnable
     )
   }
 

@@ -86,6 +86,7 @@ import org.apache.kafka.common.errors.NotEnoughReplicasAfterAppendException;
 import org.apache.kafka.common.errors.NotEnoughReplicasException;
 import org.apache.kafka.common.errors.NotLeaderOrFollowerException;
 import org.apache.kafka.common.errors.OffsetMetadataTooLarge;
+import org.apache.kafka.common.errors.OffsetMovedToTieredStorageException;
 import org.apache.kafka.common.errors.OffsetNotAvailableException;
 import org.apache.kafka.common.errors.OffsetOutOfRangeException;
 import org.apache.kafka.common.errors.OperationNotAttemptedException;
@@ -370,7 +371,15 @@ public enum Errors {
     TRANSACTIONAL_ID_NOT_FOUND(105, "The transactionalId could not be found", TransactionalIdNotFoundException::new),
     FETCH_SESSION_TOPIC_ID_ERROR(106, "The fetch session encountered inconsistent topic ID usage", FetchSessionTopicIdException::new),
     INELIGIBLE_REPLICA(107, "The new ISR contains at least one ineligible replica.", IneligibleReplicaException::new),
-    NEW_LEADER_ELECTED(108, "The AlterPartition request successfully updated the partition state but the leader has changed.", NewLeaderElectedException::new);
+    NEW_LEADER_ELECTED(108, "The AlterPartition request successfully updated the partition state but the leader has changed.", NewLeaderElectedException::new),
+    /*
+    We want OffsetMovedToTieredStorageException to map to LI_OFFSET_MOVED_TO_TIERED_STORAGE with the error code 1107,
+    until Kafka trunk gets an error code for OFFSET_MOVED_TO_TIERED_STORAGE. At that point, we will change the map so
+    that OffsetMovedToTieredStorageException maps to it instead. On the processing side, we will still process both
+    LI_OFFSET_MOVED_TO_TIERED_STORAGE and OFFSET_MOVED_TO_TIERED_STORAGE in the same way for a while, and then remove
+    LI_OFFSET_MOVED_TO_TIERED_STORAGE and fully move to using OFFSET_MOVED_TO_TIERED_STORAGE.
+     */
+    LI_OFFSET_MOVED_TO_TIERED_STORAGE(1107, "The requested offset is moved to tiered storage.", OffsetMovedToTieredStorageException::new);
 
     private static final Logger log = LoggerFactory.getLogger(Errors.class);
 

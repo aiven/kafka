@@ -18,6 +18,7 @@
 package kafka.server.builders;
 
 import kafka.log.LogManager;
+import kafka.log.remote.RemoteLogManager;
 import kafka.server.AlterPartitionManager;
 import kafka.server.BrokerTopicStats;
 import kafka.server.DelayedDeleteRecords;
@@ -25,6 +26,7 @@ import kafka.server.DelayedElectLeader;
 import kafka.server.DelayedFetch;
 import kafka.server.DelayedOperationPurgatory;
 import kafka.server.DelayedProduce;
+import kafka.server.DelayedRemoteFetch;
 import kafka.server.KafkaConfig;
 import kafka.server.LogDirFailureChannel;
 import kafka.server.MetadataCache;
@@ -58,7 +60,10 @@ public class ReplicaManagerBuilder {
     private Optional<DelayedOperationPurgatory<DelayedFetch>> delayedFetchPurgatory = Optional.empty();
     private Optional<DelayedOperationPurgatory<DelayedDeleteRecords>> delayedDeleteRecordsPurgatory = Optional.empty();
     private Optional<DelayedOperationPurgatory<DelayedElectLeader>> delayedElectLeaderPurgatory = Optional.empty();
+    private Optional<DelayedOperationPurgatory<DelayedRemoteFetch>> delayedRemoteFetchPurgatory = Optional.empty();
     private Optional<String> threadNamePrefix = Optional.empty();
+
+    private Optional<RemoteLogManager> remoteLogManager = Optional.empty();
 
     public ReplicaManagerBuilder setConfig(KafkaConfig config) {
         this.config = config;
@@ -140,8 +145,18 @@ public class ReplicaManagerBuilder {
         return this;
     }
 
+    public ReplicaManagerBuilder setDelayedRemoteFetchPurgatoryParam(DelayedOperationPurgatory<DelayedRemoteFetch> delayedRemoteFetchPurgatory) {
+        this.delayedRemoteFetchPurgatory = Optional.of(delayedRemoteFetchPurgatory);
+        return this;
+    }
+
     public ReplicaManagerBuilder setThreadNamePrefix(String threadNamePrefix) {
         this.threadNamePrefix = Optional.of(threadNamePrefix);
+        return this;
+    }
+
+    public ReplicaManagerBuilder setRemoteLogManager(RemoteLogManager remoteLogManager) {
+        this.remoteLogManager = Optional.of(remoteLogManager);
         return this;
     }
 
@@ -157,6 +172,7 @@ public class ReplicaManagerBuilder {
                              time,
                              scheduler,
                              logManager,
+                             OptionConverters.toScala(remoteLogManager),
                              quotaManagers,
                              metadataCache,
                              logDirFailureChannel,
@@ -168,6 +184,7 @@ public class ReplicaManagerBuilder {
                              OptionConverters.toScala(delayedFetchPurgatory),
                              OptionConverters.toScala(delayedDeleteRecordsPurgatory),
                              OptionConverters.toScala(delayedElectLeaderPurgatory),
+                             OptionConverters.toScala(delayedRemoteFetchPurgatory),
                              OptionConverters.toScala(threadNamePrefix));
     }
 }

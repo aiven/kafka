@@ -297,6 +297,7 @@ class ReplicaManagerQuotasTest {
       time = time,
       scheduler = scheduler,
       logManager = logManager,
+      remoteLogManager = None,
       quotaManagers = quotaManager,
       metadataCache = MetadataCache.zkMetadataCache(leaderBrokerId, configs.head.interBrokerProtocolVersion),
       logDirFailureChannel = new LogDirFailureChannel(configs.head.logDirs.size),

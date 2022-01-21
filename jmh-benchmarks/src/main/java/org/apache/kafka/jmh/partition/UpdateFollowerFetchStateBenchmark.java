@@ -39,6 +39,7 @@ import org.apache.kafka.common.Uuid;
 import org.apache.kafka.common.message.LeaderAndIsrRequestData.LeaderAndIsrPartitionState;
 import org.apache.kafka.common.utils.Time;
 import org.apache.kafka.server.common.MetadataVersion;
+import org.apache.kafka.server.log.remote.storage.RemoteLogManagerConfig;
 import org.mockito.Mockito;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
@@ -165,6 +166,10 @@ public class UpdateFollowerFetchStateBenchmark {
         logProps.put(LogConfig.SegmentIndexBytesProp(), Defaults.MaxIndexSize());
         logProps.put(LogConfig.FileDeleteDelayMsProp(), Defaults.FileDeleteDelayMs());
         return LogConfig.apply(logProps, new scala.collection.immutable.HashSet<>());
+    }
+
+    private static RemoteLogManagerConfig createRemoteLogManagerConfig() {
+        return new RemoteLogManagerConfig(new Properties());
     }
 
     @Benchmark

@@ -514,6 +514,12 @@ class ProducerStateManager(
   // completed transactions whose markers are at offsets above the high watermark
   private val unreplicatedTxns = new util.TreeMap[Long, TxnMetadata]
 
+  def reloadSegments(): Unit = {
+    info("Reloading the producer state snapshots")
+    truncateFullyAndStartAt(0L)
+    snapshots = loadSnapshots()
+  }
+
   @threadsafe
   def hasLateTransaction(currentTimeMs: Long): Boolean = {
     val lastTimestamp = oldestTxnLastTimestamp
@@ -759,6 +765,10 @@ class ProducerStateManager(
       // Update the last snap offset according to the serialized map
       lastSnapOffset = lastMapOffset
     }
+  }
+
+  def fetchSnapshot(offset:Long): Option[File] = {
+    Option(snapshots.get(offset)).map(_.file)
   }
 
   /**

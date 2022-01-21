@@ -170,6 +170,7 @@ class ReplicaManagerConcurrencyTest {
       time = time,
       scheduler = time.scheduler,
       logManager = logManager,
+      remoteLogManager = None,
       quotaManagers = QuotaFactory.instantiate(config, metrics, time, ""),
       metadataCache = metadataCache,
       logDirFailureChannel = new LogDirFailureChannel(config.logDirs.size),

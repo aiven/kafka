@@ -144,6 +144,7 @@ class SchedulerTest {
       offsets.nextOffsetMetadata, scheduler, mockTime, topicPartition, logDirFailureChannel)
     val log = new UnifiedLog(logStartOffset = offsets.logStartOffset,
       localLog = localLog,
+      segments,
       brokerTopicStats, LogManager.ProducerIdExpirationCheckIntervalMs,
       leaderEpochCache, producerStateManager,
       _topicId = None, keepPartitionMetadataFile = true)

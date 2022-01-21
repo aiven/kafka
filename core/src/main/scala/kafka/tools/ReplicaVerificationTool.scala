@@ -456,12 +456,12 @@ private class ReplicaFetcher(name: String, sourceBroker: Node, topicPartitions: 
   }
 }
 
-private class ReplicaFetcherBlockingSend(sourceNode: Node,
-                                         consumerConfig: ConsumerConfig,
-                                         metrics: Metrics,
-                                         time: Time,
-                                         fetcherId: Int,
-                                         clientId: String) {
+class ReplicaFetcherBlockingSend(sourceNode: Node,
+                                 consumerConfig: ConsumerConfig,
+                                 metrics: Metrics,
+                                 time: Time,
+                                 fetcherId: Int,
+                                 clientId: String) {
 
   private val socketTimeout: Int = consumerConfig.getInt(ConsumerConfig.REQUEST_TIMEOUT_MS_CONFIG)
 

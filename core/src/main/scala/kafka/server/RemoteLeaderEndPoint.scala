@@ -32,7 +32,7 @@ import org.apache.kafka.common.message.OffsetForLeaderEpochResponseData.EpochEnd
 import org.apache.kafka.common.protocol.Errors
 import org.apache.kafka.common.requests.{FetchRequest, FetchResponse, ListOffsetsRequest, ListOffsetsResponse, OffsetsForLeaderEpochRequest, OffsetsForLeaderEpochResponse}
 import org.apache.kafka.server.common.MetadataVersion
-import org.apache.kafka.server.common.MetadataVersion.IBP_0_10_1_IV2
+import org.apache.kafka.server.common.MetadataVersion.{IBP_0_10_1_IV2, IBP_3_0_IV1}
 
 import scala.jdk.CollectionConverters._
 import scala.collection.{Map, mutable}
@@ -95,7 +95,10 @@ class RemoteLeaderEndPoint(logPrefix: String,
   }
 
   override def fetchEarliestOffset(topicPartition: TopicPartition, currentLeaderEpoch: Int): Long = {
-    fetchOffset(topicPartition, currentLeaderEpoch, ListOffsetsRequest.EARLIEST_TIMESTAMP)
+    if (IBP_3_0_IV1.isLessThan(brokerConfig.interBrokerProtocolVersion))
+      fetchOffset(topicPartition, currentLeaderEpoch, ListOffsetsRequest.EARLIEST_LOCAL_TIMESTAMP)
+    else
+      fetchOffset(topicPartition, currentLeaderEpoch, ListOffsetsRequest.EARLIEST_TIMESTAMP)
   }
 
   override def fetchLatestOffset(topicPartition: TopicPartition, currentLeaderEpoch: Int): Long = {
