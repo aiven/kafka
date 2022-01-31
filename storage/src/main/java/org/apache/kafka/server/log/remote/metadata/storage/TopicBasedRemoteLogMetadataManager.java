@@ -478,7 +478,8 @@ public class TopicBasedRemoteLogMetadataManager implements RemoteLogMetadataMana
                 log.info("Topic [{}] already exists", topic.name());
                 topicCreated = true;
             } else {
-                log.error("Encountered error while creating remote log metadata topic.", e);
+                log.warn("Encountered error while creating remote log metadata topic: {} " +
+                        "Retrying topic creation in {} ms", e.getMessage(), rlmmConfig.initializationRetryMaxTimeoutMs());
             }
         }
 

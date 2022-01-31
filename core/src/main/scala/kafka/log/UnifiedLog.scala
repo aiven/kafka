@@ -294,14 +294,15 @@ class UnifiedLog(@volatile var logStartOffset: Long,
 
   @volatile var partitionMetadataFile: Option[PartitionMetadataFile] = None
 
-  @volatile private var localLogStartOffset: Long = logStartOffset
+  @volatile var localLogStartOffset: Long = logStartOffset
 
   @volatile private var highestOffsetWithRemoteIndex: Long = -1L
 
-  private def remoteLogEnabled(): Boolean = {
+  def remoteLogEnabled(): Boolean = {
     // remote logging is enabled only for non-compact and non-internal topics
-    rlmEnabled && !(config.compact || Topic.isInternal(topicPartition.topic()))
+    rlmEnabled && !(config.compact || Topic.isInternal(topicPartition.topic())) && config.remoteLogConfig.remoteStorageEnable
   }
+
   locally {
     initializePartitionMetadata()
     updateLocalLogStartOffset(logStartOffset)
@@ -424,9 +425,12 @@ class UnifiedLog(@volatile var logStartOffset: Long,
   }
 
   def updateRemoteIndexHighestOffset(offset: Long): Unit = {
-    if (!remoteLogEnabled())
+    if (!remoteLogEnabled()) {
       warn(s"Received update for highest offset with remote index as: $offset, the existing value: $highestOffsetWithRemoteIndex")
-    else if (offset > highestOffsetWithRemoteIndex) highestOffsetWithRemoteIndex = offset
+      /* TODO: check if this `if` condition should be here. What if highestOffsetWithRemoteIndex has reduced because
+      unclean leader election invalidated some remote log segments because they were not part of the unclean leader's epoch history?
+       */
+    } else if (offset > highestOffsetWithRemoteIndex) highestOffsetWithRemoteIndex = offset
   }
 
   /**
@@ -1446,11 +1450,15 @@ class UnifiedLog(@volatile var logStartOffset: Long,
           case _ => Optional.empty[Integer]()
         }
         Some(new TimestampAndOffset(RecordBatch.NO_TIMESTAMP, logStartOffset, epochOpt))
+
       } else if (targetTimestamp == ListOffsetsRequest.EARLIEST_LOCAL_TIMESTAMP) {
-        // EARLIEST_LOCAL_TIMESTAMP is only used by follower brokers, to find out the offset that they
-        // should start fetching from. Since the followers do not need the epoch, we can return
-        // an empty epoch here to keep things simple.
-        Some(new TimestampAndOffset(RecordBatch.NO_TIMESTAMP, localLogStartOffset, Optional.empty[Integer]()))
+        val earliestLocalLogEpochEntry = leaderEpochCache.flatMap(cache =>
+          cache.epochForOffset(localLogStartOffset).flatMap(cache.getEpochEntry))
+        val epochOpt = earliestLocalLogEpochEntry match {
+          case Some(entry) if entry.startOffset <= localLogStartOffset => Optional.of[Integer](entry.epoch)
+          case _ => Optional.empty[Integer]()
+        }
+        Some(new TimestampAndOffset(RecordBatch.NO_TIMESTAMP, localLogStartOffset, epochOpt))
       } else if (targetTimestamp == ListOffsetsRequest.LATEST_TIMESTAMP) {
         val latestEpochOpt = leaderEpochCache.flatMap(_.latestEpoch).map(_.asInstanceOf[Integer])
         val epochOptional = Optional.ofNullable(latestEpochOpt.orNull)
@@ -1468,37 +1476,29 @@ class UnifiedLog(@volatile var logStartOffset: Long,
           latestTimestampAndOffset.offset,
           epochOptional))
       } else {
-        // Cache to avoid race conditions. `toBuffer` is faster than most alternatives and provides
-        // constant time access while being safe to use with concurrent collections unlike `toArray`.
-        val segmentsCopy = logSegments.toBuffer
-        var isFirstSegment = false
-        val targetSeg: Option[LogSegment] = {
-          // Get all the segments whose largest timestamp is smaller than target timestamp
-          val earlierSegs = segmentsCopy.takeWhile(_.largestTimestamp < targetTimestamp)
-          // We need to search the first segment whose largest timestamp is greater than the target timestamp if there is one.
-          if (earlierSegs.length < segmentsCopy.length) {
-            isFirstSegment = earlierSegs.isEmpty
-            Some(segmentsCopy(earlierSegs.length))
-          } else {
-            None
+        // We need to search the first segment whose largest timestamp is >= the target timestamp if there is one.
+        val remoteOffset = if (remoteLogEnabled()) {
+          if (remoteLogManager.isEmpty) {
+            throw new KafkaException("RemoteLogManager is empty even though the remote log storage is enabled.");
           }
-        }
+          if (leaderEpochCache.isEmpty) {
+            throw new KafkaException("Tiered storage is supported only with versions supporting leader epochs, that means RecordVersion must be >= 2.")
+          }
 
-        if (isFirstSegment && remoteLogManager.isDefined) {
-          // FIXME @tchatter : This does not work for unclean leader election combined with tiered storage.
-          val localOffset = targetSeg.get.findOffsetByTimestamp(targetTimestamp, localLogStartOffset)
-          val remoteOffset = remoteLogManager.get.findOffsetByTimestamp(topicPartition, targetTimestamp, logStartOffset)
+          remoteLogManager.get.findOffsetByTimestamp(topicPartition, targetTimestamp, logStartOffset, leaderEpochCache.get)
+        } else None
 
-          if (localOffset.isEmpty)
-            remoteOffset
-          else if (remoteOffset.isEmpty)
-            localOffset
-          else if (localOffset.get.offset <= remoteOffset.get.offset)
-            localOffset
-          else
-            remoteOffset
+        if (remoteOffset.nonEmpty) {
+          remoteOffset
         } else {
-          targetSeg.flatMap(_.findOffsetByTimestamp(targetTimestamp, logStartOffset))
+          // If it is not found in remote storage, search in the local storage starting with local log start offset.
+
+          // Cache to avoid race conditions. `toBuffer` is faster than most alternatives and provides
+          // constant time access while being safe to use with concurrent collections unlike `toArray`.
+          val segmentsCopy = logSegments.toBuffer
+
+          val targetSeg = segmentsCopy.find(_.largestTimestamp >= targetTimestamp)
+          targetSeg.flatMap(_.findOffsetByTimestamp(targetTimestamp, localLogStartOffset))
         }
       }
     }
@@ -1637,20 +1637,30 @@ class UnifiedLog(@volatile var logStartOffset: Long,
     }
   }
 
+  def localRetentionMs(): Long = {
+    if(config.remoteLogConfig.remoteStorageEnable) config.remoteLogConfig.localRetentionMs else config.retentionMs
+  }
+
   private def deleteRetentionMsBreachedSegments(): Int = {
-    if (config.retentionMs < 0) return 0
+    val retentionMs = localRetentionMs()
+    if (retentionMs < 0) return 0
     val startMs = time.milliseconds
 
     def shouldDelete(segment: LogSegment, nextSegmentOpt: Option[LogSegment]): Boolean = {
-      startMs - segment.largestTimestamp > config.retentionMs
+      startMs - segment.largestTimestamp > retentionMs
     }
 
     deleteOldSegments(shouldDelete, RetentionMsBreach(this))
   }
 
+  def localRetentionSize(): Long = {
+    if(config.remoteLogConfig.remoteStorageEnable) config.remoteLogConfig.localRetentionBytes else config.retentionSize
+  }
+
   private def deleteRetentionSizeBreachedSegments(): Int = {
-    if (config.retentionSize < 0 || size < config.retentionSize) return 0
-    var diff = size - config.retentionSize
+    val retentionSize: Long = localRetentionSize()
+    if (retentionSize < 0 || size < retentionSize) return 0
+    var diff = size - retentionSize
     def shouldDelete(segment: LogSegment, nextSegmentOpt: Option[LogSegment]): Boolean = {
       if (diff - segment.size >= 0) {
         diff -= segment.size
@@ -2388,7 +2398,7 @@ object LogMetricNames {
 
 case class RetentionMsBreach(log: UnifiedLog) extends SegmentDeletionReason {
   override def logReason(toDelete: List[LogSegment]): Unit = {
-    val retentionMs = log.config.retentionMs
+    val retentionMs = log.localRetentionMs()
     toDelete.foreach { segment =>
       segment.largestRecordTimestamp match {
         case Some(_) =>
@@ -2407,7 +2417,7 @@ case class RetentionSizeBreach(log: UnifiedLog) extends SegmentDeletionReason {
     var size = log.size
     toDelete.foreach { segment =>
       size -= segment.size
-      log.info(s"Deleting segment $segment due to retention size ${log.config.retentionSize} breach. Log size " +
+      log.info(s"Deleting segment $segment due to retention size ${log.localRetentionSize()} breach. Log size " +
         s"after deletion will be $size.")
     }
   }
@@ -2415,6 +2425,6 @@ case class RetentionSizeBreach(log: UnifiedLog) extends SegmentDeletionReason {
 
 case class StartOffsetBreach(log: UnifiedLog) extends SegmentDeletionReason {
   override def logReason(toDelete: List[LogSegment]): Unit = {
-    log.info(s"Deleting segments due to log start offset ${log.logStartOffset} breach: ${toDelete.mkString(",")}")
+    log.info(s"Deleting segments due to log start offset ${log.localLogStartOffset} breach: ${toDelete.mkString(",")}")
   }
 }

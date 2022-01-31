@@ -41,6 +41,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.stream.Collectors;
 
 import static org.apache.kafka.server.log.remote.metadata.storage.TopicBasedRemoteLogMetadataManagerConfig.REMOTE_LOG_METADATA_TOPIC_NAME;
@@ -91,7 +92,7 @@ class ConsumerTask implements Runnable, Closeable {
 
     // Map of remote log metadata topic partition to consumed offsets. Received consumer records
     // may or may not have been processed based on the assigned topic partitions.
-    private final Map<Integer, Long> partitionToConsumedOffsets = new ConcurrentHashMap<>();
+    private final ConcurrentMap<Integer, Long> partitionToConsumedOffsets = new ConcurrentHashMap<>();
 
     // Map of remote log metadata topic partition to processed offsets that were synced in committedOffsetsFile.
     private Map<Integer, Long> lastSyncedPartitionToConsumedOffsets = Collections.emptyMap();
