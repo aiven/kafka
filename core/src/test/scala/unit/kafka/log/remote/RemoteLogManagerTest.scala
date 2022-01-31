@@ -58,7 +58,7 @@ class RemoteLogManagerTest {
 
   val rsmConfig: Map[String, Any] = Map(
     rsmConfigPrefix + "url" -> "foo.url",
-    rsmConfigPrefix + "timeout.ms" -> 1000L
+    rsmConfigPrefix + "timeout.ms" -> "1000"
   )
   var logConfig: LogConfig = _
   var tmpDir: File = _
@@ -130,11 +130,9 @@ class RemoteLogManagerTest {
 
     def logFetcher(tp: TopicPartition): Option[UnifiedLog] = logManager.getLog(tp)
 
-    def lsoUpdater(tp: TopicPartition, los: Long): Unit = {}
-
     // this should initialize RSM
     val logsDirTmp = Files.createTempDirectory("kafka-").toString
-    val remoteLogManager = new RemoteLogManager(logFetcher, lsoUpdater, rlmConfig, time, 1, "", logsDirTmp, new BrokerTopicStats)
+    val remoteLogManager = new RemoteLogManager(logFetcher, (_, _) => {}, rlmConfig, time, 1, "", logsDirTmp, new BrokerTopicStats)
     val securityProtocol = SecurityProtocol.PLAINTEXT
     val listenerName = ListenerName.forSecurityProtocol(securityProtocol)
     val endpoint = new Endpoint(listenerName.value(), securityProtocol, "localhost", 9092)
@@ -215,6 +213,20 @@ class RemoteLogManagerTest {
 
     assertEquals(props.get(rlmmConfigPrefix + key), rlmmConfig.get(key))
     assertFalse(rlmmConfig.containsKey("remote.log.metadata.y"))
+  }
+
+  @Test
+  def testFindHighestRemoteOffset(): Unit = {
+
+    // FIXME(@kamalcph): Improve this test
+    def logFetcher(tp: TopicPartition): Option[UnifiedLog] = logManager.getLog(tp)
+
+    // this should initialize RSM
+    val logsDirTmp = Files.createTempDirectory("kafka-").toString
+    val remoteLogManager = new RemoteLogManager(logFetcher, (_, _) => {}, rlmConfig, time, 1, "", logsDirTmp, new BrokerTopicStats)
+
+    val idPartition = new TopicIdPartition(Uuid.randomUuid(), topicPartition)
+    assertEquals(-1L, remoteLogManager.findHighestRemoteOffset(idPartition))
   }
 }
 

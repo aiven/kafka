@@ -28,6 +28,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 
+import static org.apache.kafka.clients.CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG;
 import static org.apache.kafka.common.config.ConfigDef.Importance.LOW;
 import static org.apache.kafka.common.config.ConfigDef.Range.atLeast;
 import static org.apache.kafka.common.config.ConfigDef.Type.INT;
@@ -98,6 +99,8 @@ public final class TopicBasedRemoteLogMetadataManagerConfig {
 
     private final String clientIdPrefix;
     private final int metadataTopicPartitionsCount;
+
+    private final String bootstrapServers;
     private final String logDir;
     private final long consumeWaitMs;
     private final long metadataTopicRetentionMs;
@@ -112,6 +115,12 @@ public final class TopicBasedRemoteLogMetadataManagerConfig {
         Objects.requireNonNull(props, "props can not be null");
 
         Map<String, Object> parsedConfigs = CONFIG.parse(props);
+
+        bootstrapServers = (String) props.get(BOOTSTRAP_SERVERS_CONFIG);
+        if (bootstrapServers == null || bootstrapServers.isEmpty()) {
+            throw new IllegalArgumentException(BOOTSTRAP_SERVERS_CONFIG + " config must not be null or empty.");
+        }
+
 
         logDir = (String) props.get(LOG_DIR);
         if (logDir == null || logDir.isEmpty()) {
@@ -135,6 +144,8 @@ public final class TopicBasedRemoteLogMetadataManagerConfig {
 
     private void initializeProducerConsumerProperties(Map<String, ?> configs) {
         Map<String, Object> commonClientConfigs = new HashMap<>();
+        commonClientConfigs.put(BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
+
         Map<String, Object> producerOnlyConfigs = new HashMap<>();
         Map<String, Object> consumerOnlyConfigs = new HashMap<>();
 
@@ -227,6 +238,7 @@ public final class TopicBasedRemoteLogMetadataManagerConfig {
         return "TopicBasedRemoteLogMetadataManagerConfig{" +
                 "clientIdPrefix='" + clientIdPrefix + '\'' +
                 ", metadataTopicPartitionsCount=" + metadataTopicPartitionsCount +
+                ", bootstrapServers='" + bootstrapServers + '\'' +
                 ", consumeWaitMs=" + consumeWaitMs +
                 ", metadataTopicRetentionMs=" + metadataTopicRetentionMs +
                 ", metadataTopicReplicationFactor=" + metadataTopicReplicationFactor +

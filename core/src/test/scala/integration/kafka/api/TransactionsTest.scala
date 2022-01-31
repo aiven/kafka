@@ -760,7 +760,7 @@ class TransactionsTest extends IntegrationTestHarness {
     producer.flush()
   }
 
-  private def createReadCommittedConsumer(group: String = "group",
+  def createReadCommittedConsumer(group: String = "group",
                                           maxPollRecords: Int = 500,
                                           props: Properties = new Properties) = {
     val consumer = TestUtils.createConsumer(bootstrapServers(),
@@ -772,7 +772,7 @@ class TransactionsTest extends IntegrationTestHarness {
     consumer
   }
 
-  private def createReadUncommittedConsumer(group: String) = {
+  def createReadUncommittedConsumer(group: String) = {
     val consumer = TestUtils.createConsumer(bootstrapServers(),
       groupId = group,
       enableAutoCommit = false)
@@ -780,7 +780,7 @@ class TransactionsTest extends IntegrationTestHarness {
     consumer
   }
 
-  private def createTransactionalProducer(transactionalId: String,
+  def createTransactionalProducer(transactionalId: String,
                                           transactionTimeoutMs: Long = 60000,
                                           maxBlockMs: Long = 60000,
                                           deliveryTimeoutMs: Int = 120000,
