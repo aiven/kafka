@@ -18,8 +18,11 @@
 package kafka.api
 
 import kafka.server.KafkaConfig
+import kafka.utils.BrokerLocalStorage
 import kafka.utils.TestUtils
+import org.apache.kafka.common.TopicPartition
 import org.apache.kafka.common.config.TopicConfig
+import org.apache.kafka.metadata.BrokerState
 import org.apache.kafka.server.log.remote.metadata.storage.{TopicBasedRemoteLogMetadataManager, TopicBasedRemoteLogMetadataManagerConfig}
 import org.apache.kafka.server.log.remote.storage.LocalTieredStorage.{STORAGE_CONFIG_PREFIX, STORAGE_DIR_PROP}
 import org.apache.kafka.server.log.remote.storage.RemoteLogManagerConfig.{REMOTE_LOG_METADATA_MANAGER_CONFIG_PREFIX_PROP, REMOTE_STORAGE_MANAGER_CONFIG_PREFIX_PROP}
@@ -31,7 +34,12 @@ import scala.collection.Seq
 
 class TransactionsTestWithTieredStore extends TransactionsTest {
 
-  override val brokerCount = 3
+  /**
+   * InitialTaskDelayMs is set to 30 seconds for the delete-segment scheduler in Apache Kafka.
+   * Hence, we need to wait at least that amount of time before segments eligible for deletion
+   * gets physically removed.
+   */
+  private val storageWaitTimeoutSec = 35
 
   def storageConfigPrefix(key: String = ""): String = {
     STORAGE_CONFIG_PREFIX + key
@@ -122,5 +130,35 @@ class TransactionsTestWithTieredStore extends TransactionsTest {
       createReadCommittedConsumer("transactional-group")
     for (_ <- 0 until nonTransactionalConsumerCount)
       createReadUncommittedConsumer("non-transactional-group")
+  }
+
+  override def maybeWaitForAtLeastOneSegmentUpload(topicPartitions: TopicPartition*): Unit = {
+    topicPartitions.foreach(topicPartition => {
+      val localStorages = servers.map(s => new BrokerLocalStorage(s.config.brokerId, s.config.logDirs.head,
+        storageWaitTimeoutSec))
+      localStorages
+        //
+        // Select brokers which are assigned a replica of the topic-partition
+        //
+        .filter(s => isAssignedReplica(topicPartition, s.brokerId))
+        //
+        // Filter out inactive brokers, which may still contain log segments we would expect
+        // to be deleted based on the retention configuration.
+        //
+        .filter(s => isActive(s.brokerId))
+        //
+        // Wait until the brokers local storage have been cleared from the inactive log segments.
+        //
+        .foreach(_.waitForAtLeastEarliestOffset(topicPartition, 1L))
+    })
+  }
+
+  private def isAssignedReplica(topicPartition: TopicPartition, replicaId: Int): Boolean = {
+    val assignments = zkClient.getPartitionAssignmentForTopics(Set(topicPartition.topic()))
+    assignments(topicPartition.topic())(topicPartition.partition()).replicas.contains(replicaId)
+  }
+
+  private def isActive(brokerId: Int): Boolean = {
+    servers(brokerId).brokerState equals BrokerState.RUNNING
   }
 }

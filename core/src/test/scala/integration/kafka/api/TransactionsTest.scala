@@ -36,7 +36,7 @@ import org.junit.jupiter.params.provider.ValueSource
 
 import scala.annotation.nowarn
 import scala.jdk.CollectionConverters._
-import scala.collection.mutable.Buffer
+import scala.collection.mutable.{Buffer, ListBuffer}
 import scala.concurrent.ExecutionException
 
 class TransactionsTest extends IntegrationTestHarness {
@@ -101,15 +101,17 @@ class TransactionsTest extends IntegrationTestHarness {
     producer.initTransactions()
 
     producer.beginTransaction()
-    producer.send(TestUtils.producerRecordWithExpectedTransactionStatus(topic2, null, "2", "2", willBeCommitted = false))
-    producer.send(TestUtils.producerRecordWithExpectedTransactionStatus(topic1, null, "4", "4", willBeCommitted = false))
+    producer.send(TestUtils.producerRecordWithExpectedTransactionStatus(topic2, 0, "2", "2", willBeCommitted = false))
+    producer.send(TestUtils.producerRecordWithExpectedTransactionStatus(topic1, 0, "4", "4", willBeCommitted = false))
     producer.flush()
     producer.abortTransaction()
 
     producer.beginTransaction()
-    producer.send(TestUtils.producerRecordWithExpectedTransactionStatus(topic1, null, "1", "1", willBeCommitted = true))
-    producer.send(TestUtils.producerRecordWithExpectedTransactionStatus(topic2, null, "3", "3", willBeCommitted = true))
+    producer.send(TestUtils.producerRecordWithExpectedTransactionStatus(topic1, 0, "1", "1", willBeCommitted = true))
+    producer.send(TestUtils.producerRecordWithExpectedTransactionStatus(topic2, 0, "3", "3", willBeCommitted = true))
     producer.commitTransaction()
+
+    maybeWaitForAtLeastOneSegmentUpload(new TopicPartition(topic1, 0), new TopicPartition(topic2, 0))
 
     consumer.subscribe(List(topic1, topic2).asJava)
     unCommittedConsumer.subscribe(List(topic1, topic2).asJava)
@@ -218,6 +220,8 @@ class TransactionsTest extends IntegrationTestHarness {
     producer1.abortTransaction()
     producer2.commitTransaction()
 
+    maybeWaitForAtLeastOneSegmentUpload(new TopicPartition(topic1, 0))
+
     // ensure that the consumer's fetch will sit in purgatory
     val consumerProps = new Properties()
     consumerProps.put(ConsumerConfig.FETCH_MIN_BYTES_CONFIG, "100000")
@@ -308,6 +312,12 @@ class TransactionsTest extends IntegrationTestHarness {
     } finally {
       consumer.close()
     }
+
+    val partitions = ListBuffer.empty[TopicPartition]
+    for (partition <- 0 until numPartitions) {
+      partitions += new TopicPartition(topic2, partition)
+    }
+    maybeWaitForAtLeastOneSegmentUpload(partitions.toSeq: _*)
 
     // In spite of random aborts, we should still have exactly 500 messages in topic2. I.e. we should not
     // re-copy or miss any messages from topic1, since the consumed offsets were committed transactionally.
@@ -758,6 +768,9 @@ class TransactionsTest extends IntegrationTestHarness {
       producer.send(TestUtils.producerRecordWithExpectedTransactionStatus(topic, null, value = i.toString, willBeCommitted = willBeCommitted, key = i.toString))
     }
     producer.flush()
+  }
+
+  def maybeWaitForAtLeastOneSegmentUpload(topicPartitions: TopicPartition*): Unit = {
   }
 
   def createReadCommittedConsumer(group: String = "group",

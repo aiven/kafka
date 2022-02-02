@@ -16,275 +16,412 @@
  */
 package kafka.log.remote
 
-import kafka.cluster.PartitionTest
+import kafka.cluster.Partition
 
-import java.io.{ByteArrayInputStream, File, InputStream}
-import java.nio.file.Files
+import kafka.log._
+import kafka.server._
+import kafka.server.checkpoints.LeaderEpochCheckpoint
+import kafka.server.epoch.{EpochEntry, LeaderEpochFileCache}
+import kafka.utils.{MockTime, TestUtils}
+import org.apache.kafka.common.{TopicIdPartition, TopicPartition, Uuid}
+import org.apache.kafka.common.config.AbstractConfig
+import org.apache.kafka.common.record._
+import org.apache.kafka.common.utils.Utils
+import org.apache.kafka.server.log.remote.storage.RemoteStorageManager.IndexType
+import org.apache.kafka.server.log.remote.storage._
+import org.mockito.Mockito.{mock, reset, when}
+import org.junit.jupiter.api.Assertions.{assertEquals, assertFalse, assertTrue}
+import org.junit.jupiter.api.{AfterEach, Test}
+import org.mockito.ArgumentMatchers
+import org.mockito.ArgumentMatchers.{any, anyInt, anyLong}
+import org.mockito.invocation.InvocationOnMock
+
+import java.io.{File, FileInputStream}
+import java.nio.file.{Files, Paths}
 import java.util.{Collections, Optional, Properties}
 import java.{lang, util}
-import kafka.log._
-import kafka.server.QuotaFactory.UnboundedQuota
-import kafka.server._
-import kafka.server.checkpoints.LazyOffsetCheckpoints
-import kafka.server.metadata.ZkMetadataCache
-import kafka.utils.{MockScheduler, MockTime, TestUtils}
-import org.apache.kafka.common.{Endpoint, TopicIdPartition, TopicPartition, Uuid}
-import org.apache.kafka.common.config.AbstractConfig
-import org.apache.kafka.common.message.LeaderAndIsrRequestData.LeaderAndIsrPartitionState
-import org.apache.kafka.common.metrics.Metrics
-import org.apache.kafka.common.network.ListenerName
-import org.apache.kafka.common.record._
-import org.apache.kafka.common.requests.FetchRequest.PartitionData
-import org.apache.kafka.common.security.auth.SecurityProtocol
-import org.apache.kafka.common.utils.Utils
-import org.apache.kafka.server.common.MetadataVersion
-import org.apache.kafka.server.log.remote.storage.{RemoteLogSegmentMetadata, RemoteStorageManager, _}
-import org.junit.jupiter.api.Assertions.{assertEquals, assertFalse, assertTrue}
-import org.junit.jupiter.api.{AfterEach, BeforeEach, Test}
-import org.mockito.Mockito.{mock, reset}
-
-import java.util.concurrent.CompletableFuture
+import scala.collection.Seq
 
 class RemoteLogManagerTest {
 
-  val brokerId = 101
-  val topicId = Uuid.randomUuid()
+  val clusterId = "test-cluster-id"
+  val brokerId = 0
   val topicPartition = new TopicPartition("test-topic", 0)
+  val topicIdPartition = new TopicIdPartition(Uuid.randomUuid(), topicPartition)
   val time = new MockTime()
   val brokerTopicStats = new BrokerTopicStats
-  val metrics = new Metrics
-  val rsmConfigPrefix = "rsm.config."
-  val rlmmConfigPrefix = "rlmm.config."
-
-  val rsmConfig: Map[String, Any] = Map(
-    rsmConfigPrefix + "url" -> "foo.url",
-    rsmConfigPrefix + "timeout.ms" -> "1000"
-  )
-  var logConfig: LogConfig = _
-  var tmpDir: File = _
-  var replicaManager: ReplicaManager = _
-  var logManager: LogManager = _
-  var rlmMock: RemoteLogManager = mock(classOf[RemoteLogManager])
-
-  val rlmConfig: RemoteLogManagerConfig = {
-    val props = new Properties
-    props.put(RemoteLogManagerConfig.REMOTE_LOG_STORAGE_SYSTEM_ENABLE_PROP, true.toString)
-    props.put(RemoteLogManagerConfig.REMOTE_STORAGE_MANAGER_CONFIG_PREFIX_PROP, rsmConfigPrefix)
-    props.put(RemoteLogManagerConfig.REMOTE_LOG_METADATA_MANAGER_CONFIG_PREFIX_PROP, rlmmConfigPrefix)
-    props.put(RemoteLogManagerConfig.REMOTE_STORAGE_MANAGER_CLASS_NAME_PROP, "kafka.log.remote.MockRemoteStorageManager")
-    props.put(RemoteLogManagerConfig.REMOTE_LOG_METADATA_MANAGER_CLASS_NAME_PROP, "kafka.log.remote.MockRemoteLogMetadataManager")
-    props.put(RemoteLogManagerConfig.REMOTE_LOG_READER_THREADS_PROP, 2.toString)
-    props.put(RemoteLogManagerConfig.REMOTE_LOG_READER_MAX_PENDING_TASKS_PROP, 10.toString)
-    rsmConfig.foreach(config => props.put(config._1, config._2.toString))
-    val config = new AbstractConfig(RemoteLogManagerConfig.CONFIG_DEF, props, false)
-    new RemoteLogManagerConfig(config)
+  val logsDir: String = Files.createTempDirectory("kafka-").toString
+  val checkpoint: LeaderEpochCheckpoint = new LeaderEpochCheckpoint {
+    private var epochs: Seq[EpochEntry] = Seq()
+    override def write(epochs: Iterable[EpochEntry]): Unit = this.epochs = epochs.toSeq
+    override def read(): Seq[EpochEntry] = this.epochs
   }
-
-  @BeforeEach
-  def setup(): Unit = {
-    val logProps = createLogProperties(Map.empty)
-    logConfig = LogConfig(logProps)
-
-    tmpDir = TestUtils.tempDir()
-    val logDir1 = TestUtils.randomPartitionLogDir(tmpDir)
-    val logDir2 = TestUtils.randomPartitionLogDir(tmpDir)
-    logManager = TestUtils.createLogManager(logDirs = Seq(logDir1, logDir2), defaultConfig = logConfig,
-      cleanerConfig = CleanerConfig(enableCleaner = false), time = time, remoteLogManagerConfig = rlmConfig)
-    logManager.startup(Set.empty)
-
-    val brokerProps = TestUtils.createBrokerConfig(brokerId, TestUtils.MockZkConnect)
-    brokerProps.put(KafkaConfig.LogDirsProp, Seq(logDir1, logDir2).map(_.getAbsolutePath).mkString(","))
-    val brokerConfig = KafkaConfig.fromProps(brokerProps)
-    val quotaManagers = QuotaFactory.instantiate(brokerConfig, metrics, time, "")
-    val alterIsrManager = TestUtils.createAlterIsrManager()
-    replicaManager = new ReplicaManager(
-       brokerConfig, metrics, time, new MockScheduler(time),
-      logManager, Some(rlmMock), quotaManagers,
-      new ZkMetadataCache(brokerId, MetadataVersion.latest(), BrokerFeatures.createDefault()), new LogDirFailureChannel(brokerConfig.logDirs.size),
-      alterIsrManager)
-  }
+  val cache = new LeaderEpochFileCache(topicPartition, checkpoint)
+  val rlmConfig: RemoteLogManagerConfig = createRLMConfig()
 
   @AfterEach
-  def tearDown(): Unit = {
-    reset(rlmMock)
-    brokerTopicStats.close()
-    metrics.close()
-
-    logManager.shutdown()
-    Utils.delete(tmpDir)
-    logManager.liveLogDirs.foreach(Utils.delete)
-    replicaManager.shutdown(checkpointHW = false)
-  }
-
-  private def createLogProperties(overrides: Map[String, String]): Properties = {
-    val logProps = new Properties()
-    logProps.put(LogConfig.SegmentBytesProp, 1024: java.lang.Integer)
-    logProps.put(LogConfig.SegmentIndexBytesProp, 10000: java.lang.Integer)
-    logProps.put(LogConfig.RetentionMsProp, 300000: java.lang.Integer)
-    overrides.foreach { case (k, v) => logProps.put(k, v) }
-    logProps
-  }
-
-  @Test
-  def testRSMConfigInvocation(): Unit = {
-
-    def logFetcher(tp: TopicPartition): Option[UnifiedLog] = logManager.getLog(tp)
-
-    // this should initialize RSM
-    val logsDirTmp = Files.createTempDirectory("kafka-").toString
-    val remoteLogManager = new RemoteLogManager(logFetcher, (_, _) => {}, rlmConfig, time, 1, "", logsDirTmp, new BrokerTopicStats)
-    val securityProtocol = SecurityProtocol.PLAINTEXT
-    val listenerName = ListenerName.forSecurityProtocol(securityProtocol)
-    val endpoint = new Endpoint(listenerName.value(), securityProtocol, "localhost", 9092)
-    remoteLogManager.onEndpointCreated(endpoint)
-
-    assertEquals(rsmConfig.size,
-      rsmConfig.count { case (k, v) =>
-        val keyWithoutPrefix = k.split(rsmConfigPrefix)(1)
-        MockRemoteStorageManager.configs.get(keyWithoutPrefix) == v.toString
-      })
-  }
-
-  @Test
-  def testRemoteLogRecordsFetch(): Unit = {
-    // return the lastOffset to verify when out of range offsets are requested.
-    val leaderEpoch = 1
-    val partition = replicaManager.createPartition(topicPartition)
-
-    val leaderState = new LeaderAndIsrPartitionState()
-      .setControllerEpoch(1)
-      .setLeader(brokerId)
-      .setLeaderEpoch(leaderEpoch)
-      .setIsr(Collections.singletonList(brokerId))
-      .setReplicas(Collections.singletonList(brokerId))
-      .setIsNew(true)
-    partition.makeLeader(leaderState, new LazyOffsetCheckpoints(replicaManager.getHighWatermarkCheckpoints), None)
-
-    val recordsArray = Array(
-      new SimpleRecord("k1".getBytes, "v1".getBytes),
-      new SimpleRecord("k2".getBytes, "v2".getBytes),
-      new SimpleRecord("k3".getBytes, "v3".getBytes),
-      new SimpleRecord("k4".getBytes, "v4".getBytes)
-    )
-    val inputRecords: util.List[SimpleRecord] = util.Arrays.asList(recordsArray: _*)
-
-    val inputMemoryRecords = Map(topicPartition -> MemoryRecords.withRecords(0L, CompressionType.NONE, leaderEpoch,
-      recordsArray: _*))
-
-    replicaManager.appendRecords(timeout = 30000, requiredAcks = 1, internalTopicsAllowed = true,
-      origin = AppendOrigin.Client, entriesPerPartition = inputMemoryRecords, responseCallback = _ => ())
-
-    def logReadResultFor(fetchOffset: Long): LogReadResult = {
-      val partitionInfo = Seq((new TopicIdPartition(topicId, topicPartition), new PartitionData(topicId, fetchOffset, 0, 1000,
-        Optional.of(leaderEpoch))))
-      val fetchParams = PartitionTest.consumerFetchParams()
-      val readRecords = replicaManager.readFromLocalLog(fetchParams, partitionInfo, UnboundedQuota, readFromPurgatory = false)
-      if (readRecords.isEmpty) null else readRecords.last._2
-    }
-
-    val logReadResult_0 = logReadResultFor(0L)
-    val receivedRecords = logReadResult_0.info.records
-    // check the records are same
-    val result = new util.ArrayList[SimpleRecord]()
-    receivedRecords.records().forEach((t: Record) => result.add(new SimpleRecord(t)))
-    assertEquals(inputRecords, result)
-
-    val outOfRangeOffset = logManager.getLog(topicPartition).get.logEndOffset + 1
-
-    // fetching offsets beyond local log would result in fetching from remote log, it is mocked to return lastOffset,
-    //nextLocalOffset should be lastOffset +1
-    val logReadResult = logReadResultFor(outOfRangeOffset)
-    // fetch response should have no records as it is to indicate that the requested fetch messages are in
-    // remote tier and the next offset available locally is sent as `nextLocalOffset` so that follower replica can
-    // start fetching that for local storage.
-    assertTrue(logReadResult.info.records.sizeInBytes() == 0)
+  def afterEach(): Unit = {
+    Utils.delete(Paths.get(logsDir).toFile)
   }
 
   @Test
   def testRLMConfig(): Unit = {
     val key = "hello"
+    val rlmmConfigPrefix = RemoteLogManagerConfig.DEFAULT_REMOTE_LOG_METADATA_MANAGER_CONFIG_PREFIX
     val props: Properties = new Properties()
-    props.put(RemoteLogManagerConfig.REMOTE_STORAGE_MANAGER_CONFIG_PREFIX_PROP, rsmConfigPrefix)
-    props.put(RemoteLogManagerConfig.REMOTE_LOG_METADATA_MANAGER_CONFIG_PREFIX_PROP, rlmmConfigPrefix)
     props.put(rlmmConfigPrefix + key, "world")
     props.put("remote.log.metadata.y", "z")
-    val rlmmConfig = new RemoteLogManagerConfig(new AbstractConfig(RemoteLogManagerConfig.CONFIG_DEF, props))
-      .remoteLogMetadataManagerProps()
 
+    val rlmConfig = createRLMConfig(props)
+    val rlmmConfig = rlmConfig.remoteLogMetadataManagerProps()
     assertEquals(props.get(rlmmConfigPrefix + key), rlmmConfig.get(key))
     assertFalse(rlmmConfig.containsKey("remote.log.metadata.y"))
   }
 
   @Test
+  def testFindHighestRemoteOffsetOnEmptyRemoteStorage(): Unit = {
+    cache.assign(0, 0)
+    cache.assign(1, 500)
+
+    val log: UnifiedLog = mock(classOf[UnifiedLog])
+    when(log.leaderEpochCache).thenReturn(Option(cache))
+
+    val rlmmManager: RemoteLogMetadataManager = mock(classOf[RemoteLogMetadataManager])
+    when(rlmmManager.highestOffsetForEpoch(ArgumentMatchers.eq(topicIdPartition), anyInt()))
+      .thenReturn(Optional.empty(): Optional[java.lang.Long])
+
+    val remoteLogManager = new RemoteLogManager(_ => Option(log),
+      (_, _) => {}, rlmConfig, time, 1, clusterId, logsDir, brokerTopicStats) {
+      override private[remote] def createRemoteLogMetadataManager(): RemoteLogMetadataManager = rlmmManager
+    }
+    assertEquals(-1L, remoteLogManager.findHighestRemoteOffset(topicIdPartition))
+  }
+
+  @Test
   def testFindHighestRemoteOffset(): Unit = {
+    cache.assign(0, 0)
+    cache.assign(1, 500)
 
-    // FIXME(@kamalcph): Improve this test
-    def logFetcher(tp: TopicPartition): Option[UnifiedLog] = logManager.getLog(tp)
+    val log: UnifiedLog = mock(classOf[UnifiedLog])
+    when(log.leaderEpochCache).thenReturn(Option(cache))
 
-    // this should initialize RSM
-    val logsDirTmp = Files.createTempDirectory("kafka-").toString
-    val remoteLogManager = new RemoteLogManager(logFetcher, (_, _) => {}, rlmConfig, time, 1, "", logsDirTmp, new BrokerTopicStats)
+    val rlmmManager: RemoteLogMetadataManager = mock(classOf[RemoteLogMetadataManager])
+    when(rlmmManager.highestOffsetForEpoch(ArgumentMatchers.eq(topicIdPartition), anyInt())).thenAnswer((invocation: InvocationOnMock) => {
+      val epoch = invocation.getArgument[Int](1)
+      if (epoch == 0) Optional.of(200L) else Optional.empty()
+    })
 
-    val idPartition = new TopicIdPartition(Uuid.randomUuid(), topicPartition)
-    assertEquals(-1L, remoteLogManager.findHighestRemoteOffset(idPartition))
-  }
-}
-
-object MockRemoteStorageManager {
-  var configs: util.Map[String, _] = _
-}
-
-class MockRemoteStorageManager extends RemoteStorageManager {
-
-  override def configure(configs: util.Map[String, _]): Unit = {
-    MockRemoteStorageManager.configs = configs
+    val remoteLogManager = new RemoteLogManager(_ => Option(log),
+      (_, _) => {}, rlmConfig, time, 1, clusterId, logsDir, brokerTopicStats) {
+      override private[remote] def createRemoteLogMetadataManager(): RemoteLogMetadataManager = rlmmManager
+    }
+    assertEquals(200L, remoteLogManager.findHighestRemoteOffset(topicIdPartition))
   }
 
-  override def copyLogSegmentData(remoteLogSegmentMetadata: RemoteLogSegmentMetadata, logSegmentData: LogSegmentData): Unit = {}
+  @Test
+  def testFindNextSegmentMetadata(): Unit = {
+    cache.assign(0, 0)
+    cache.assign(1, 30)
+    cache.assign(2, 100)
 
-  override def fetchLogSegment(remoteLogSegmentMetadata: RemoteLogSegmentMetadata, startPosition: Int): InputStream = {
-    new ByteArrayInputStream(Array.emptyByteArray)
+    val logConfig: LogConfig = mock(classOf[LogConfig])
+    when(logConfig.compact).thenReturn(false)
+    val remoteLogConfig = mock(classOf[logConfig.RemoteLogConfig])
+    when(logConfig.compact).thenReturn(false)
+    when(remoteLogConfig.remoteStorageEnable).thenReturn(true)
+    when(logConfig.remoteLogConfig).thenReturn(remoteLogConfig)
+
+    val log: UnifiedLog = mock(classOf[UnifiedLog])
+    when(log.leaderEpochCache).thenReturn(Option(cache))
+    when(log.config).thenReturn(logConfig)
+
+    val nextSegmentLeaderEpochs = new util.HashMap[Integer, lang.Long]
+    nextSegmentLeaderEpochs.put(0, 0)
+    nextSegmentLeaderEpochs.put(1, 30)
+    nextSegmentLeaderEpochs.put(2, 100)
+    val nextSegmentMetadata: RemoteLogSegmentMetadata =
+      new RemoteLogSegmentMetadata(new RemoteLogSegmentId(topicIdPartition, Uuid.randomUuid()),
+        100, 199, -1L, brokerId, -1L, 1024, nextSegmentLeaderEpochs)
+    val rlmmManager: RemoteLogMetadataManager = mock(classOf[RemoteLogMetadataManager])
+    when(rlmmManager.remoteLogSegmentMetadata(ArgumentMatchers.eq(topicIdPartition), anyInt(), anyLong()))
+      .thenAnswer((invocation: InvocationOnMock) => {
+        val epoch = invocation.getArgument[Int](1)
+        val nextOffset = invocation.getArgument[Long](2)
+        if (epoch == 2 && nextOffset >= 100L && nextOffset <= 199L)
+          Optional.of(nextSegmentMetadata)
+        else
+          Optional.empty()
+      })
+    when(rlmmManager.highestOffsetForEpoch(ArgumentMatchers.eq(topicIdPartition), anyInt()))
+      .thenReturn(Optional.empty(): Optional[java.lang.Long])
+    when(rlmmManager.listRemoteLogSegments(topicIdPartition)).thenReturn(Collections.emptyIterator(): java.util.Iterator[RemoteLogSegmentMetadata])
+
+    val topic = topicIdPartition.topicPartition().topic()
+    val partition: Partition = mock(classOf[Partition])
+    when(partition.topic).thenReturn(topic)
+    when(partition.topicPartition).thenReturn(topicIdPartition.topicPartition())
+    when(partition.log).thenReturn(Option(log))
+    when(partition.getLeaderEpoch).thenReturn(0)
+
+    val remoteLogManager = new RemoteLogManager(_ => Option(log),
+      (_, _) => {}, rlmConfig, time, 1, clusterId, logsDir, brokerTopicStats) {
+      override private[remote] def createRemoteLogMetadataManager(): RemoteLogMetadataManager = rlmmManager
+    }
+    remoteLogManager.onLeadershipChange(Set(partition), Set(), Collections.singletonMap(topic, topicIdPartition.topicId()))
+
+    val segmentLeaderEpochs = new util.HashMap[Integer, lang.Long]()
+    segmentLeaderEpochs.put(0, 0)
+    segmentLeaderEpochs.put(1, 30)
+    // end offset is set to 99, the next offset to search in remote storage is 100
+    var segmentMetadata = new RemoteLogSegmentMetadata(new RemoteLogSegmentId(topicIdPartition, Uuid.randomUuid()),
+      0, 99, -1L, brokerId, -1L, 1024, segmentLeaderEpochs)
+    assertEquals(Option(nextSegmentMetadata), remoteLogManager.findNextSegmentMetadata(segmentMetadata))
+
+    // end offset is set to 105, the next offset to search in remote storage is 106
+    segmentMetadata = new RemoteLogSegmentMetadata(new RemoteLogSegmentId(topicIdPartition, Uuid.randomUuid()),
+      0, 105, -1L, brokerId, -1L, 1024, segmentLeaderEpochs)
+    assertEquals(Option(nextSegmentMetadata), remoteLogManager.findNextSegmentMetadata(segmentMetadata))
+
+    segmentMetadata = new RemoteLogSegmentMetadata(new RemoteLogSegmentId(topicIdPartition, Uuid.randomUuid()),
+      0, 200, -1L, brokerId, -1L, 1024, segmentLeaderEpochs)
+    assertEquals(None, remoteLogManager.findNextSegmentMetadata(segmentMetadata))
   }
 
-  override def fetchLogSegment(remoteLogSegmentMetadata: RemoteLogSegmentMetadata, startPosition: Int, endPosition: Int): InputStream = {
-    new ByteArrayInputStream(Array.emptyByteArray)
+  @Test
+  def testAddAbortedTransactions(): Unit = {
+    val baseOffset = 45
+    val timeIdx = new TimeIndex(nonExistentTempFile(), baseOffset, maxIndexSize = 30 * 12)
+    val txnIdx = new TransactionIndex(baseOffset, TestUtils.tempFile())
+    val offsetIdx = new OffsetIndex(nonExistentTempFile(), baseOffset, maxIndexSize = 4 * 8)
+    offsetIdx.append(baseOffset + 0, 0)
+    offsetIdx.append(baseOffset + 1, 100)
+    offsetIdx.append(baseOffset + 2, 200)
+    offsetIdx.append(baseOffset + 3, 300)
+
+    val rsmManager: ClassLoaderAwareRemoteStorageManager = mock(classOf[ClassLoaderAwareRemoteStorageManager])
+    when(rsmManager.fetchIndex(any(), ArgumentMatchers.eq(IndexType.OFFSET))).thenReturn(new FileInputStream(offsetIdx.file))
+    when(rsmManager.fetchIndex(any(), ArgumentMatchers.eq(IndexType.TIMESTAMP))).thenReturn(new FileInputStream(timeIdx.file))
+    when(rsmManager.fetchIndex(any(), ArgumentMatchers.eq(IndexType.TRANSACTION))).thenReturn(new FileInputStream(txnIdx.file))
+
+    val records: Records = mock(classOf[Records])
+    when(records.sizeInBytes()).thenReturn(150)
+    val fetchDataInfo = FetchDataInfo(LogOffsetMetadata(baseOffset, UnifiedLog.UnknownOffset, 0), records)
+
+    var upperBoundOffsetCapture: Option[Long] = None
+
+    val remoteLogManager =
+      new RemoteLogManager(_ => None, (_, _) => {}, rlmConfig, time, 1, clusterId, logsDir, brokerTopicStats) {
+        override private[remote] def createRemoteStorageManager(): ClassLoaderAwareRemoteStorageManager = rsmManager
+        override private[remote] def collectAbortedTransactions(startOffset: Long,
+                                                                upperBoundOffset: Long,
+                                                                segmentMetadata: RemoteLogSegmentMetadata,
+                                                                accumulator: List[AbortedTxn] => Unit): Unit = {
+          upperBoundOffsetCapture = Option(upperBoundOffset)
+        }
+      }
+
+    val segmentMetadata = new RemoteLogSegmentMetadata(new RemoteLogSegmentId(topicIdPartition, Uuid.randomUuid()),
+      45, 99, -1L, brokerId, -1L, 1024, Collections.singletonMap(0, 45))
+
+    // If base-offset=45 and fetch-size=150, then the upperBoundOffset=47
+    val actualFetchDataInfo = remoteLogManager.addAbortedTransactions(baseOffset, segmentMetadata, fetchDataInfo)
+    assertTrue(actualFetchDataInfo.abortedTransactions.isDefined)
+    assertTrue(actualFetchDataInfo.abortedTransactions.get.isEmpty)
+    assertEquals(Option(47), upperBoundOffsetCapture)
+
+    // If base-offset=45 and fetch-size=301, then the entry won't exists in the offset index, returns next
+    // remote/local segment base offset.
+    upperBoundOffsetCapture = None
+    reset(records)
+    when(records.sizeInBytes()).thenReturn(301)
+    remoteLogManager.addAbortedTransactions(baseOffset, segmentMetadata, fetchDataInfo)
+    assertEquals(Option(100), upperBoundOffsetCapture)
   }
 
-  override def fetchIndex(remoteLogSegmentMetadata: RemoteLogSegmentMetadata, indexType: RemoteStorageManager.IndexType): InputStream = {
-    new ByteArrayInputStream(Array.emptyByteArray)
+  @Test
+  def testCollectAbortedTransactionsIteratesNextRemoteSegment(): Unit = {
+    cache.assign(0, 0)
+
+    val logConfig: LogConfig = mock(classOf[LogConfig])
+    val remoteLogConfig = mock(classOf[logConfig.RemoteLogConfig])
+    when(logConfig.compact).thenReturn(false)
+    when(remoteLogConfig.remoteStorageEnable).thenReturn(true)
+    when(logConfig.remoteLogConfig).thenReturn(remoteLogConfig)
+
+    val log: UnifiedLog = mock(classOf[UnifiedLog])
+    when(log.leaderEpochCache).thenReturn(Option(cache))
+    when(log.config).thenReturn(logConfig)
+    when(log.logSegments).thenReturn(Iterable.empty)
+
+    val baseOffset = 45
+    val timeIdx = new TimeIndex(nonExistentTempFile(), baseOffset, maxIndexSize = 30 * 12)
+    val txnIdx = new TransactionIndex(baseOffset, TestUtils.tempFile())
+    val offsetIdx = new OffsetIndex(nonExistentTempFile(), baseOffset, maxIndexSize = 4 * 8)
+    offsetIdx.append(baseOffset + 0, 0)
+    offsetIdx.append(baseOffset + 1, 100)
+    offsetIdx.append(baseOffset + 2, 200)
+    offsetIdx.append(baseOffset + 3, 300)
+
+    val nextTxnIdx = new TransactionIndex(100L, TestUtils.tempFile())
+    val abortedTxns = List(
+      new AbortedTxn(producerId = 0L, firstOffset = 50, lastOffset = 105, lastStableOffset = 60),
+      new AbortedTxn(producerId = 1L, firstOffset = 55, lastOffset = 120, lastStableOffset = 100)
+    )
+    abortedTxns.foreach(nextTxnIdx.append)
+
+    val nextSegmentMetadata: RemoteLogSegmentMetadata =
+      new RemoteLogSegmentMetadata(new RemoteLogSegmentId(topicIdPartition, Uuid.randomUuid()),
+        100, 199, -1L, brokerId, -1L, 1024, Collections.singletonMap(0, 100))
+    val rlmmManager: RemoteLogMetadataManager = mock(classOf[RemoteLogMetadataManager])
+    when(rlmmManager.remoteLogSegmentMetadata(ArgumentMatchers.eq(topicIdPartition), anyInt(), anyLong())).thenAnswer((invocation: InvocationOnMock) => {
+        val epoch = invocation.getArgument[Int](1)
+        val nextOffset = invocation.getArgument[Long](2)
+        if (epoch == 0 && nextOffset >= 100L && nextOffset <= 199L)
+          Optional.of(nextSegmentMetadata)
+        else
+          Optional.empty()
+      }
+    )
+    when(rlmmManager.highestOffsetForEpoch(ArgumentMatchers.eq(topicIdPartition), anyInt()))
+      .thenReturn(Optional.empty(): Optional[java.lang.Long])
+    when(rlmmManager.listRemoteLogSegments(topicIdPartition)).thenReturn(Collections.emptyIterator(): java.util.Iterator[RemoteLogSegmentMetadata])
+
+    val rsmManager: ClassLoaderAwareRemoteStorageManager = mock(classOf[ClassLoaderAwareRemoteStorageManager])
+    when(rsmManager.fetchIndex(any(), ArgumentMatchers.eq(IndexType.OFFSET))).thenReturn(new FileInputStream(offsetIdx.file))
+    when(rsmManager.fetchIndex(any(), ArgumentMatchers.eq(IndexType.TIMESTAMP))).thenReturn(new FileInputStream(timeIdx.file))
+    when(rsmManager.fetchIndex(any(), ArgumentMatchers.eq(IndexType.TRANSACTION))).thenAnswer((invocation: InvocationOnMock) => {
+      val segmentMetadata = invocation.getArgument[RemoteLogSegmentMetadata](0)
+      if (segmentMetadata.equals(nextSegmentMetadata)) {
+        new FileInputStream(nextTxnIdx.file)
+      } else {
+        new FileInputStream(txnIdx.file)
+      }
+    })
+
+    val records: Records = mock(classOf[Records])
+    when(records.sizeInBytes()).thenReturn(301)
+    val fetchDataInfo = FetchDataInfo(LogOffsetMetadata(baseOffset, UnifiedLog.UnknownOffset, 0), records)
+
+    val topic = topicIdPartition.topicPartition().topic()
+    val partition: Partition = mock(classOf[Partition])
+    when(partition.topic).thenReturn(topic)
+    when(partition.topicPartition).thenReturn(topicIdPartition.topicPartition())
+    when(partition.log).thenReturn(Option(log))
+    when(partition.getLeaderEpoch).thenReturn(0)
+
+    val remoteLogManager =
+      new RemoteLogManager(_ => Option(log), (_, _) => {}, rlmConfig, time, 1, clusterId, logsDir, brokerTopicStats) {
+        override private[remote] def createRemoteLogMetadataManager(): RemoteLogMetadataManager = rlmmManager
+        override private[remote] def createRemoteStorageManager(): ClassLoaderAwareRemoteStorageManager = rsmManager
+      }
+    remoteLogManager.onLeadershipChange(Set(partition), Set(), Collections.singletonMap(topic, topicIdPartition.topicId()))
+
+    // If base-offset=45 and fetch-size=301, then the entry won't exists in the offset index, returns next
+    // remote/local segment base offset.
+    val segmentMetadata = new RemoteLogSegmentMetadata(new RemoteLogSegmentId(topicIdPartition, Uuid.randomUuid()),
+      45, 99, -1L, brokerId, -1L, 1024, Collections.singletonMap(0, 45))
+    val expectedFetchDataInfo = remoteLogManager.addAbortedTransactions(baseOffset, segmentMetadata, fetchDataInfo)
+
+    assertTrue(expectedFetchDataInfo.abortedTransactions.isDefined)
+    assertEquals(abortedTxns.map(_.asAbortedTransaction), expectedFetchDataInfo.abortedTransactions.get)
   }
 
-  override def deleteLogSegmentData(remoteLogSegmentMetadata: RemoteLogSegmentMetadata): Unit = {}
+  @Test
+  def testCollectAbortedTransactionsIteratesNextLocalSegment(): Unit = {
+    cache.assign(0, 0)
 
-  override def close(): Unit = {}
-}
+    val logConfig: LogConfig = mock(classOf[LogConfig])
+    when(logConfig.compact).thenReturn(false)
+    val remoteLogConfig = mock(classOf[logConfig.RemoteLogConfig])
+    when(logConfig.compact).thenReturn(false)
+    when(remoteLogConfig.remoteStorageEnable).thenReturn(true)
+    when(logConfig.remoteLogConfig).thenReturn(remoteLogConfig)
 
-class MockRemoteLogMetadataManager extends RemoteLogMetadataManager {
-  override def addRemoteLogSegmentMetadata(remoteLogSegmentMetadata: RemoteLogSegmentMetadata): CompletableFuture[Void] = CompletableFuture.completedFuture(null)
+    val baseOffset = 45
+    val timeIdx = new TimeIndex(nonExistentTempFile(), baseOffset, maxIndexSize = 30 * 12)
+    val txnIdx = new TransactionIndex(baseOffset, TestUtils.tempFile())
+    val offsetIdx = new OffsetIndex(nonExistentTempFile(), baseOffset, maxIndexSize = 4 * 8)
+    offsetIdx.append(baseOffset + 0, 0)
+    offsetIdx.append(baseOffset + 1, 100)
+    offsetIdx.append(baseOffset + 2, 200)
+    offsetIdx.append(baseOffset + 3, 300)
 
-  override def updateRemoteLogSegmentMetadata(remoteLogSegmentMetadataUpdate: RemoteLogSegmentMetadataUpdate): CompletableFuture[Void] = CompletableFuture.completedFuture(null)
+    val nextTxnIdx = new TransactionIndex(100L, TestUtils.tempFile())
+    val abortedTxns = List(
+      new AbortedTxn(producerId = 0L, firstOffset = 50, lastOffset = 105, lastStableOffset = 60),
+      new AbortedTxn(producerId = 1L, firstOffset = 55, lastOffset = 120, lastStableOffset = 100)
+    )
+    abortedTxns.foreach(nextTxnIdx.append)
 
-  override def remoteLogSegmentMetadata(topicIdPartition: TopicIdPartition, epochForOffset: Int, offset: Long): Optional[RemoteLogSegmentMetadata] = {
-    Optional.empty()
+    val logSegment: LogSegment = mock(classOf[LogSegment])
+    when(logSegment.txnIndex).thenReturn(nextTxnIdx)
+
+    val log: UnifiedLog = mock(classOf[UnifiedLog])
+    when(log.leaderEpochCache).thenReturn(Option(cache))
+    when(log.config).thenReturn(logConfig)
+    when(log.logSegments).thenReturn(List(logSegment))
+
+    val rlmmManager: RemoteLogMetadataManager = mock(classOf[RemoteLogMetadataManager])
+    when(rlmmManager.remoteLogSegmentMetadata(ArgumentMatchers.eq(topicIdPartition), anyInt(), anyLong()))
+      .thenReturn(Optional.empty(): Optional[RemoteLogSegmentMetadata])
+    when(rlmmManager.highestOffsetForEpoch(ArgumentMatchers.eq(topicIdPartition), anyInt()))
+      .thenReturn(Optional.empty(): Optional[java.lang.Long])
+    when(rlmmManager.listRemoteLogSegments(topicIdPartition)).thenReturn(Collections.emptyIterator(): java.util.Iterator[RemoteLogSegmentMetadata])
+
+    val rsmManager: ClassLoaderAwareRemoteStorageManager = mock(classOf[ClassLoaderAwareRemoteStorageManager])
+    when(rsmManager.fetchIndex(any(), ArgumentMatchers.eq(IndexType.OFFSET))).thenReturn(new FileInputStream(offsetIdx.file))
+    when(rsmManager.fetchIndex(any(), ArgumentMatchers.eq(IndexType.TIMESTAMP))).thenReturn(new FileInputStream(timeIdx.file))
+    when(rsmManager.fetchIndex(any(), ArgumentMatchers.eq(IndexType.TRANSACTION))).thenReturn(new FileInputStream(txnIdx.file))
+
+    val records: Records = mock(classOf[Records])
+    when(records.sizeInBytes()).thenReturn(301)
+    val fetchDataInfo = FetchDataInfo(LogOffsetMetadata(baseOffset, UnifiedLog.UnknownOffset, 0), records)
+
+    val topic = topicIdPartition.topicPartition().topic()
+    val partition: Partition = mock(classOf[Partition])
+    when(partition.topic).thenReturn(topic)
+    when(partition.topicPartition).thenReturn(topicIdPartition.topicPartition())
+    when(partition.log).thenReturn(Option(log))
+    when(partition.getLeaderEpoch).thenReturn(0)
+
+    val remoteLogManager =
+      new RemoteLogManager(_ => Option(log), (_, _) => {}, rlmConfig, time, 1, clusterId, logsDir, brokerTopicStats) {
+        override private[remote] def createRemoteLogMetadataManager(): RemoteLogMetadataManager = rlmmManager
+        override private[remote] def createRemoteStorageManager(): ClassLoaderAwareRemoteStorageManager = rsmManager
+      }
+    remoteLogManager.onLeadershipChange(Set(partition), Set(), Collections.singletonMap(topic, topicIdPartition.topicId()))
+
+    // If base-offset=45 and fetch-size=301, then the entry won't exists in the offset index, returns next
+    // remote/local segment base offset.
+    val segmentMetadata = new RemoteLogSegmentMetadata(new RemoteLogSegmentId(topicIdPartition, Uuid.randomUuid()),
+      45, 99, -1L, brokerId, -1L, 1024, Collections.singletonMap(0, 45))
+    val expectedFetchDataInfo = remoteLogManager.addAbortedTransactions(baseOffset, segmentMetadata, fetchDataInfo)
+
+    assertTrue(expectedFetchDataInfo.abortedTransactions.isDefined)
+    assertEquals(abortedTxns.map(_.asAbortedTransaction), expectedFetchDataInfo.abortedTransactions.get)
   }
 
-  override def highestOffsetForEpoch(topicIdPartition: TopicIdPartition, leaderEpoch: Int): Optional[lang.Long] = {
-    Optional.empty()
+  @Test
+  def testGetClassLoaderAwareRemoteStorageManager(): Unit = {
+    val rsmManager: ClassLoaderAwareRemoteStorageManager = mock(classOf[ClassLoaderAwareRemoteStorageManager])
+    val remoteLogManager =
+      new RemoteLogManager(_ => None, (_, _) => {}, rlmConfig, time, 1, clusterId, logsDir, brokerTopicStats) {
+        override private[remote] def createRemoteStorageManager(): ClassLoaderAwareRemoteStorageManager = rsmManager
+      }
+    assertEquals(rsmManager, remoteLogManager.storageManager())
   }
 
-  override def putRemotePartitionDeleteMetadata(remotePartitionDeleteMetadata: RemotePartitionDeleteMetadata): CompletableFuture[Void] = CompletableFuture.completedFuture(null)
-
-  override def listRemoteLogSegments(topicIdPartition: TopicIdPartition): util.Iterator[RemoteLogSegmentMetadata] = {
-    Collections.emptyIterator()
+  private def nonExistentTempFile(): File = {
+    val file = TestUtils.tempFile()
+    file.delete()
+    file
   }
-  override def listRemoteLogSegments(topicIdPartition: TopicIdPartition, leaderEpoch: Int): util.Iterator[RemoteLogSegmentMetadata] = {
-    Collections.emptyIterator()
+
+  private def createRLMConfig(props: Properties = new Properties): RemoteLogManagerConfig = {
+    props.put(RemoteLogManagerConfig.REMOTE_LOG_STORAGE_SYSTEM_ENABLE_PROP, true.toString)
+    props.put(RemoteLogManagerConfig.REMOTE_STORAGE_MANAGER_CLASS_NAME_PROP, "org.apache.kafka.server.log.remote.storage.NoOpRemoteStorageManager")
+    props.put(RemoteLogManagerConfig.REMOTE_LOG_METADATA_MANAGER_CLASS_NAME_PROP, "org.apache.kafka.server.log.remote.storage.NoOpRemoteLogMetadataManager")
+    val config = new AbstractConfig(RemoteLogManagerConfig.CONFIG_DEF, props)
+    new RemoteLogManagerConfig(config)
   }
-  override def onPartitionLeadershipChanges(leaderPartitions: util.Set[TopicIdPartition], followerPartitions: util.Set[TopicIdPartition]): Unit = {}
-
-  override def onStopPartitions(partitions: util.Set[TopicIdPartition]): Unit = {}
-
-  override def configure(configs: util.Map[String, _]): Unit = {}
-
-  override def close(): Unit = {}
 }
