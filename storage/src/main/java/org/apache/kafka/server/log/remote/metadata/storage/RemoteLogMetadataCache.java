@@ -24,8 +24,11 @@ import org.apache.kafka.server.log.remote.storage.RemoteResourceNotFoundExceptio
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.NavigableMap;
 import java.util.Objects;
@@ -242,7 +245,9 @@ public class RemoteLogMetadataCache {
      */
     public Iterator<RemoteLogSegmentMetadata> listAllRemoteLogSegments() {
         // Return all the segments including unreferenced metadata.
-        return Collections.unmodifiableCollection(idToSegmentMetadata.values()).iterator();
+        List<RemoteLogSegmentMetadata> allSegmentMetadata = new ArrayList<>(idToSegmentMetadata.values());
+        allSegmentMetadata.sort(Comparator.comparingLong(RemoteLogSegmentMetadata::startOffset));
+        return Collections.unmodifiableCollection(allSegmentMetadata).iterator();
     }
 
     /**
