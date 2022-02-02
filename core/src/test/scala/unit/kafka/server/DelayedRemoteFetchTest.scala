@@ -26,11 +26,13 @@ import org.apache.kafka.common.protocol.ApiKeys
 import org.apache.kafka.common.{TopicIdPartition, TopicPartition, Uuid}
 import org.apache.kafka.common.record.MemoryRecords
 import org.apache.kafka.common.requests.FetchRequest.PartitionData
+import org.apache.kafka.common.utils.Utils
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.{AfterEach, Test}
 import org.mockito.ArgumentMatchers.any
 import org.mockito.Mockito.{mock, when}
 
+import java.nio.file.{Files, Path}
 import scala.collection.Seq
 import scala.jdk.CollectionConverters._
 
@@ -39,6 +41,13 @@ class DelayedRemoteFetchTest {
   val tp1 = new TopicPartition("t1", 0)
   val topicId = Uuid.randomUuid()
   var isRemoteFetchExecuted = false
+  val logDir: Path = Files.createTempDirectory("kafka-test-")
+  val rlm = new MockRemoteLogManager(5, 20, logDir.toString)
+
+  @AfterEach
+  def afterEach(): Unit = {
+    Utils.delete(logDir.toFile)
+  }
 
   @Test
   def testRemoteFetch(): Unit = {
@@ -46,16 +55,16 @@ class DelayedRemoteFetchTest {
 
     def responseCallback(r: Seq[(TopicIdPartition, FetchPartitionData)]): Unit = {
       replied = true
-      assert(r(0)._1.equals(tp1))
+      assert(r.head._1.equals(new TopicIdPartition(topicId, tp1)))
 
-      assert(r(1)._1.equals(tp))
+      assert(r(1)._1.equals(new TopicIdPartition(topicId, tp)))
       assertEquals(None, r(1)._2.error)
       assertEquals(2, r(1)._2.records.records.asScala.size)
       assertEquals(102, r(1)._2.records.records.iterator.next.offset)
       assertEquals(2000, r(1)._2.highWatermark)
     }
 
-    RemoteFetch(false, responseCallback)
+    RemoteFetch(timeout = false, responseCallback)
     assert(replied)
     assert(isRemoteFetchExecuted)
   }
@@ -66,7 +75,7 @@ class DelayedRemoteFetchTest {
 
     def responseCallback(r: Seq[(TopicIdPartition, FetchPartitionData)]): Unit = {
       replied = true
-      assert(r(0)._1.equals(new TopicIdPartition(topicId, tp1)))
+      assert(r.head._1.equals(new TopicIdPartition(topicId, tp1)))
 
       assert(r(1)._1.equals(new TopicIdPartition(topicId, tp)))
       assertEquals(None, r(1)._2.error)
@@ -74,15 +83,14 @@ class DelayedRemoteFetchTest {
       assertEquals(2000, r(1)._2.highWatermark)
     }
 
-    RemoteFetch(true, responseCallback)
+    RemoteFetch(timeout = true, responseCallback)
     assert(replied)
     assert(!isRemoteFetchExecuted)
   }
 
-  def RemoteFetch(timeout: Boolean, responseCallback: (Seq[(TopicIdPartition, FetchPartitionData)]) => Unit): Unit = {
-    val rlm = new MockRemoteLogManager(5, 20)
+  private def RemoteFetch(timeout: Boolean, responseCallback: Seq[(TopicIdPartition, FetchPartitionData)] => Unit): Unit = {
     val fetchInfo = new PartitionData(topicId, 100, 0, 1000, Optional.of(1))
-    val remoteFetchInfo = RemoteStorageFetchInfo(1000, true, tp, fetchInfo, FetchTxnCommitted)
+    val remoteFetchInfo = RemoteStorageFetchInfo(1000, minOneMessage = true, tp, fetchInfo, FetchTxnCommitted)
 
     val fetchPartitionStatus = FetchPartitionStatus(new LogOffsetMetadata(fetchInfo.fetchOffset), fetchInfo)
 
@@ -100,7 +108,7 @@ class DelayedRemoteFetchTest {
     )
 
     val localReadResults: Seq[(TopicIdPartition, LogReadResult)] = List(
-      (new TopicIdPartition(topicId, tp1), new LogReadResult(info = FetchDataInfo(LogOffsetMetadata.UnknownOffsetMetadata, MemoryRecords.EMPTY),
+      (new TopicIdPartition(topicId, tp1), LogReadResult(info = FetchDataInfo(LogOffsetMetadata.UnknownOffsetMetadata, MemoryRecords.EMPTY),
         divergingEpoch = None,
         highWatermark = -1L,
         leaderLogStartOffset = -1L,
@@ -109,7 +117,7 @@ class DelayedRemoteFetchTest {
         fetchTimeMs = -1L,
         lastStableOffset = None,
         exception = Some(new Exception()))),
-      (new TopicIdPartition(topicId, tp), new LogReadResult(
+      (new TopicIdPartition(topicId, tp), LogReadResult(
         FetchDataInfo(LogOffsetMetadata(fetchInfo.fetchOffset), MemoryRecords.EMPTY, delayedRemoteStorageFetch = Some(remoteFetchInfo)),
         divergingEpoch = None,
         highWatermark = 2000,
