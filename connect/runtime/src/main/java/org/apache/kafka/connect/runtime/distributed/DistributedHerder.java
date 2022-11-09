@@ -198,6 +198,7 @@ public class DistributedHerder extends AbstractHerder implements Runnable {
     private Set<String> connectorTargetStateChanges = new HashSet<>();
     // Access to this map is protected by the herder's monitor
     private final Map<String, ZombieFencing> activeZombieFencings = new HashMap<>();
+    private final List<String> restNamespace;
     private boolean needsReconfigRebalance;
     private volatile boolean fencedFromConfigTopic;
     private volatile int generation;
@@ -243,7 +244,39 @@ public class DistributedHerder extends AbstractHerder implements Runnable {
                              ConnectorClientConfigOverridePolicy connectorClientConfigOverridePolicy,
                              AutoCloseable... uponShutdown) {
         this(config, worker, worker.workerId(), kafkaClusterId, statusBackingStore, configBackingStore, null, restUrl, worker.metrics(),
-             time, connectorClientConfigOverridePolicy, uponShutdown);
+             time, connectorClientConfigOverridePolicy, Collections.emptyList(), uponShutdown);
+        configBackingStore.setUpdateListener(new ConfigUpdateListener());
+    }
+
+    /**
+     * Create a herder that will form a Connect cluster with other {@link DistributedHerder} instances (in this or other JVMs)
+     * that have the same group ID.
+     *
+     * @param config             the configuration for the worker; may not be null
+     * @param time               the clock to use; may not be null
+     * @param worker             the {@link Worker} instance to use; may not be null
+     * @param kafkaClusterId     the identifier of the Kafka cluster to use for internal topics; may not be null
+     * @param statusBackingStore the backing store for statuses; may not be null
+     * @param configBackingStore the backing store for connector configurations; may not be null
+     * @param restUrl            the URL of this herder's REST API; may not be null
+     * @param connectorClientConfigOverridePolicy the policy specifying the client configuration properties that may be overridden
+     *                                            in connector configurations; may not be null
+     * @param restNamespace      zero or more path elements to prepend to the paths of forwarded REST requests; may be empty, but not null
+     * @param uponShutdown       any {@link AutoCloseable} objects that should be closed when this herder is {@link #stop() stopped},
+     *                           after all services and resources owned by this herder are stopped
+     */
+    public DistributedHerder(DistributedConfig config,
+                             Time time,
+                             Worker worker,
+                             String kafkaClusterId,
+                             StatusBackingStore statusBackingStore,
+                             ConfigBackingStore configBackingStore,
+                             String restUrl,
+                             ConnectorClientConfigOverridePolicy connectorClientConfigOverridePolicy,
+                             List<String> restNamespace,
+                             AutoCloseable... uponShutdown) {
+        this(config, worker, worker.workerId(), kafkaClusterId, statusBackingStore, configBackingStore, null, restUrl, worker.metrics(),
+                time, connectorClientConfigOverridePolicy, restNamespace, uponShutdown);
         configBackingStore.setUpdateListener(new ConfigUpdateListener());
     }
 
@@ -259,6 +292,7 @@ public class DistributedHerder extends AbstractHerder implements Runnable {
                       ConnectMetrics metrics,
                       Time time,
                       ConnectorClientConfigOverridePolicy connectorClientConfigOverridePolicy,
+                      List<String> restNamespace,
                       AutoCloseable... uponShutdown) {
         super(worker, workerId, kafkaClusterId, statusBackingStore, configBackingStore, connectorClientConfigOverridePolicy);
 
@@ -273,6 +307,7 @@ public class DistributedHerder extends AbstractHerder implements Runnable {
         this.keySignatureVerificationAlgorithms = config.getList(DistributedConfig.INTER_WORKER_VERIFICATION_ALGORITHMS_CONFIG);
         this.keyGenerator = config.getInternalRequestKeyGenerator();
         this.isTopicTrackingEnabled = config.getBoolean(TOPIC_TRACKING_ENABLE_CONFIG);
+        this.restNamespace = Objects.requireNonNull(restNamespace);
         this.uponShutdown = Arrays.asList(uponShutdown);
 
         String clientIdConfig = config.getString(CommonClientConfigs.CLIENT_ID_CONFIG);
@@ -1157,11 +1192,19 @@ public class DistributedHerder extends AbstractHerder implements Runnable {
             if (error == null) {
                 callback.onCompletion(null, null);
             } else if (error instanceof NotLeaderException) {
-                String forwardedUrl = ((NotLeaderException) error).forwardUrl() + "connectors/" + id.connector() + "/fence";
-                log.trace("Forwarding zombie fencing request for connector {} to leader at {}", id.connector(), forwardedUrl);
+                UriBuilder fenceUrlBuilder = UriBuilder.fromUri(((NotLeaderException) error).forwardUrl());
+                for (String namespacePath : restNamespace) {
+                    fenceUrlBuilder = fenceUrlBuilder.path(namespacePath);
+                }
+                String fenceUrl = fenceUrlBuilder.path("connectors")
+                        .path(id.connector())
+                        .path("fence")
+                        .build()
+                        .toString();
+                log.trace("Forwarding zombie fencing request for connector {} to leader at {}", id.connector(), fenceUrl);
                 forwardRequestExecutor.execute(() -> {
                     try {
-                        RestClient.httpRequest(forwardedUrl, "PUT", null, null, null, config, sessionKey, requestSignatureAlgorithm);
+                        RestClient.httpRequest(fenceUrl, "PUT", null, null, null, config, sessionKey, requestSignatureAlgorithm);
                         callback.onCompletion(null, null);
                     } catch (Throwable t) {
                         callback.onCompletion(t, null);
@@ -1918,7 +1961,11 @@ public class DistributedHerder extends AbstractHerder implements Runnable {
                                         "because the URL of the leader's REST interface is empty!"), null);
                                 return;
                             }
-                            String reconfigUrl = UriBuilder.fromUri(leaderUrl)
+                            UriBuilder reconfigUrlBuilder = UriBuilder.fromUri(leaderUrl);
+                            for (String namespacePath : restNamespace) {
+                                reconfigUrlBuilder = reconfigUrlBuilder.path(namespacePath);
+                            }
+                            String reconfigUrl = reconfigUrlBuilder
                                     .path("connectors")
                                     .path(connName)
                                     .path("tasks")
@@ -1927,6 +1974,7 @@ public class DistributedHerder extends AbstractHerder implements Runnable {
                             log.trace("Forwarding task configurations for connector {} to leader", connName);
                             RestClient.httpRequest(reconfigUrl, "POST", null, rawTaskProps, null, config, sessionKey, requestSignatureAlgorithm);
                             cb.onCompletion(null, null);
+                            log.trace("Request to leader to reconfigure connector tasks succeeded");
                         } catch (ConnectException e) {
                             log.error("Request to leader to reconfigure connector tasks failed", e);
                             cb.onCompletion(e, null);
