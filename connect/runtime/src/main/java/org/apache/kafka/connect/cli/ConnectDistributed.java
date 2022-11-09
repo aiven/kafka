@@ -28,7 +28,7 @@ import org.apache.kafka.connect.runtime.WorkerInfo;
 import org.apache.kafka.connect.runtime.distributed.DistributedConfig;
 import org.apache.kafka.connect.runtime.distributed.DistributedHerder;
 import org.apache.kafka.connect.runtime.isolation.Plugins;
-import org.apache.kafka.connect.runtime.rest.RestServer;
+import org.apache.kafka.connect.runtime.rest.ConnectRestServer;
 import org.apache.kafka.connect.storage.ConfigBackingStore;
 import org.apache.kafka.connect.storage.Converter;
 import org.apache.kafka.connect.storage.KafkaConfigBackingStore;
@@ -99,7 +99,7 @@ public class ConnectDistributed {
         String kafkaClusterId = config.kafkaClusterId();
         log.debug("Kafka cluster ID: {}", kafkaClusterId);
 
-        RestServer rest = new RestServer(config);
+        ConnectRestServer rest = new ConnectRestServer(config.rebalanceTimeout(), workerProps);
         rest.initializeServer();
 
         URI advertisedUrl = rest.advertisedUrl();

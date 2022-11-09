@@ -26,12 +26,12 @@ import org.apache.kafka.connect.runtime.AbstractStatus;
 import org.apache.kafka.connect.runtime.ConnectorConfig;
 import org.apache.kafka.connect.runtime.Herder;
 import org.apache.kafka.connect.runtime.RestartRequest;
-import org.apache.kafka.connect.runtime.WorkerConfig;
 import org.apache.kafka.connect.runtime.distributed.NotAssignedException;
 import org.apache.kafka.connect.runtime.distributed.NotLeaderException;
 import org.apache.kafka.connect.runtime.distributed.RebalanceNeededException;
 import org.apache.kafka.connect.runtime.rest.InternalRequestSignature;
 import org.apache.kafka.connect.runtime.rest.RestClient;
+import org.apache.kafka.connect.runtime.rest.RestServerConfig;
 import org.apache.kafka.connect.runtime.rest.entities.ActiveTopicsInfo;
 import org.apache.kafka.connect.runtime.rest.entities.ConnectorInfo;
 import org.apache.kafka.connect.runtime.rest.entities.ConnectorStateInfo;
@@ -71,8 +71,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import static org.apache.kafka.connect.runtime.WorkerConfig.TOPIC_TRACKING_ALLOW_RESET_CONFIG;
-import static org.apache.kafka.connect.runtime.WorkerConfig.TOPIC_TRACKING_ENABLE_CONFIG;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
@@ -155,16 +153,16 @@ public class ConnectorsResourceTest {
     private ConnectorsResource connectorsResource;
     private UriInfo forward;
     @Mock
-    private WorkerConfig workerConfig;
+    private RestServerConfig serverConfig;
 
     private MockedStatic<RestClient> restClientStatic;
 
     @Before
     public void setUp() throws NoSuchMethodException {
         restClientStatic = mockStatic(RestClient.class);
-        when(workerConfig.getBoolean(TOPIC_TRACKING_ENABLE_CONFIG)).thenReturn(true);
-        when(workerConfig.getBoolean(TOPIC_TRACKING_ALLOW_RESET_CONFIG)).thenReturn(true);
-        connectorsResource = new ConnectorsResource(herder, workerConfig);
+        when(serverConfig.topicTrackingEnabled()).thenReturn(true);
+        when(serverConfig.topicTrackingResetEnabled()).thenReturn(true);
+        connectorsResource = new ConnectorsResource(herder, serverConfig);
         forward = mock(UriInfo.class);
         MultivaluedMap<String, String> queryParams = new MultivaluedHashMap<>();
         queryParams.putSingle("forward", "true");
@@ -298,7 +296,7 @@ public class ConnectorsResourceTest {
             .putConnectorConfig(eq(CONNECTOR_NAME), eq(body.config()), eq(false), cb.capture());
 
         verifyRestRequestWithCall(
-            () -> RestClient.httpRequest(eq(LEADER_URL + "connectors?forward=false"), eq("POST"), isNull(), eq(body), any(), any(WorkerConfig.class)),
+            () -> RestClient.httpRequest(eq(LEADER_URL + "connectors?forward=false"), eq("POST"), isNull(), eq(body), any(), any(RestServerConfig.class)),
             new RestClient.HttpResponse<>(201, new HashMap<>(), new ConnectorInfo(CONNECTOR_NAME, CONNECTOR_CONFIG, CONNECTOR_TASK_NAMES, ConnectorType.SOURCE)),
             () -> connectorsResource.createConnector(FORWARD, NULL_HEADERS, body)
         );
@@ -313,7 +311,7 @@ public class ConnectorsResourceTest {
             .when(herder).putConnectorConfig(eq(CONNECTOR_NAME), eq(body.config()), eq(false), cb.capture());
 
         verifyRestRequestWithCall(
-            () -> RestClient.httpRequest(eq(LEADER_URL + "connectors?forward=false"), eq("POST"), eq(httpHeaders), any(), any(), any(WorkerConfig.class)),
+            () -> RestClient.httpRequest(eq(LEADER_URL + "connectors?forward=false"), eq("POST"), eq(httpHeaders), any(), any(), any(RestServerConfig.class)),
             new RestClient.HttpResponse<>(202, new HashMap<>(), null),
             () -> connectorsResource.createConnector(FORWARD, httpHeaders, body)
         );
@@ -392,7 +390,7 @@ public class ConnectorsResourceTest {
             .deleteConnectorConfig(eq(CONNECTOR_NAME), cb.capture());
         // Should forward request
         verifyRestRequestWithCall(
-            () -> RestClient.httpRequest(LEADER_URL + "connectors/" + CONNECTOR_NAME + "?forward=false", "DELETE", NULL_HEADERS, null, null, workerConfig),
+            () -> RestClient.httpRequest(LEADER_URL + "connectors/" + CONNECTOR_NAME + "?forward=false", "DELETE", NULL_HEADERS, null, null, serverConfig),
             new RestClient.HttpResponse<>(204, new HashMap<>(), null),
             () -> {
                 connectorsResource.destroyConnector(CONNECTOR_NAME, NULL_HEADERS, FORWARD);
@@ -659,7 +657,7 @@ public class ConnectorsResourceTest {
 
         Response response = verifyRestRequestWithCall(
             () -> RestClient.httpRequest(eq(LEADER_URL + "connectors/" + CONNECTOR_NAME + "/restart?forward=true&includeTasks=" + restartRequest.includeTasks() + "&onlyFailed=" + restartRequest.onlyFailed()),
-                    eq("POST"), isNull(), isNull(), any(), any(WorkerConfig.class)),
+                    eq("POST"), isNull(), isNull(), any(), any(RestServerConfig.class)),
             new RestClient.HttpResponse<>(202, new HashMap<>(), null),
             () -> connectorsResource.restartConnector(CONNECTOR_NAME, NULL_HEADERS, restartRequest.includeTasks(), restartRequest.onlyFailed(), null)
         );
@@ -766,7 +764,7 @@ public class ConnectorsResourceTest {
             .restartConnector(eq(CONNECTOR_NAME), cb.capture());
 
         Response response = verifyRestRequestWithCall(
-            () -> RestClient.httpRequest(eq(LEADER_URL + "connectors/" + CONNECTOR_NAME + "/restart?forward=true"), eq("POST"), isNull(), isNull(), any(), any(WorkerConfig.class)),
+            () -> RestClient.httpRequest(eq(LEADER_URL + "connectors/" + CONNECTOR_NAME + "/restart?forward=true"), eq("POST"), isNull(), isNull(), any(), any(RestServerConfig.class)),
             new RestClient.HttpResponse<>(202, new HashMap<>(), null),
             () -> connectorsResource.restartConnector(CONNECTOR_NAME, NULL_HEADERS, false, false, null)
         );
@@ -780,7 +778,7 @@ public class ConnectorsResourceTest {
         expectAndCallbackException(cb, new NotAssignedException("not owner test", ownerUrl))
             .when(herder).restartConnector(eq(CONNECTOR_NAME), cb.capture());
         Response response = verifyRestRequestWithCall(
-            () -> RestClient.httpRequest(eq("http://owner:8083/connectors/" + CONNECTOR_NAME + "/restart?forward=false"), eq("POST"), isNull(), isNull(), any(), any(WorkerConfig.class)),
+            () -> RestClient.httpRequest(eq("http://owner:8083/connectors/" + CONNECTOR_NAME + "/restart?forward=false"), eq("POST"), isNull(), isNull(), any(), any(RestServerConfig.class)),
             new RestClient.HttpResponse<>(202, new HashMap<>(), null),
             () -> connectorsResource.restartConnector(CONNECTOR_NAME, NULL_HEADERS, false, false, true)
         );
@@ -806,7 +804,7 @@ public class ConnectorsResourceTest {
             .restartTask(eq(taskId), cb.capture());
 
         verifyRestRequestWithCall(
-            () -> RestClient.httpRequest(eq(LEADER_URL + "connectors/" + CONNECTOR_NAME + "/tasks/0/restart?forward=true"), eq("POST"), isNull(), isNull(), any(), any(WorkerConfig.class)),
+            () -> RestClient.httpRequest(eq(LEADER_URL + "connectors/" + CONNECTOR_NAME + "/tasks/0/restart?forward=true"), eq("POST"), isNull(), isNull(), any(), any(RestServerConfig.class)),
             new RestClient.HttpResponse<>(202, new HashMap<>(), null),
             () -> {
                 connectorsResource.restartTask(CONNECTOR_NAME, 0, NULL_HEADERS, null);
@@ -825,7 +823,7 @@ public class ConnectorsResourceTest {
             .when(herder).restartTask(eq(taskId), cb.capture());
 
         verifyRestRequestWithCall(
-            () -> RestClient.httpRequest(eq("http://owner:8083/connectors/" + CONNECTOR_NAME + "/tasks/0/restart?forward=false"), eq("POST"), isNull(), isNull(), any(), any(WorkerConfig.class)),
+            () -> RestClient.httpRequest(eq("http://owner:8083/connectors/" + CONNECTOR_NAME + "/tasks/0/restart?forward=false"), eq("POST"), isNull(), isNull(), any(), any(RestServerConfig.class)),
             new RestClient.HttpResponse<>(202, new HashMap<>(), null),
             () -> {
                 connectorsResource.restartTask(CONNECTOR_NAME, 0, NULL_HEADERS, true);
@@ -836,9 +834,9 @@ public class ConnectorsResourceTest {
 
     @Test
     public void testConnectorActiveTopicsWithTopicTrackingDisabled() {
-        when(workerConfig.getBoolean(TOPIC_TRACKING_ENABLE_CONFIG)).thenReturn(false);
-        when(workerConfig.getBoolean(TOPIC_TRACKING_ALLOW_RESET_CONFIG)).thenReturn(false);
-        connectorsResource = new ConnectorsResource(herder, workerConfig);
+        when(serverConfig.topicTrackingEnabled()).thenReturn(false);
+        when(serverConfig.topicTrackingResetEnabled()).thenReturn(false);
+        connectorsResource = new ConnectorsResource(herder, serverConfig);
 
         Exception e = assertThrows(ConnectRestException.class,
             () -> connectorsResource.getConnectorActiveTopics(CONNECTOR_NAME));
@@ -847,10 +845,10 @@ public class ConnectorsResourceTest {
 
     @Test
     public void testResetConnectorActiveTopicsWithTopicTrackingDisabled() {
-        when(workerConfig.getBoolean(TOPIC_TRACKING_ENABLE_CONFIG)).thenReturn(false);
-        when(workerConfig.getBoolean(TOPIC_TRACKING_ALLOW_RESET_CONFIG)).thenReturn(true);
+        when(serverConfig.topicTrackingEnabled()).thenReturn(false);
+        when(serverConfig.topicTrackingResetEnabled()).thenReturn(true);
         HttpHeaders headers = mock(HttpHeaders.class);
-        connectorsResource = new ConnectorsResource(herder, workerConfig);
+        connectorsResource = new ConnectorsResource(herder, serverConfig);
 
         Exception e = assertThrows(ConnectRestException.class,
             () -> connectorsResource.resetConnectorActiveTopics(CONNECTOR_NAME, headers));
@@ -859,10 +857,10 @@ public class ConnectorsResourceTest {
 
     @Test
     public void testResetConnectorActiveTopicsWithTopicTrackingEnabled() {
-        when(workerConfig.getBoolean(TOPIC_TRACKING_ENABLE_CONFIG)).thenReturn(true);
-        when(workerConfig.getBoolean(TOPIC_TRACKING_ALLOW_RESET_CONFIG)).thenReturn(false);
+        when(serverConfig.topicTrackingEnabled()).thenReturn(true);
+        when(serverConfig.topicTrackingResetEnabled()).thenReturn(false);
         HttpHeaders headers = mock(HttpHeaders.class);
-        connectorsResource = new ConnectorsResource(herder, workerConfig);
+        connectorsResource = new ConnectorsResource(herder, serverConfig);
 
         Exception e = assertThrows(ConnectRestException.class,
             () -> connectorsResource.resetConnectorActiveTopics(CONNECTOR_NAME, headers));
@@ -871,11 +869,11 @@ public class ConnectorsResourceTest {
 
     @Test
     public void testConnectorActiveTopics() {
-        when(workerConfig.getBoolean(TOPIC_TRACKING_ENABLE_CONFIG)).thenReturn(true);
-        when(workerConfig.getBoolean(TOPIC_TRACKING_ALLOW_RESET_CONFIG)).thenReturn(true);
+        when(serverConfig.topicTrackingEnabled()).thenReturn(true);
+        when(serverConfig.topicTrackingResetEnabled()).thenReturn(true);
         when(herder.connectorActiveTopics(CONNECTOR_NAME))
             .thenReturn(new ActiveTopicsInfo(CONNECTOR_NAME, CONNECTOR_ACTIVE_TOPICS));
-        connectorsResource = new ConnectorsResource(herder, workerConfig);
+        connectorsResource = new ConnectorsResource(herder, serverConfig);
 
         Response response = connectorsResource.getConnectorActiveTopics(CONNECTOR_NAME);
         assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
@@ -888,7 +886,7 @@ public class ConnectorsResourceTest {
     @Test
     public void testResetConnectorActiveTopics() {
         HttpHeaders headers = mock(HttpHeaders.class);
-        connectorsResource = new ConnectorsResource(herder, workerConfig);
+        connectorsResource = new ConnectorsResource(herder, serverConfig);
 
         Response response = connectorsResource.resetConnectorActiveTopics(CONNECTOR_NAME, headers);
         verify(herder).resetConnectorActiveTopics(CONNECTOR_NAME);

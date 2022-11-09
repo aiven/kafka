@@ -19,7 +19,7 @@ package org.apache.kafka.connect.runtime.rest;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.apache.kafka.connect.runtime.WorkerConfig;
+import org.apache.kafka.common.config.AbstractConfig;
 import org.apache.kafka.connect.runtime.rest.entities.ErrorMessage;
 import org.apache.kafka.connect.runtime.rest.errors.ConnectRestException;
 import org.apache.kafka.connect.runtime.rest.util.SSLUtils;
@@ -59,7 +59,7 @@ public class RestClient {
      * @return The deserialized response to the HTTP request, or null if no data is expected.
      */
     public static <T> HttpResponse<T> httpRequest(String url, String method, HttpHeaders headers, Object requestBodyData,
-                                                  TypeReference<T> responseFormat, WorkerConfig config) {
+                                                  TypeReference<T> responseFormat, AbstractConfig config) {
         return httpRequest(url, method, headers, requestBodyData, responseFormat, config, null, null);
     }
 
@@ -79,7 +79,7 @@ public class RestClient {
      * @return The deserialized response to the HTTP request, or null if no data is expected.
      */
     public static <T> HttpResponse<T> httpRequest(String url, String method, HttpHeaders headers, Object requestBodyData,
-                                                  TypeReference<T> responseFormat, WorkerConfig config,
+                                                  TypeReference<T> responseFormat, AbstractConfig config,
                                                   SecretKey sessionKey, String requestSignatureAlgorithm) {
         HttpClient client;
 
