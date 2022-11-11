@@ -102,7 +102,6 @@ public class DedicatedMirrorIntegrationTest {
      * and reconfigure its connectors and their tasks to replicate those topics correctly.
      * See <a href="https://cwiki.apache.org/confluence/display/KAFKA/KIP-710%3A+Full+support+for+distributed+mode+in+dedicated+MirrorMaker+2.0+clusters">KIP-710</a>
      * for more detail on the necessity for this test case.
-
      */
     @Test
     public void testMultiNodeCluster() throws Exception {
@@ -119,7 +118,6 @@ public class DedicatedMirrorIntegrationTest {
                 Admin adminB = clusterB.createAdminClient()) {
 
             // Cluster aliases
-            // Use weird names to ensure they're properly URL-encoded in cross-worker REST requests
             final String a = "A";
             final String b = "B";
             final String ab = a + "->" + b;

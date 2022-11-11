@@ -17,7 +17,7 @@
 package org.apache.kafka.connect.mirror.rest;
 
 import org.apache.kafka.connect.mirror.SourceAndTarget;
-import org.apache.kafka.connect.mirror.rest.resources.InternalConnectorsResource;
+import org.apache.kafka.connect.mirror.rest.resources.InternalMirrorResource;
 import org.apache.kafka.connect.runtime.Herder;
 import org.apache.kafka.connect.runtime.rest.RestServer;
 import org.apache.kafka.connect.runtime.rest.RestServerConfig;
@@ -44,7 +44,7 @@ public class MirrorRestServer extends RestServer {
     @Override
     protected Collection<ConnectResource> regularResources() {
         return Arrays.asList(
-                new InternalConnectorsResource(herders, config)
+                new InternalMirrorResource(herders, config)
         );
     }
 

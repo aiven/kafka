@@ -21,7 +21,6 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import javax.ws.rs.DefaultValue;
 import javax.ws.rs.core.HttpHeaders;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import org.apache.kafka.connect.errors.NotFoundException;
@@ -29,7 +28,6 @@ import org.apache.kafka.connect.runtime.ConnectorConfig;
 import org.apache.kafka.connect.runtime.Herder;
 import org.apache.kafka.connect.runtime.RestartRequest;
 import org.apache.kafka.connect.runtime.rest.HerderRequestHandler;
-import org.apache.kafka.connect.runtime.rest.InternalRequestSignature;
 import org.apache.kafka.connect.runtime.rest.RestClient;
 import org.apache.kafka.connect.runtime.rest.RestServerConfig;
 import org.apache.kafka.connect.runtime.rest.entities.ActiveTopicsInfo;
@@ -305,31 +303,6 @@ public class ConnectorsResource implements ConnectResource {
         FutureCallback<List<TaskInfo>> cb = new FutureCallback<>();
         herder.taskConfigs(connector, cb);
         return requestHandler.completeOrForwardRequest(cb, "/connectors/" + connector + "/tasks", "GET", headers, null, new TypeReference<List<TaskInfo>>() { }, forward);
-    }
-
-    @POST
-    @Path("/{connector}/tasks")
-    @Operation(hidden = true, summary = "This operation is only for inter-worker communications")
-    public void putTaskConfigs(final @PathParam("connector") String connector,
-                               final @Context HttpHeaders headers,
-                               final @QueryParam("forward") Boolean forward,
-                               final byte[] requestBody) throws Throwable {
-        List<Map<String, String>> taskConfigs = new ObjectMapper().readValue(requestBody, TASK_CONFIGS_TYPE);
-        FutureCallback<Void> cb = new FutureCallback<>();
-        herder.putTaskConfigs(connector, taskConfigs, cb, InternalRequestSignature.fromHeaders(requestBody, headers));
-        requestHandler.completeOrForwardRequest(cb, "/connectors/" + connector + "/tasks", "POST", headers, taskConfigs, forward);
-    }
-
-    @PUT
-    @Path("/{connector}/fence")
-    @Operation(hidden = true, summary = "This operation is only for inter-worker communications")
-    public void fenceZombies(final @PathParam("connector") String connector,
-                             final @Context HttpHeaders headers,
-                             final @QueryParam("forward") Boolean forward,
-                             final byte[] requestBody) throws Throwable {
-        FutureCallback<Void> cb = new FutureCallback<>();
-        herder.fenceZombieSourceTasks(connector, cb, InternalRequestSignature.fromHeaders(requestBody, headers));
-        requestHandler.completeOrForwardRequest(cb, "/connectors/" + connector + "/fence", "PUT", headers, requestBody, forward);
     }
 
     @GET
