@@ -48,7 +48,7 @@ public final class TopicBasedRemoteLogMetadataManagerConfig {
 
     public static final String REMOTE_LOG_METADATA_TOPIC_REPLICATION_FACTOR_PROP = "remote.log.metadata.topic.replication.factor";
     public static final String REMOTE_LOG_METADATA_TOPIC_PARTITIONS_PROP = "remote.log.metadata.topic.num.partitions";
-    public static final String REMOTE_LOG_METADATA_TOPIC_RETENTION_MILLIS_PROP = "remote.log.metadata.topic.retention.ms";
+    public static final String REMOTE_LOG_METADATA_TOPIC_RETENTION_MS_PROP = "remote.log.metadata.topic.retention.ms";
     public static final String REMOTE_LOG_METADATA_CONSUME_WAIT_MS_PROP = "remote.log.metadata.publish.wait.ms";
     public static final String REMOTE_LOG_METADATA_SECONDARY_CONSUMER_SUBSCRIPTION_INTERVAL_MS_PROP = "remote.log.metadata.secondary.consumer.subscription.interval.ms";
 
@@ -94,7 +94,7 @@ public final class TopicBasedRemoteLogMetadataManagerConfig {
                         atLeast(1),
                         LOW,
                         REMOTE_LOG_METADATA_TOPIC_PARTITIONS_DOC)
-                .define(REMOTE_LOG_METADATA_TOPIC_RETENTION_MILLIS_PROP,
+                .define(REMOTE_LOG_METADATA_TOPIC_RETENTION_MS_PROP,
                         LONG,
                         DEFAULT_REMOTE_LOG_METADATA_TOPIC_RETENTION_MILLIS,
                         LOW,
@@ -142,7 +142,7 @@ public final class TopicBasedRemoteLogMetadataManagerConfig {
         secondaryConsumerSubscriptionIntervalMs = (long) parsedConfigs.get(REMOTE_LOG_METADATA_SECONDARY_CONSUMER_SUBSCRIPTION_INTERVAL_MS_PROP);
         metadataTopicPartitionsCount = (int) parsedConfigs.get(REMOTE_LOG_METADATA_TOPIC_PARTITIONS_PROP);
         metadataTopicReplicationFactor = (short) parsedConfigs.get(REMOTE_LOG_METADATA_TOPIC_REPLICATION_FACTOR_PROP);
-        metadataTopicRetentionMs = (long) parsedConfigs.get(REMOTE_LOG_METADATA_TOPIC_RETENTION_MILLIS_PROP);
+        metadataTopicRetentionMs = (long) parsedConfigs.get(REMOTE_LOG_METADATA_TOPIC_RETENTION_MS_PROP);
         if (metadataTopicRetentionMs != -1 && metadataTopicRetentionMs <= 0) {
             throw new IllegalArgumentException("Invalid metadata topic retention in millis: " + metadataTopicRetentionMs);
         }
