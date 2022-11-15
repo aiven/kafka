@@ -114,11 +114,6 @@ public abstract class RestServerConfig extends AbstractConfig {
     public abstract List<String> adminListeners();
 
     /**
-     * @return whether this is an internal-only server
-     */
-    public abstract boolean internalOnly();
-
-    /**
      * @return a list of {@link #REST_EXTENSION_CLASSES_CONFIG REST extension} classes
      * to instantiate and use with the server
      */
@@ -216,7 +211,6 @@ public abstract class RestServerConfig extends AbstractConfig {
                         in(Utils.enumOptions(SslClientAuth.class)),
                         ConfigDef.Importance.LOW,
                         BrokerSecurityConfigs.SSL_CLIENT_AUTH_DOC);
-
     }
 
     public static RestServerConfig forPublic(Integer rebalanceTimeoutMs, Map<?, ?> props) {
@@ -404,11 +398,6 @@ public abstract class RestServerConfig extends AbstractConfig {
         }
 
         @Override
-        public boolean internalOnly() {
-            return true;
-        }
-
-        @Override
         public List<String> restExtensions() {
             // Disable the use of REST extensions
             return null;
@@ -444,11 +433,6 @@ public abstract class RestServerConfig extends AbstractConfig {
         @Override
         public List<String> adminListeners() {
             return getList(ADMIN_LISTENERS_CONFIG);
-        }
-
-        @Override
-        public boolean internalOnly() {
-            return false;
         }
 
         @Override
