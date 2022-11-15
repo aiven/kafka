@@ -119,7 +119,8 @@ public class DedicatedMirrorIntegrationTest {
 
             // Cluster aliases
             final String a = "A";
-            final String b = "B";
+            // Use a convoluted cluster name to ensure URL encoding/decoding works
+            final String b = "B- ._~:/?#[]@!$&'()*+;=\"<>%{}|\\^`618";
             final String ab = a + "->" + b;
             final String ba = b + "->" + a;
             final String testTopicPrefix = "test-topic-";
@@ -127,6 +128,8 @@ public class DedicatedMirrorIntegrationTest {
             Map<String, String> mmProps = new HashMap<String, String>() {{
                     put("mm.enable.internal.rest", "true");
                     put("listeners", "http://localhost:0");
+                    // Refresh topics very frequently to quickly pick up on topics that are created
+                    // after the MM2 nodes are brought up during testing
                     put("refresh.topics.interval.seconds", "1");
                     put("clusters", String.join(", ", a, b));
                     put(a + ".bootstrap.servers", clusterA.bootstrapServers());
@@ -135,11 +138,18 @@ public class DedicatedMirrorIntegrationTest {
                     // that feature turned on, and to force cross-worker communication before
                     // task startup
                     put(a + ".exactly.once.source.support", "enabled");
-                    put(b + ".exactly.once.source.support", "enabled");
                     put(ab + ".enabled", "true");
-                    put(ba + ".enabled", "true");
                     put(ab + ".topics", "^" + testTopicPrefix + ".*");
-                    put(ba + ".topics", "^" + testTopicPrefix + ".*");
+                    // The name of the offset syncs topic will contain the name of the cluster in
+                    // the replication flow that it is _not_ hosted on; create the offset syncs topic
+                    // on the target cluster so that its name will contain the source cluster's name
+                    // (since the target cluster's name contains characters that are not valid for
+                    // use in a topic name)
+                    put(ab + ".offset-syncs.topic.location", "target");
+                    // Disable b -> a (and heartbeats from it) so that no topics are created that use
+                    // the target cluster's name
+                    put(ba + ".enabled", "false");
+                    put(ba + ".emit.heartbeats.enabled", "false");
                     put("replication.factor", "1");
                     put("checkpoints.topic.replication.factor", "1");
                     put("heartbeats.topic.replication.factor", "1");
@@ -170,12 +180,6 @@ public class DedicatedMirrorIntegrationTest {
                 writeToTopic(clusterA, topic, messagesPerTopic);
                 // and wait for MirrorMaker to copy it to cluster B
                 awaitTopicContent(clusterB, b, a + "." + topic, messagesPerTopic);
-
-                // Do the same, but from cluster B to cluster A
-                createTopic(adminB, topic);
-                awaitTopicCreation(a, adminA, b + "." + topic);
-                writeToTopic(clusterB, topic, messagesPerTopic);
-                awaitTopicContent(clusterA, a, b + "." + topic, messagesPerTopic);
             }
         }
     }
