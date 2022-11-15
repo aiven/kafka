@@ -298,6 +298,8 @@ public class MirrorMaker {
                 // URLs
                 // So to get around that, we replace pluses in the encoded URL here with '%20',
                 // which is the encoding that Jetty expects for spaces
+                // Jetty will reverse this transformation when evaluating the path parameters
+                // and will return decoded strings with all special characters as they were.
                 .replaceAll("\\+", "%20");
     }
 
