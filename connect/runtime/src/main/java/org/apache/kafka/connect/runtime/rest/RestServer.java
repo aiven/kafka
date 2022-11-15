@@ -229,6 +229,7 @@ public abstract class RestServer {
             Collection<ConnectResource> adminResources = adminResources();
             resources.addAll(adminResources);
             adminResources.forEach(adminResourceConfig::register);
+            configureAdminResources(adminResourceConfig);
         } else if (adminListeners.size() > 0) {
             // TODO: we need to check if these listeners are same as 'listeners'
             // TODO: the following code assumes that they are different
@@ -239,6 +240,7 @@ public abstract class RestServer {
             resources.addAll(adminResources);
             adminResources.forEach(adminResourceConfig::register);
             adminResourceConfig.register(ConnectExceptionMapper.class);
+            configureAdminResources(adminResourceConfig);
         } else {
             log.info("Skipping adding admin resources");
             // set up adminResource but add no handlers to it
@@ -300,14 +302,40 @@ public abstract class RestServer {
         log.info("REST resources initialized; server is started and ready to handle requests");
     }
 
+    /**
+     * @return the {@link ConnectResource resources} that should be registered with the
+     * standard (i.e., non-admin) listener for this server; may be empty, but not null
+     */
     protected abstract Collection<ConnectResource> regularResources();
 
+    /**
+     * @return the {@link ConnectResource resources} that should be registered with the
+     * admin listener for this server; may be empty, but not null
+     */
     protected abstract Collection<ConnectResource> adminResources();
 
+    /**
+     * Pluggable hook to customize the regular (i.e., non-admin) resources on this server
+     * after they have been instantiated and registered with the given {@link ResourceConfig}.
+     * This may be used to, for example, add REST extensions via {@link #registerRestExtensions(Herder, ResourceConfig)}.
+     * <p>
+     * <em>N.B.: Classes do <b>not</b> need to register the resources provided in {@link #regularResources()} with
+     * the {@link ResourceConfig} parameter in this method; they are automatically registered by the parent class.</em>
+     * @param resourceConfig the {@link ResourceConfig} that the server's regular listeners are registered with; never null
+     */
     protected void configureRegularResources(ResourceConfig resourceConfig) {
         // No-op by default
     }
 
+    /**
+     * Pluggable hook to customize the admin resources on this server after they have been instantiated and registered
+     * with the given {@link ResourceConfig}. This may be used to, for example, add REST extensions via
+     * {@link #registerRestExtensions(Herder, ResourceConfig)}.
+     * <p>
+     * <em>N.B.: Classes do <b>not</b> need to register the resources provided in {@link #adminResources()} with
+     * the {@link ResourceConfig} parameter in this method; they are automatically registered by the parent class.</em>
+     * @param adminResourceConfig the {@link ResourceConfig} that the server's regular listeners are registered with; never null
+     */
     protected void configureAdminResources(ResourceConfig adminResourceConfig) {
         // No-op by default
     }
