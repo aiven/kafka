@@ -14,4 +14,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+CURRENT_USER="$(id -un)"
+CURRENT_GROUP="$(id -gn)"
+
+if [ "$CURRENT_USER" != "kafka" ] || [ "$CURRENT_GROUP" != "kafka" ]; then
+    echo "User is not 'kafka'! This script cannot be run as it may create empty index files which Kafka will not be able to read."
+    exit 1
+fi
+
 exec $(dirname $0)/kafka-run-class.sh kafka.tools.DumpLogSegments "$@"
