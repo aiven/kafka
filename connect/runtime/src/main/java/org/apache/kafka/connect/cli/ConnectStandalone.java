@@ -27,7 +27,7 @@ import org.apache.kafka.connect.runtime.Worker;
 import org.apache.kafka.connect.runtime.WorkerConfig;
 import org.apache.kafka.connect.runtime.WorkerInfo;
 import org.apache.kafka.connect.runtime.isolation.Plugins;
-import org.apache.kafka.connect.runtime.rest.RestServer;
+import org.apache.kafka.connect.runtime.rest.ConnectRestServer;
 import org.apache.kafka.connect.runtime.rest.entities.ConnectorInfo;
 import org.apache.kafka.connect.runtime.standalone.StandaloneConfig;
 import org.apache.kafka.connect.runtime.standalone.StandaloneHerder;
@@ -83,7 +83,7 @@ public class ConnectStandalone {
             log.debug("Kafka cluster ID: {}", kafkaClusterId);
 
             // Do not initialize a RestClient because the ConnectorsResource will not use it in standalone mode.
-            RestServer rest = new RestServer(config, null);
+            ConnectRestServer rest = new ConnectRestServer(config.rebalanceTimeout(), null, workerProps);
             rest.initializeServer();
 
             URI advertisedUrl = rest.advertisedUrl();
