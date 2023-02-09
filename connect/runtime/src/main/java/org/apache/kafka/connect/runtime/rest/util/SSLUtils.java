@@ -16,10 +16,10 @@
  */
 package org.apache.kafka.connect.runtime.rest.util;
 
+import org.apache.kafka.common.config.AbstractConfig;
 import org.apache.kafka.common.config.SslConfigs;
 import org.apache.kafka.common.config.internals.BrokerSecurityConfigs;
 import org.apache.kafka.common.config.types.Password;
-import org.apache.kafka.connect.runtime.WorkerConfig;
 import org.eclipse.jetty.util.ssl.SslContextFactory;
 
 import java.util.Arrays;
@@ -38,7 +38,7 @@ public class SSLUtils {
     /**
      * Configures SSL/TLS for HTTPS Jetty Server using configs with the given prefix
      */
-    public static SslContextFactory createServerSideSslContextFactory(WorkerConfig config, String prefix) {
+    public static SslContextFactory createServerSideSslContextFactory(AbstractConfig config, String prefix) {
         Map<String, Object> sslConfigValues = config.valuesWithPrefixAllOrNothing(prefix);
 
         final SslContextFactory.Server ssl = new SslContextFactory.Server();
@@ -54,14 +54,14 @@ public class SSLUtils {
     /**
      * Configures SSL/TLS for HTTPS Jetty Server
      */
-    public static SslContextFactory createServerSideSslContextFactory(WorkerConfig config) {
+    public static SslContextFactory createServerSideSslContextFactory(AbstractConfig config) {
         return createServerSideSslContextFactory(config, "listeners.https.");
     }
 
     /**
      * Configures SSL/TLS for HTTPS Jetty Client
      */
-    public static SslContextFactory createClientSideSslContextFactory(WorkerConfig config) {
+    public static SslContextFactory createClientSideSslContextFactory(AbstractConfig config) {
         Map<String, Object> sslConfigValues = config.valuesWithPrefixAllOrNothing("listeners.https.");
 
         final SslContextFactory.Client ssl = new SslContextFactory.Client();
