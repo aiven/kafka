@@ -141,7 +141,7 @@ class OffsetSyncStore implements AutoCloseable {
             );
             return OptionalLong.of(offsetSync.get().downstreamOffset() + upstreamStep);
         } else {
-            log.debug("translateDownstream({}, {},{}): Skipped (offset sync not found)",
+            log.debug("translateDownstream({},{},{}): Skipped (offset sync not found)",
                     group, sourceTopicPartition, upstreamOffset);
             return OptionalLong.empty();
         }
