@@ -26,6 +26,8 @@ import org.apache.kafka.common.utils.Time;
 import org.apache.kafka.common.utils.Utils;
 import org.apache.kafka.connect.util.KafkaBasedLog;
 import org.apache.kafka.connect.util.TopicAdmin;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.Collections;
 import java.util.Map;
@@ -35,6 +37,8 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /** Used internally by MirrorMaker. Stores offset syncs and performs offset translation. */
 class OffsetSyncStore implements AutoCloseable {
+
+    private static final Logger log = LoggerFactory.getLogger(OffsetSyncStore.class);
     private final KafkaBasedLog<byte[], byte[]> backingStore;
     private final Map<TopicPartition, OffsetSync> offsetSyncs = new ConcurrentHashMap<>();
     private final TopicAdmin admin;
@@ -100,16 +104,21 @@ class OffsetSyncStore implements AutoCloseable {
         readToEnd = true;
     }
 
-    OptionalLong translateDownstream(TopicPartition sourceTopicPartition, long upstreamOffset) {
+    OptionalLong translateDownstream(String group, TopicPartition sourceTopicPartition, long upstreamOffset) {
         if (!readToEnd) {
             // If we have not read to the end of the syncs topic at least once, decline to translate any offsets.
             // This prevents emitting stale offsets while initially reading the offset syncs topic.
+            log.debug("translateDownstream({},{},{}): Skipped (initial offset syncs read still in progress)",
+                    group, sourceTopicPartition, upstreamOffset);
             return OptionalLong.empty();
         }
         Optional<OffsetSync> offsetSync = latestOffsetSync(sourceTopicPartition);
         if (offsetSync.isPresent()) {
             if (offsetSync.get().upstreamOffset() > upstreamOffset) {
                 // Offset is too far in the past to translate accurately
+                log.debug("translateDownstream({},{},{}): Skipped ({} is ahead of upstream consumer group {})",
+                        group, sourceTopicPartition, upstreamOffset,
+                        offsetSync.get(), upstreamOffset);
                 return OptionalLong.of(-1L);
             }
             // If the consumer group is ahead of the offset sync, we can translate the upstream offset only 1
@@ -125,8 +134,15 @@ class OffsetSyncStore implements AutoCloseable {
             //          vv
             // target |-sg----r-----|
             long upstreamStep = upstreamOffset == offsetSync.get().upstreamOffset() ? 0 : 1;
+            log.debug("translateDownstream({},{},{}): Translated {} (relative to {})",
+                    group, sourceTopicPartition, upstreamOffset,
+                    offsetSync.get().downstreamOffset() + upstreamStep,
+                    offsetSync.get()
+            );
             return OptionalLong.of(offsetSync.get().downstreamOffset() + upstreamStep);
         } else {
+            log.debug("translateDownstream({}, {},{}): Skipped (offset sync not found)",
+                    group, sourceTopicPartition, upstreamOffset);
             return OptionalLong.empty();
         }
     }
@@ -140,6 +156,7 @@ class OffsetSyncStore implements AutoCloseable {
     protected void handleRecord(ConsumerRecord<byte[], byte[]> record) {
         OffsetSync offsetSync = OffsetSync.deserializeRecord(record);
         TopicPartition sourceTopicPartition = offsetSync.topicPartition();
+        log.trace("handleRecord: {}", offsetSync);
         offsetSyncs.put(sourceTopicPartition, offsetSync);
     }
 

@@ -57,22 +57,22 @@ public class OffsetSyncStoreTest {
 
             // Emit synced downstream offset without dead-reckoning
             store.sync(tp, 100, 200);
-            assertEquals(OptionalLong.of(201), store.translateDownstream(tp, 150));
+            assertEquals(OptionalLong.of(201), store.translateDownstream(null, tp, 150));
 
             // Translate exact offsets
             store.sync(tp, 150, 251);
-            assertEquals(OptionalLong.of(251), store.translateDownstream(tp, 150));
+            assertEquals(OptionalLong.of(251), store.translateDownstream(null, tp, 150));
 
             // Use old offset (5) prior to any sync -> can't translate
-            assertEquals(OptionalLong.of(-1), store.translateDownstream(tp, 5));
+            assertEquals(OptionalLong.of(-1), store.translateDownstream(null, tp, 5));
 
             // Downstream offsets reset
             store.sync(tp, 200, 10);
-            assertEquals(OptionalLong.of(10), store.translateDownstream(tp, 200));
+            assertEquals(OptionalLong.of(10), store.translateDownstream(null, tp, 200));
 
             // Upstream offsets reset
             store.sync(tp, 20, 20);
-            assertEquals(OptionalLong.of(20), store.translateDownstream(tp, 20));
+            assertEquals(OptionalLong.of(20), store.translateDownstream(null, tp, 20));
         }
     }
 
@@ -80,21 +80,21 @@ public class OffsetSyncStoreTest {
     public void testNoTranslationIfStoreNotStarted() {
         try (FakeOffsetSyncStore store = new FakeOffsetSyncStore()) {
             // no offsets exist and store is not started
-            assertEquals(OptionalLong.empty(), store.translateDownstream(tp, 0));
-            assertEquals(OptionalLong.empty(), store.translateDownstream(tp, 100));
-            assertEquals(OptionalLong.empty(), store.translateDownstream(tp, 200));
+            assertEquals(OptionalLong.empty(), store.translateDownstream(null, tp, 0));
+            assertEquals(OptionalLong.empty(), store.translateDownstream(null, tp, 100));
+            assertEquals(OptionalLong.empty(), store.translateDownstream(null, tp, 200));
 
             // read a sync during startup
             store.sync(tp, 100, 200);
-            assertEquals(OptionalLong.empty(), store.translateDownstream(tp, 0));
-            assertEquals(OptionalLong.empty(), store.translateDownstream(tp, 100));
-            assertEquals(OptionalLong.empty(), store.translateDownstream(tp, 200));
+            assertEquals(OptionalLong.empty(), store.translateDownstream(null, tp, 0));
+            assertEquals(OptionalLong.empty(), store.translateDownstream(null, tp, 100));
+            assertEquals(OptionalLong.empty(), store.translateDownstream(null, tp, 200));
 
             // After the store is started all offsets are visible
             store.start();
-            assertEquals(OptionalLong.of(-1), store.translateDownstream(tp, 0));
-            assertEquals(OptionalLong.of(200), store.translateDownstream(tp, 100));
-            assertEquals(OptionalLong.of(201), store.translateDownstream(tp, 200));
+            assertEquals(OptionalLong.of(-1), store.translateDownstream(null, tp, 0));
+            assertEquals(OptionalLong.of(200), store.translateDownstream(null, tp, 100));
+            assertEquals(OptionalLong.of(201), store.translateDownstream(null, tp, 200));
         }
     }
 
@@ -102,7 +102,7 @@ public class OffsetSyncStoreTest {
     public void testNoTranslationIfNoOffsetSync() {
         try (FakeOffsetSyncStore store = new FakeOffsetSyncStore()) {
             store.start();
-            assertEquals(OptionalLong.empty(), store.translateDownstream(tp, 0));
+            assertEquals(OptionalLong.empty(), store.translateDownstream(null, tp, 0));
         }
     }
 }
