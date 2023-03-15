@@ -282,7 +282,8 @@ public class TopicAdmin implements AutoCloseable {
         this(adminConfig.get(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG), Admin.create(adminConfig));
     }
 
-    public TopicAdmin(Object bootstrapServers, Admin adminClient) {
+    // visible for testing
+    TopicAdmin(Object bootstrapServers, Admin adminClient) {
         this(bootstrapServers, adminClient, true);
     }
 
