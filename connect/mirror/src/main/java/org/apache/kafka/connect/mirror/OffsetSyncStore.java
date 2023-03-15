@@ -16,125 +16,65 @@
  */
 package org.apache.kafka.connect.mirror;
 
-import org.apache.kafka.clients.admin.Admin;
-import org.apache.kafka.clients.admin.AdminClientConfig;
-import org.apache.kafka.clients.consumer.Consumer;
+import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.common.TopicPartition;
-import org.apache.kafka.common.utils.Time;
+import org.apache.kafka.common.errors.WakeupException;
+import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 import org.apache.kafka.common.utils.Utils;
-import org.apache.kafka.connect.util.KafkaBasedLog;
-import org.apache.kafka.connect.util.TopicAdmin;
 
-import java.util.Collections;
 import java.util.Map;
+import java.util.HashMap;
+import java.util.Collections;
+import java.time.Duration;
 import java.util.Optional;
 import java.util.OptionalLong;
-import java.util.concurrent.ConcurrentHashMap;
 
 /** Used internally by MirrorMaker. Stores offset syncs and performs offset translation. */
 class OffsetSyncStore implements AutoCloseable {
-    private final KafkaBasedLog<byte[], byte[]> backingStore;
-    private final Map<TopicPartition, OffsetSync> offsetSyncs = new ConcurrentHashMap<>();
-    private final TopicAdmin admin;
-    protected volatile boolean readToEnd = false;
+    private final KafkaConsumer<byte[], byte[]> consumer;
+    private final Map<TopicPartition, OffsetSync> offsetSyncs = new HashMap<>();
+    private final TopicPartition offsetSyncTopicPartition;
 
     OffsetSyncStore(MirrorConnectorConfig config) {
-        Consumer<byte[], byte[]> consumer = null;
-        TopicAdmin admin = null;
-        KafkaBasedLog<byte[], byte[]> store;
-        try {
-            consumer = MirrorUtils.newConsumer(config.offsetSyncsTopicConsumerConfig());
-            admin = new TopicAdmin(
-                    config.offsetSyncsTopicAdminConfig().get(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG),
-                    Admin.create(config.offsetSyncsTopicAdminConfig()));
-            store = createBackingStore(config, consumer, admin);
-        } catch (Throwable t) {
-            Utils.closeQuietly(consumer, "consumer for offset syncs");
-            Utils.closeQuietly(admin, "admin client for offset syncs");
-            throw t;
-        }
-        this.admin = admin;
-        this.backingStore = store;
+        consumer = new KafkaConsumer<>(config.offsetSyncsTopicConsumerConfig(),
+            new ByteArrayDeserializer(), new ByteArrayDeserializer());
+        offsetSyncTopicPartition = new TopicPartition(config.offsetSyncsTopic(), 0);
+        consumer.assign(Collections.singleton(offsetSyncTopicPartition));
     }
 
-    private KafkaBasedLog<byte[], byte[]> createBackingStore(MirrorConnectorConfig config, Consumer<byte[], byte[]> consumer, TopicAdmin admin) {
-        return new KafkaBasedLog<byte[], byte[]>(
-                config.offsetSyncsTopic(),
-                Collections.emptyMap(),
-                Collections.emptyMap(),
-                () -> admin,
-                (error, record) -> this.handleRecord(record),
-                Time.SYSTEM,
-                ignored -> {
-                }
-        ) {
-            @Override
-            protected Producer<byte[], byte[]> createProducer() {
-                return null;
-            }
-
-            @Override
-            protected Consumer<byte[], byte[]> createConsumer() {
-                return consumer;
-            }
-
-            @Override
-            protected boolean readPartition(TopicPartition topicPartition) {
-                return topicPartition.partition() == 0;
-            }
-        };
-    }
-
-    OffsetSyncStore() {
-        this.admin = null;
-        this.backingStore = null;
-    }
-
-    /**
-     * Start the OffsetSyncStore, blocking until all previous Offset Syncs have been read from backing storage.
-     */
-    public void start() {
-        backingStore.start();
-        readToEnd = true;
+    // for testing
+    OffsetSyncStore(KafkaConsumer<byte[], byte[]> consumer, TopicPartition offsetSyncTopicPartition) {
+        this.consumer = consumer;
+        this.offsetSyncTopicPartition = offsetSyncTopicPartition;
     }
 
     OptionalLong translateDownstream(TopicPartition sourceTopicPartition, long upstreamOffset) {
-        if (!readToEnd) {
-            // If we have not read to the end of the syncs topic at least once, decline to translate any offsets.
-            // This prevents emitting stale offsets while initially reading the offset syncs topic.
-            return OptionalLong.empty();
-        }
         Optional<OffsetSync> offsetSync = latestOffsetSync(sourceTopicPartition);
         if (offsetSync.isPresent()) {
             if (offsetSync.get().upstreamOffset() > upstreamOffset) {
                 // Offset is too far in the past to translate accurately
                 return OptionalLong.of(-1L);
             }
-            // If the consumer group is ahead of the offset sync, we can translate the upstream offset only 1
-            // downstream offset past the offset sync itself. This is because we know that future records must appear
-            // ahead of the offset sync, but we cannot estimate how many offsets from the upstream topic
-            // will be written vs dropped. If we overestimate, then we may skip the correct offset and have data loss.
-            // This also handles consumer groups at the end of a topic whose offsets point past the last valid record.
-            // This may cause re-reading of records depending on the age of the offset sync.
-            // s=offset sync pair, ?=record may or may not be replicated, g=consumer group offset, r=re-read record
-            // source |-s?????r???g-|
-            //          |  ______/
-            //          | /
-            //          vv
-            // target |-sg----r-----|
-            long upstreamStep = upstreamOffset == offsetSync.get().upstreamOffset() ? 0 : 1;
+            long upstreamStep = upstreamOffset - offsetSync.get().upstreamOffset();
             return OptionalLong.of(offsetSync.get().downstreamOffset() + upstreamStep);
         } else {
             return OptionalLong.empty();
         }
     }
 
-    @Override
-    public void close() {
-        Utils.closeQuietly(backingStore != null ? backingStore::stop : null, "backing store for offset syncs");
-        Utils.closeQuietly(admin, "admin client for offset syncs");
+    // poll and handle records
+    synchronized void update(Duration pollTimeout) {
+        try {
+            consumer.poll(pollTimeout).forEach(this::handleRecord);
+        } catch (WakeupException e) {
+            // swallow
+        }
+    }
+
+    public synchronized void close() {
+        consumer.wakeup();
+        Utils.closeQuietly(consumer, "offset sync store consumer");
     }
 
     protected void handleRecord(ConsumerRecord<byte[], byte[]> record) {
