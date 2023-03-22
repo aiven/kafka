@@ -14,4 +14,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+user=$(whoami)
+user_error_explanation="
+This command produces index files that must be readable by Kafka. To make
+sure they are, the command should be executed as the same user that the
+Kafka broker is running as."
+
+if [[ "$user" == "root" ]]; then
+  >&2 echo "error: Refusing to run command as root. $user_error_explanation"
+  exit 1
+elif [[ "$user" == "kafka" ]]; then
+  >&2 echo "warning: You're running this command as '$user'. $user_error_explanation"
+fi
+
 exec $(dirname $0)/kafka-run-class.sh kafka.tools.DumpLogSegments "$@"
