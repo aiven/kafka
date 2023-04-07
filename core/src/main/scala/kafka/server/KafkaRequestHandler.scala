@@ -22,12 +22,13 @@ import kafka.utils._
 import kafka.metrics.KafkaMetricsGroup
 
 import java.util.concurrent.{CountDownLatch, TimeUnit}
-import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.{AtomicInteger, AtomicLong}
 import com.yammer.metrics.core.Meter
+import org.apache.kafka.common.TopicPartition
 import org.apache.kafka.common.internals.FatalExitError
 import org.apache.kafka.common.utils.{KafkaThread, Time}
 
-import scala.collection.mutable
+import scala.collection.{Map, mutable}
 import scala.jdk.CollectionConverters._
 
 trait ApiRequestHandler {
@@ -148,6 +149,59 @@ class KafkaRequestHandlerPool(val brokerId: Int,
     for (handler <- runnables)
       handler.awaitShutdown()
     info("shut down completely")
+  }
+}
+
+object BrokerTopicPartitionStats {
+  val RemoteStorageLag = "RemoteStorageLag"
+  val RemoteStorageBytesLag = "RemoteStorageBytesLag"
+  private val valueFactory = (k: TopicPartition) => new BrokerTopicPartitionMetrics(k)
+
+}
+
+class BrokerTopicPartitionStats() {
+  import BrokerTopicPartitionStats._
+  private val stats = new Pool[TopicPartition, BrokerTopicPartitionMetrics](Some(valueFactory))
+
+  def getAndMaybePut(topicPartition: TopicPartition): BrokerTopicPartitionMetrics = {
+    stats.getAndMaybePut(topicPartition)
+  }
+
+  def unregister(topicPartition: TopicPartition): Unit = {
+    val lagMetrics = stats.remove(topicPartition)
+    if (lagMetrics != null) lagMetrics.unregister()
+  }
+
+}
+
+class BrokerTopicPartitionMetrics(topicPartition: TopicPartition) extends KafkaMetricsGroup {
+
+  private[this] val lagVal = new AtomicLong(-1L)
+
+  private[this] val bytesLagVal = new AtomicLong(-1L)
+
+  private[this] val tags = Map(
+    "topic" -> topicPartition.topic,
+    "partition" -> topicPartition.partition.toString
+  )
+
+  newGauge(BrokerTopicPartitionStats.RemoteStorageLag, () => lagVal.get, tags)
+
+  newGauge(BrokerTopicPartitionStats.RemoteStorageBytesLag, () => bytesLagVal.get, tags)
+
+  def lag_=(newLag: Long): Unit = {
+    lagVal.set(newLag)
+  }
+  def bytesLag_=(newLag: Long): Unit = {
+    bytesLagVal.set(newLag)
+  }
+
+  def lag: Long = lagVal.get
+  def bytesLag: Long = bytesLagVal.get
+
+  def unregister(): Unit = {
+    removeMetric(BrokerTopicPartitionStats.RemoteStorageLag, tags)
+    removeMetric(BrokerTopicPartitionStats.RemoteStorageBytesLag, tags)
   }
 }
 

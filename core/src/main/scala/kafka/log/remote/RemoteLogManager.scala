@@ -113,6 +113,8 @@ class RemoteLogManager(fetchLog: TopicPartition => Option[UnifiedLog],
                        clusterId: String = "",
                        logDir: String,
                        brokerTopicStats: BrokerTopicStats) extends Logging with Closeable with KafkaMetricsGroup  {
+
+  private val brokerTopicPartitionStats = new BrokerTopicPartitionStats()
   private val leaderOrFollowerTasks: ConcurrentHashMap[TopicIdPartition, RLMTaskWithFuture] =
     new ConcurrentHashMap[TopicIdPartition, RLMTaskWithFuture]()
   private val remoteStorageFetcherThreadPool = new RemoteStorageReaderThreadPool(rlmConfig.remoteLogReaderThreads,
@@ -258,7 +260,10 @@ class RemoteLogManager(fetchLog: TopicPartition => Option[UnifiedLog],
       topicIds.forEach((topic, uuid) => this.topicIds.put(topic, uuid))
       remoteLogMetadataManager.onPartitionLeadershipChanges(leaderPartitions.keySet.asJava, followerPartitions.asJava)
       followerPartitions.foreach {
-        topicIdPartition => doHandleLeaderOrFollowerPartitions(topicIdPartition, _.convertToFollower())
+        topicIdPartition => {
+          doHandleLeaderOrFollowerPartitions(topicIdPartition, _.convertToFollower())
+          brokerTopicPartitionStats.unregister(topicIdPartition.topicPartition())
+        }
       }
       leaderPartitions.foreach {
         case (topicIdPartition, partition) =>
@@ -422,6 +427,10 @@ class RemoteLogManager(fetchLog: TopicPartition => Option[UnifiedLog],
               debug(s"No segments found to be copied for partition $tpId with read offset: $readOffset and active " +
                 s"baseoffset: $activeSegBaseOffset")
             } else {
+              val lastOffset = sortedSegments.slice(0, index).map { segment => segment.readNextOffset }.last
+              var missingBytes = sortedSegments.slice(0, index).map { segment => segment.log.sizeInBytes() }.sum
+              brokerTopicPartitionStats.getAndMaybePut(topicPartition = tpId.topicPartition()).lag = lastOffset - fromOffset
+              brokerTopicPartitionStats.getAndMaybePut(topicPartition = tpId.topicPartition()).bytesLag = missingBytes
               sortedSegments.slice(0, index).foreach { segment =>
                 // store locally here as this may get updated after the below if condition is computed as false.
                 if (isCancelled() || !isLeader()) {
@@ -465,6 +474,9 @@ class RemoteLogManager(fetchLog: TopicPartition => Option[UnifiedLog],
                       )
                     }
                 }).get()
+                brokerTopicPartitionStats.getAndMaybePut(topicPartition = tpId.topicPartition()).lag = lastOffset - endOffset
+                missingBytes -= segment.log.sizeInBytes()
+                brokerTopicPartitionStats.getAndMaybePut(topicPartition = tpId.topicPartition()).bytesLag = missingBytes
                 brokerTopicStats.topicStats(tpId.topicPartition().topic())
                   .remoteBytesOutRate.mark(remoteLogSegmentMetadata.segmentSizeInBytes())
                 brokerTopicStats.allTopicsStats
