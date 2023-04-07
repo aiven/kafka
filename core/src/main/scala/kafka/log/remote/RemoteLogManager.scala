@@ -113,6 +113,8 @@ class RemoteLogManager(fetchLog: TopicPartition => Option[UnifiedLog],
                        clusterId: String = "",
                        logDir: String,
                        brokerTopicStats: BrokerTopicStats) extends Logging with Closeable with KafkaMetricsGroup  {
+
+  private val brokerTopicPartitionStats = new BrokerTopicPartitionStats()
   private val leaderOrFollowerTasks: ConcurrentHashMap[TopicIdPartition, RLMTaskWithFuture] =
     new ConcurrentHashMap[TopicIdPartition, RLMTaskWithFuture]()
   private val remoteStorageFetcherThreadPool = new RemoteStorageReaderThreadPool(rlmConfig.remoteLogReaderThreads,
@@ -258,7 +260,10 @@ class RemoteLogManager(fetchLog: TopicPartition => Option[UnifiedLog],
       topicIds.forEach((topic, uuid) => this.topicIds.put(topic, uuid))
       remoteLogMetadataManager.onPartitionLeadershipChanges(leaderPartitions.keySet.asJava, followerPartitions.asJava)
       followerPartitions.foreach {
-        topicIdPartition => doHandleLeaderOrFollowerPartitions(topicIdPartition, _.convertToFollower())
+        topicIdPartition => {
+          doHandleLeaderOrFollowerPartitions(topicIdPartition, _.convertToFollower())
+          brokerTopicPartitionStats.unregister(topicIdPartition.topicPartition())
+        }
       }
       leaderPartitions.foreach {
         case (topicIdPartition, partition) =>
@@ -422,6 +427,7 @@ class RemoteLogManager(fetchLog: TopicPartition => Option[UnifiedLog],
               debug(s"No segments found to be copied for partition $tpId with read offset: $readOffset and active " +
                 s"baseoffset: $activeSegBaseOffset")
             } else {
+              brokerTopicPartitionStats.getAndMaybePut(topicPartition = tpId.topicPartition()).lag = lso - readOffset
               sortedSegments.slice(0, index).foreach { segment =>
                 // store locally here as this may get updated after the below if condition is computed as false.
                 if (isCancelled() || !isLeader()) {
