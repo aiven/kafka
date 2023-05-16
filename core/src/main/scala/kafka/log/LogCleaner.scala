@@ -593,10 +593,10 @@ private[log] class Cleaner(val id: Int,
         val abortedTransactions = log.collectAbortedTransactions(startOffset, upperBoundOffset)
         transactionMetadata.addAbortedTransactions(abortedTransactions)
 
-        val retainLegacyDeletesAndTxnMarkers = currentSegment.lastModified > legacyDeleteHorizonMs
+        val retainLegacyDeletesAndTxnMarkers = log.remoteLogEnabled() || currentSegment.lastModified > legacyDeleteHorizonMs
         info(s"Cleaning $currentSegment in log ${log.name} into ${cleaned.baseOffset} " +
           s"with an upper bound deletion horizon $legacyDeleteHorizonMs computed from " +
-          s"the segment last modified time of ${currentSegment.lastModified}," +
+          s"the segment last modified time of ${currentSegment.lastModified}, remoteLogLogEnabled: ${log.remoteLogEnabled()}," +
           s"${if(retainLegacyDeletesAndTxnMarkers) "retaining" else "discarding"} deletes.")
 
         try {
