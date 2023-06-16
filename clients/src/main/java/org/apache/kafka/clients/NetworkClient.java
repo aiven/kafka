@@ -1034,6 +1034,7 @@ public class NetworkClient implements KafkaClient {
             long waitForMetadataFetch = hasFetchInProgress() ? defaultRequestTimeoutMs : 0;
 
             long metadataTimeout = Math.max(timeToNextMetadataUpdate, waitForMetadataFetch);
+
             if (metadataTimeout > 0) {
                 return metadataTimeout;
             }
@@ -1042,7 +1043,7 @@ public class NetworkClient implements KafkaClient {
             // highly dependent on the behavior of leastLoadedNode.
             Node node = leastLoadedNode(now);
 
-            if (node == null && !hasFetchInProgress()) {
+            if ((node == null || (node !=null && node.id() != -1 && node.rack() == null)) && !hasFetchInProgress()) {
                 for (final Node oldNode : metadata.fetch().nodes()) {
                     NetworkClient.this.close(oldNode.idString());
                 }
