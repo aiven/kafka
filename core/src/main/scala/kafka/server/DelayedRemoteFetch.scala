@@ -39,8 +39,6 @@ class DelayedRemoteFetch(remoteFetchTask: RemoteLogManager#AsyncReadTask,
                          quota: ReplicaQuota,
                          responseCallback: Seq[(TopicPartition, FetchPartitionData)] => Unit)
   extends DelayedOperation(delayMs) {
-
-        import DelayedOperation._
         /**
          * The operation can be completed if:
          *
