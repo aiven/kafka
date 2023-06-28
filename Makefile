@@ -15,7 +15,7 @@
 ##
 SCALA_VERSION=2.13
 KAFKA_VERSION=3.6.0-SNAPSHOT
-IMAGE_TAG=aivenoy/kafka:tiered-storage-2023-06-28-1
+IMAGE_TAG=aivenoy/kafka:upstream-trunk-tiered-storage-2023-06-28-1
 
 .PHONY: clean
 clean:
