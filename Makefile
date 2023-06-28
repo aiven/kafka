@@ -14,8 +14,8 @@
 # limitations under the License.
 ##
 SCALA_VERSION=2.13
-KAFKA_VERSION=3.3.2-SNAPSHOT
-IMAGE_TAG=aivenoy/kafka:3.3-2022-10-06-tiered-storage-1
+KAFKA_VERSION=3.6.0-SNAPSHOT
+IMAGE_TAG=aivenoy/kafka:tiered-storage-2023-06-28-1
 
 .PHONY: clean
 clean:

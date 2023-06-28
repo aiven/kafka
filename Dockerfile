@@ -13,8 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 ##
-# Kafka 3.3.x
-FROM confluentinc/cp-kafka:7.3.3
+# Kafka 3.4.x
+FROM confluentinc/cp-kafka:7.4.0
 
 ARG _SCALA_VERSION
 ARG _KAFKA_VERSION
