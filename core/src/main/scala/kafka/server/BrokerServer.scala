@@ -464,7 +464,9 @@ class BrokerServer(
       remoteLogManagerOpt.foreach(rlm => {
         val listenerName = config.remoteLogManagerConfig.remoteLogMetadataManagerListenerName()
         if (listenerName != null) {
-          val endpoint = endpoints.stream.filter(e => e.listenerName.equals(ListenerName.normalised(listenerName)))
+          val endpoint = endpoints.stream
+            .filter(e => e.listenerName.isPresent)
+            .filter(e => e.listenerName.get.equals(ListenerName.normalised(listenerName)))
             .findFirst()
             .orElseThrow(() => new ConfigException(RemoteLogManagerConfig.REMOTE_LOG_METADATA_MANAGER_LISTENER_NAME_PROP +
               " should be set as a listener name within valid broker listener name list."))

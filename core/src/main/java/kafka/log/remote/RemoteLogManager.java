@@ -108,6 +108,8 @@ import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import static org.apache.kafka.server.log.remote.metadata.storage.TopicBasedRemoteLogMetadataManagerConfig.REMOTE_LOG_METADATA_COMMON_CLIENT_PREFIX;
+
 /**
  * This class is responsible for
  * - initializing `RemoteStorageManager` and `RemoteLogMetadataManager` instances
@@ -246,8 +248,8 @@ public class RemoteLogManager implements Closeable {
         rlmmProps.put(KafkaConfig.LogDirProp(), logDir);
         rlmmProps.put("cluster.id", clusterId);
         endpoint.ifPresent(e -> {
-            rlmmProps.put("bootstrap.servers", e.host() + ":" + e.port());
-            rlmmProps.put("security.protocol", e.securityProtocol().name);
+            rlmmProps.put(REMOTE_LOG_METADATA_COMMON_CLIENT_PREFIX + "bootstrap.servers", e.host() + ":" + e.port());
+            rlmmProps.put(REMOTE_LOG_METADATA_COMMON_CLIENT_PREFIX + "security.protocol", e.securityProtocol().name);
         });
 
         remoteLogMetadataManager.configure(rlmmProps);
