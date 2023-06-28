@@ -25,7 +25,7 @@ import org.apache.kafka.common.Uuid
 import org.apache.kafka.common.errors.CorruptRecordException
 import org.apache.kafka.common.utils.Utils
 import org.apache.kafka.server.log.remote.storage.RemoteStorageManager.IndexType
-import org.apache.kafka.server.log.remote.storage.{RemoteLogSegmentMetadata, RemoteStorageManager}
+import org.apache.kafka.server.log.remote.storage.{RemoteLogSegmentMetadata, RemoteResourceNotFoundException, RemoteStorageManager}
 import org.apache.kafka.storage.internals.log.{LogFileUtils, OffsetIndex, OffsetPosition, TimeIndex, TransactionIndex}
 import org.apache.kafka.server.util.ShutdownableThread
 
@@ -42,7 +42,7 @@ object RemoteIndexCache {
 }
 
 @threadsafe
-class Entry(val offsetIndex: OffsetIndex, val timeIndex: TimeIndex, val txnIndex: TransactionIndex) extends AutoCloseable {
+class Entry(val offsetIndex: OffsetIndex, val timeIndex: TimeIndex, val txnIndex: Option[TransactionIndex]) extends AutoCloseable {
   // visible for testing
   private[remote] var markedForCleanup = false
   // visible for testing
@@ -75,8 +75,12 @@ class Entry(val offsetIndex: OffsetIndex, val timeIndex: TimeIndex, val txnIndex
         Array(offsetIndex, timeIndex).foreach(index =>
           index.renameTo(new File(Utils.replaceSuffix(index.file.getPath, "", LogFileUtils.DELETED_FILE_SUFFIX))))
         // txn index needs to be renamed separately since it's not of type AbstractIndex
-        txnIndex.renameTo(new File(Utils.replaceSuffix(txnIndex.file.getPath, "",
-          LogFileUtils.DELETED_FILE_SUFFIX)))
+        txnIndex match {
+          case Some(idx) => idx.renameTo(new File(Utils.replaceSuffix(idx.file.getPath, "",
+            LogFileUtils.DELETED_FILE_SUFFIX)))
+          case None =>
+        }
+
       }
     }
   }
@@ -90,7 +94,13 @@ class Entry(val offsetIndex: OffsetIndex, val timeIndex: TimeIndex, val txnIndex
       // no-op if clean is done already
       if (!cleanStarted) {
         cleanStarted = true
-        CoreUtils.tryAll(Seq(() => offsetIndex.deleteIfExists(), () => timeIndex.deleteIfExists(), () => txnIndex.deleteIfExists()))
+        CoreUtils.tryAll(Seq(
+          () => offsetIndex.deleteIfExists(),
+          () => timeIndex.deleteIfExists(),
+          () => txnIndex match {
+            case Some(idx) => idx.deleteIfExists()
+            case None =>
+          }))
       }
     }
   }
@@ -106,7 +116,10 @@ class Entry(val offsetIndex: OffsetIndex, val timeIndex: TimeIndex, val txnIndex
       if (!markedForCleanup) {
         Utils.closeQuietly(offsetIndex, "Closing the offset index.")
         Utils.closeQuietly(timeIndex, "Closing the time index.")
-        Utils.closeQuietly(txnIndex, "Closing the transaction index.")
+        txnIndex match {
+          case Some(idx) => Utils.closeQuietly(idx, "Closing the transaction index.")
+          case None =>
+        }
       }
     }
   }
@@ -223,10 +236,11 @@ class RemoteIndexCache(maxSize: Int = 1024, remoteStorageManager: RemoteStorageM
           val timeIndex = new TimeIndex(timestampIndexFile, offset, Int.MaxValue, false)
           timeIndex.sanityCheck()
 
+          // TODO: assess if None can be returned instead
           val txnIndex = new TransactionIndex(offset, txnIndexFile)
           txnIndex.sanityCheck()
 
-          internalCache.put(uuid, new Entry(offsetIndex, timeIndex, txnIndex))
+          internalCache.put(uuid, new Entry(offsetIndex, timeIndex, Some(txnIndex)))
         } else {
           // Delete all of them if any one of those indexes is not available for a specific segment id
           Files.deleteIfExists(offsetIndexFile.toPath)
@@ -330,15 +344,18 @@ class RemoteIndexCache(maxSize: Int = 1024, remoteStorageManager: RemoteStorageM
             index
           })
 
-        val txnIndex: TransactionIndex = loadIndexFile(fileName, UnifiedLog.TxnIndexFileSuffix,
-          rlsMetadata => remoteStorageManager.fetchIndex(rlsMetadata, IndexType.TRANSACTION),
-          file => {
-            val index = new TransactionIndex(startOffset, file)
-            index.sanityCheck()
-            index
-          })
-
-        new Entry(offsetIndex, timeIndex, txnIndex)
+        try {
+          val txnIndex: TransactionIndex = loadIndexFile(fileName, UnifiedLog.TxnIndexFileSuffix,
+            rlsMetadata => remoteStorageManager.fetchIndex(rlsMetadata, IndexType.TRANSACTION),
+            file => {
+              val index = new TransactionIndex(startOffset, file)
+              index.sanityCheck()
+              index
+            })
+          new Entry(offsetIndex, timeIndex, Some(txnIndex))
+        } catch {
+          case _: RemoteResourceNotFoundException => new Entry(offsetIndex, timeIndex, None)
+        }
       })
     }
   }

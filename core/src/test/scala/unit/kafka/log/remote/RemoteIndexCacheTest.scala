@@ -19,7 +19,7 @@ package kafka.log.remote
 import kafka.log.UnifiedLog
 import org.apache.kafka.common.{TopicIdPartition, TopicPartition, Uuid}
 import org.apache.kafka.server.log.remote.storage.RemoteStorageManager.IndexType
-import org.apache.kafka.server.log.remote.storage.{RemoteLogSegmentId, RemoteLogSegmentMetadata, RemoteStorageManager}
+import org.apache.kafka.server.log.remote.storage.{RemoteLogSegmentId, RemoteLogSegmentMetadata, RemoteResourceNotFoundException, RemoteStorageManager}
 import org.apache.kafka.server.util.MockTime
 import org.apache.kafka.storage.internals.log.{LogFileUtils, OffsetIndex, OffsetPosition, TimeIndex, TransactionIndex}
 import kafka.utils.TestUtils
@@ -110,6 +110,18 @@ class RemoteIndexCacheTest {
     assertEquals(offsetPosition2.position, resultPosition2)
     assertNotNull(cache.getIndexEntry(rlsMetadata))
     verifyNoInteractions(rsm)
+  }
+
+  @Test
+  def testFetchTxIdxNotFound(): Unit = {
+    when(rsm.fetchIndex(any(classOf[RemoteLogSegmentMetadata]), ArgumentMatchers.eq(IndexType.TRANSACTION)))
+      .thenAnswer(_ => {
+        throw new RemoteResourceNotFoundException("Transaction index not found")
+      })
+
+    val txnIndex = cache.getIndexEntry(rlsMetadata).txnIndex
+
+    assertNull(txnIndex.orNull)
   }
 
   @Test
@@ -242,7 +254,7 @@ class RemoteIndexCacheTest {
     // verify that index(s) rename is only called 1 time
     verify(cacheEntry.timeIndex).renameTo(any(classOf[File]))
     verify(cacheEntry.offsetIndex).renameTo(any(classOf[File]))
-    verify(cacheEntry.txnIndex).renameTo(any(classOf[File]))
+    verify(cacheEntry.txnIndex.get).renameTo(any(classOf[File]))
 
     // verify no index files on disk
     assertFalse(getIndexFileFromDisk(UnifiedLog.IndexFileSuffix).isPresent,
@@ -267,12 +279,12 @@ class RemoteIndexCacheTest {
     verify(spyEntry).close()
 
     // close for all index entries must be invoked
-    verify(spyEntry.txnIndex).close()
+    verify(spyEntry.txnIndex.get).close()
     verify(spyEntry.offsetIndex).close()
     verify(spyEntry.timeIndex).close()
 
     // index files must not be deleted
-    verify(spyEntry.txnIndex, times(0)).deleteIfExists()
+    verify(spyEntry.txnIndex.get, times(0)).deleteIfExists()
     verify(spyEntry.offsetIndex, times(0)).deleteIfExists()
     verify(spyEntry.timeIndex, times(0)).deleteIfExists()
 
@@ -388,7 +400,7 @@ class RemoteIndexCacheTest {
     val timeIndex = spy(createTimeIndexForSegmentMetadata(rlsMetadata))
     val txIndex = spy(createTxIndexForSegmentMetadata(rlsMetadata))
     val offsetIndex = spy(createOffsetIndexForSegmentMetadata(rlsMetadata))
-    spy(new Entry(offsetIndex, timeIndex, txIndex))
+    spy(new Entry(offsetIndex, timeIndex, Some(txIndex)))
   }
 
   private def assertAtLeastOnePresent(cache: RemoteIndexCache, uuids: Uuid*): Unit = {
