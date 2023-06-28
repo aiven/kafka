@@ -1197,6 +1197,7 @@ class ReplicaManager(val config: KafkaConfig,
                                  responseCallback: Seq[(TopicIdPartition, FetchPartitionData)] => Unit,
                                  logReadResults: Seq[(TopicIdPartition, LogReadResult)],
                                  fetchPartitionStatus: Seq[(TopicIdPartition, FetchPartitionStatus)]): Option[LogReadResult] = {
+    debug(s"Processing remote fetch: $remoteFetchInfo")
     val key = new TopicPartitionOperationKey(remoteFetchInfo.topicPartition.topic(), remoteFetchInfo.topicPartition.partition())
     val remoteFetchResult = new CompletableFuture[RemoteLogReadResult]
     var remoteFetchTask: Future[Void] = null
@@ -1261,6 +1262,7 @@ class ReplicaManager(val config: KafkaConfig,
       if (logReadResult.error != Errors.NONE)
         errorReadingData = true
       if (!remoteFetchInfo.isPresent && logReadResult.info.delayedRemoteStorageFetch.isPresent) {
+        debug(s"Remote fetching is happening: ${logReadResult.info.delayedRemoteStorageFetch}")
         remoteFetchInfo = logReadResult.info.delayedRemoteStorageFetch
       }
       if (logReadResult.divergingEpoch.nonEmpty)
@@ -1471,6 +1473,7 @@ class ReplicaManager(val config: KafkaConfig,
                                           adjustedMaxBytes: Int, minOneMessage:
                                           Boolean, log: UnifiedLog, fetchTimeMs: Long,
                                           exception: OffsetOutOfRangeException): LogReadResult = {
+    debug(s"Handling offset out of range error for fetch: $fetchInfo with params: $params")
     val offset = fetchInfo.fetchOffset
     // In case of offset out of range errors, handle it for tiered storage only if all the below conditions are true.
     //   1) remote log manager is enabled and it is available
@@ -1495,6 +1498,7 @@ class ReplicaManager(val config: KafkaConfig,
         new FetchDataInfo(new LogOffsetMetadata(offset), MemoryRecords.EMPTY, false, Optional.empty(),
           Optional.of(new RemoteStorageFetchInfo(adjustedMaxBytes, minOneMessage, tp.topicPartition(),
             fetchInfo, params.isolation, params.hardMaxBytesLimit())))
+        debug(s"Pass fetch request to be handle by remote storage: $fetchDataInfo")
 
         LogReadResult(fetchDataInfo,
           divergingEpoch = None,
