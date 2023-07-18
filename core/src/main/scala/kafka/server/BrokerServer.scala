@@ -576,7 +576,8 @@ class BrokerServer(
           logManager.getLog(tp).foreach(log => {
             log.updateLogStartOffsetFromRemoteTier(remoteLogStartOffset)
           })
-        }))
+        },
+        brokerTopicStats))
     } else {
       None
     }
