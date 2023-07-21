@@ -73,6 +73,8 @@ import org.slf4j.LoggerFactory;
 import scala.Option;
 import scala.collection.JavaConverters;
 
+import javax.management.NotCompliantMBeanException;
+import javax.management.StandardMBean;
 import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
@@ -142,7 +144,7 @@ public class RemoteLogManager implements Closeable {
 
     private final long delayInMs;
 
-    private final ConcurrentHashMap<TopicIdPartition, RLMTaskWithFuture> leaderOrFollowerTasks = new ConcurrentHashMap<>();
+    final ConcurrentHashMap<TopicIdPartition, RLMTaskWithFuture> leaderOrFollowerTasks = new ConcurrentHashMap<>();
 
     // topic ids that are received on leadership changes, this map is cleared on stop partitions
     private final ConcurrentMap<TopicPartition, Uuid> topicPartitionIds = new ConcurrentHashMap<>();
@@ -445,9 +447,18 @@ public class RemoteLogManager implements Closeable {
 
     private static abstract class CancellableRunnable implements Runnable {
         private volatile boolean cancelled = false;
+        private volatile boolean paused = false;
 
         public void cancel() {
             cancelled = true;
+        }
+
+        public void setPause(boolean paused) {
+            this.paused = paused;
+        }
+
+        public boolean isCancelledOrPaused() {
+            return cancelled || paused;
         }
 
         public boolean isCancelled() {
@@ -526,7 +537,7 @@ public class RemoteLogManager implements Closeable {
         }
 
         public void copyLogSegmentsToRemote(UnifiedLog log) throws InterruptedException {
-            if (isCancelled())
+            if (isCancelledOrPaused())
                 return;
 
             try {
@@ -793,7 +804,8 @@ public class RemoteLogManager implements Closeable {
         // Search in remote segments first.
         Optional<RemoteLogSegmentMetadata> nextSegmentMetadataOpt = Optional.of(segmentMetadata);
         while (nextSegmentMetadataOpt.isPresent()) {
-            Optional<TransactionIndex> txnIndexOpt = nextSegmentMetadataOpt.map(metadata -> indexCache.getIndexEntry(metadata).txnIndex());
+            Optional<TransactionIndex> txnIndexOpt = nextSegmentMetadataOpt
+                    .flatMap(metadata -> Optional.ofNullable(indexCache.getIndexEntry(metadata).txnIndex()));
             if (txnIndexOpt.isPresent()) {
                 TxnIndexSearchResult searchResult = txnIndexOpt.get().collectAbortedTxns(startOffset, upperBoundOffset);
                 accumulator.accept(searchResult.abortedTransactions);
@@ -911,6 +923,13 @@ public class RemoteLogManager implements Closeable {
             }
         }
 
+        public void pause() {
+            rlmTask.setPause(true);
+        }
+
+        public void resume() {
+            rlmTask.setPause(false);
+        }
     }
 
     /**
@@ -1002,4 +1021,9 @@ public class RemoteLogManager implements Closeable {
         }
     }
 
+    public StandardMBean taskManager() throws NotCompliantMBeanException {
+        final RemoteLogTaskManagerMBean mbean = new RemoteLogTaskManagerMBean();
+        mbean.init(this);
+        return new StandardMBean(mbean, RemoteLogTaskManager.class);
+    }
 }
