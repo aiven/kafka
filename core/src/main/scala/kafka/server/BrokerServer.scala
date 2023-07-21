@@ -54,11 +54,13 @@ import org.apache.kafka.server.util.timer.SystemTimer
 import org.apache.kafka.server.util.{Deadline, FutureUtils, KafkaScheduler}
 import org.apache.kafka.storage.internals.log.LogDirFailureChannel
 
+import java.lang.management.ManagementFactory
 import java.net.InetAddress
 import java.util
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.locks.ReentrantLock
 import java.util.concurrent.{CompletableFuture, ExecutionException, TimeUnit, TimeoutException}
+import javax.management.{NotCompliantMBeanException, ObjectName}
 import scala.collection.{Map, Seq}
 import scala.compat.java8.OptionConverters.RichOptionForJava8
 import scala.jdk.CollectionConverters._
@@ -468,6 +470,20 @@ class BrokerServer(
         }
         rlm.startup()
       })
+
+      remoteLogManagerOpt.foreach(rlm => {
+        if (true) { // if RLMMBean enabled
+          try {
+            logger.info("Adding MBean for RLM tasks")
+            val mBeanServer = ManagementFactory.getPlatformMBeanServer
+            mBeanServer.registerMBean(rlm.taskManager(), new ObjectName("kafka.storage.remote:type=RemoteLogManagerMBean"))
+            logger.info("MBean for RLM tasks added")
+          } catch {
+            case e: NotCompliantMBeanException => e.printStackTrace()
+          }
+        }
+      })
+
 
       // If we are using a ClusterMetadataAuthorizer which stores its ACLs in the metadata log,
       // notify it that the loading process is complete.

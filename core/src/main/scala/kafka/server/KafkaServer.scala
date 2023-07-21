@@ -60,9 +60,11 @@ import org.apache.kafka.storage.internals.log.LogDirFailureChannel
 import org.apache.zookeeper.client.ZKClientConfig
 
 import java.io.{File, IOException}
+import java.lang.management.ManagementFactory
 import java.net.{InetAddress, SocketTimeoutException}
 import java.util.concurrent._
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger}
+import javax.management.{NotCompliantMBeanException, ObjectName}
 import scala.collection.{Map, Seq}
 import scala.compat.java8.OptionConverters.RichOptionForJava8
 import scala.jdk.CollectionConverters._
@@ -516,6 +518,19 @@ class KafkaServer(
               .foreach(e => rlm.onEndPointCreated(e))
           }
           rlm.startup()
+        })
+
+        remoteLogManagerOpt.foreach(rlm => {
+          if (true) { // if RLMMBean enabled
+            try {
+              logger.info("Adding MBean for RLM tasks")
+              val mBeanServer = ManagementFactory.getPlatformMBeanServer
+              mBeanServer.registerMBean(rlm.taskManager(), new ObjectName("kafka.storage.remote:type=RemoteLogManagerMBean"))
+              logger.info("MBean for RLM tasks added")
+            } catch {
+              case e: NotCompliantMBeanException => e.printStackTrace()
+            }
+          }
         })
 
         /* start processing requests */
