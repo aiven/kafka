@@ -111,6 +111,18 @@ public class LogConfig extends AbstractConfig {
             this.localRetentionMs = config.getLong(TopicConfig.LOCAL_LOG_RETENTION_MS_CONFIG);
             this.localRetentionBytes = config.getLong(TopicConfig.LOCAL_LOG_RETENTION_BYTES_CONFIG);
         }
+
+        public boolean remoteStorageEnable() {
+            return remoteStorageEnable;
+        }
+
+        public long localRetentionBytes() {
+            return localRetentionBytes;
+        }
+
+        public long localRetentionMs() {
+            return localRetentionMs;
+        }
     }
 
     // Visible for testing
