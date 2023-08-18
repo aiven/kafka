@@ -1296,7 +1296,7 @@ public class RemoteLogManager implements Closeable {
         // Search in remote segments first.
         Optional<RemoteLogSegmentMetadata> nextSegmentMetadataOpt = Optional.of(segmentMetadata);
         while (nextSegmentMetadataOpt.isPresent()) {
-            Optional<TransactionIndex> txnIndexOpt = nextSegmentMetadataOpt.map(metadata -> indexCache.getIndexEntry(metadata).txnIndex());
+            Optional<TransactionIndex> txnIndexOpt = nextSegmentMetadataOpt.flatMap(metadata -> indexCache.getIndexEntry(metadata).txnIndex());
             if (txnIndexOpt.isPresent()) {
                 TxnIndexSearchResult searchResult = txnIndexOpt.get().collectAbortedTxns(startOffset, upperBoundOffset);
                 accumulator.accept(searchResult.abortedTransactions);
