@@ -35,7 +35,7 @@ import org.slf4j.{Logger, LoggerFactory}
 import java.io.{File, FileInputStream, IOException}
 import java.nio.file.Files
 import java.util
-import java.util.Collections
+import java.util.{Collections, Optional}
 import java.util.concurrent.{CountDownLatch, Executors, TimeUnit}
 import scala.collection.mutable
 
@@ -105,7 +105,7 @@ class RemoteIndexCacheTest {
   def testIndexFileNameAndLocationOnDisk(): Unit = {
     val entry = cache.getIndexEntry(rlsMetadata)
     val offsetIndexFile = entry.offsetIndex.file().toPath
-    val txnIndexFile = entry.txnIndex.file().toPath
+    val txnIndexFile = entry.txnIndex.get().file().toPath
     val timeIndexFile = entry.timeIndex.file().toPath
 
     val expectedOffsetIndexFileName: String = remoteOffsetIndexFileName(rlsMetadata)
@@ -273,7 +273,7 @@ class RemoteIndexCacheTest {
     // verify that index(s) rename is only called 1 time
     verify(cacheEntry.timeIndex).renameTo(any(classOf[File]))
     verify(cacheEntry.offsetIndex).renameTo(any(classOf[File]))
-    verify(cacheEntry.txnIndex).renameTo(any(classOf[File]))
+    verify(cacheEntry.txnIndex.get()).renameTo(any(classOf[File]))
 
     // verify no index files on disk
     assertFalse(getIndexFileFromDisk(LogFileUtils.INDEX_FILE_SUFFIX).isPresent,
@@ -331,12 +331,12 @@ class RemoteIndexCacheTest {
     verify(spyEntry).close()
 
     // close for all index entries must be invoked
-    verify(spyEntry.txnIndex).close()
+    verify(spyEntry.txnIndex.get()).close()
     verify(spyEntry.offsetIndex).close()
     verify(spyEntry.timeIndex).close()
 
     // index files must not be deleted
-    verify(spyEntry.txnIndex, times(0)).deleteIfExists()
+    verify(spyEntry.txnIndex.get(), times(0)).deleteIfExists()
     verify(spyEntry.offsetIndex, times(0)).deleteIfExists()
     verify(spyEntry.timeIndex, times(0)).deleteIfExists()
 
@@ -504,9 +504,9 @@ class RemoteIndexCacheTest {
     val rlsMetadata = new RemoteLogSegmentMetadata(remoteLogSegmentId, baseOffset, lastOffset,
       time.milliseconds(), brokerId, time.milliseconds(), segmentSize, Collections.singletonMap(0, 0L))
     val timeIndex = spy(createTimeIndexForSegmentMetadata(rlsMetadata))
-    val txIndex = spy(createTxIndexForSegmentMetadata(rlsMetadata))
+    val txnIndex = spy(createTxIndexForSegmentMetadata(rlsMetadata))
     val offsetIndex = spy(createOffsetIndexForSegmentMetadata(rlsMetadata))
-    spy(new RemoteIndexCache.Entry(offsetIndex, timeIndex, txIndex))
+    spy(new RemoteIndexCache.Entry(offsetIndex, timeIndex, Optional.of(txnIndex)))
   }
 
   private def assertAtLeastOnePresent(cache: RemoteIndexCache, uuids: Uuid*): Unit = {
