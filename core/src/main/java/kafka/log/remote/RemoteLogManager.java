@@ -413,12 +413,18 @@ public class RemoteLogManager implements Closeable {
         publishEvents(deleteSegmentFinishedEvents).get();
     }
 
-    private CompletableFuture<Void> publishEvents(List<RemoteLogSegmentMetadataUpdate> events) throws RemoteStorageException {
-        List<CompletableFuture<Void>> result = new ArrayList<>();
+    private CompletableFuture<Void> publishEvents(List<RemoteLogSegmentMetadataUpdate> events) {
+        CompletableFuture<Void> result = CompletableFuture.completedFuture(null);
         for (RemoteLogSegmentMetadataUpdate event : events) {
-            result.add(remoteLogMetadataManager.updateRemoteLogSegmentMetadata(event));
+            result = result.thenAcceptAsync(unused -> {
+                try {
+                    remoteLogMetadataManager.updateRemoteLogSegmentMetadata(event);
+                } catch (RemoteStorageException e) {
+                    throw new KafkaException(e);
+                }
+            });
         }
-        return CompletableFuture.allOf(result.toArray(new CompletableFuture[0]));
+        return result;
     }
 
     public boolean isInitialized(TopicPartition topicPartition) throws RemoteStorageException {
