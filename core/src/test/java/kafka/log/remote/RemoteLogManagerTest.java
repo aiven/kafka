@@ -754,6 +754,69 @@ public class RemoteLogManagerTest {
         verify(mockLog, never()).updateHighestOffsetInRemoteStorage(anyLong());
     }
 
+    @Test
+    void testRLMTaskDoesNotUploadSegmentsWhenRemoteLogMetadataManagerIsNotInitialized() throws Exception {
+        long oldSegmentStartOffset = 0L;
+        long nextSegmentStartOffset = 150L;
+
+        when(remoteLogMetadataManager.isInitialized(leaderTopicIdPartition)).thenReturn(false);
+
+        // create 2 log segments, with 0 and 150 as log start offset
+        LogSegment oldSegment = mock(LogSegment.class);
+        LogSegment activeSegment = mock(LogSegment.class);
+
+        when(oldSegment.baseOffset()).thenReturn(oldSegmentStartOffset);
+        when(activeSegment.baseOffset()).thenReturn(nextSegmentStartOffset);
+
+        when(mockLog.activeSegment()).thenReturn(activeSegment);
+        when(mockLog.logStartOffset()).thenReturn(oldSegmentStartOffset);
+        when(mockLog.logSegments(anyLong(), anyLong())).thenReturn(JavaConverters.collectionAsScalaIterable(Arrays.asList(oldSegment, activeSegment)));
+        when(mockLog.lastStableOffset()).thenReturn(250L);
+
+        RemoteLogManager.RLMTask task = remoteLogManager.new RLMTask(leaderTopicIdPartition, 128);
+        task.convertToLeader(0);
+
+        RemoteLogManager.RLMTask spyTask = spy(task);
+        spyTask.run();
+
+        // verify RLMTask does not copy log segments to remote storage
+        verify(spyTask, never()).copyLogSegmentsToRemote(mockLog);
+        // verify the remoteLogMetadataManager never add any metadata and remoteStorageManager never copy log segments
+        verify(remoteLogMetadataManager, never()).addRemoteLogSegmentMetadata(any(RemoteLogSegmentMetadata.class));
+        verify(remoteStorageManager, never()).copyLogSegmentData(any(RemoteLogSegmentMetadata.class), any(LogSegmentData.class));
+        verify(remoteLogMetadataManager, never()).updateRemoteLogSegmentMetadata(any(RemoteLogSegmentMetadataUpdate.class));
+        verify(mockLog, never()).updateHighestOffsetInRemoteStorage(anyLong());
+    }
+
+    @Test
+    void testRLMTaskUploadsSegmentsWhenRemoteLogMetadataManagerIsInitialized() throws Exception {
+        long oldSegmentStartOffset = 0L;
+        long nextSegmentStartOffset = 150L;
+
+        when(remoteLogMetadataManager.isInitialized(leaderTopicIdPartition)).thenReturn(true);
+
+        // create 2 log segments, with 0 and 150 as log start offset
+        LogSegment oldSegment = mock(LogSegment.class);
+        LogSegment activeSegment = mock(LogSegment.class);
+
+        when(oldSegment.baseOffset()).thenReturn(oldSegmentStartOffset);
+        when(activeSegment.baseOffset()).thenReturn(nextSegmentStartOffset);
+
+        when(mockLog.activeSegment()).thenReturn(activeSegment);
+        when(mockLog.logStartOffset()).thenReturn(oldSegmentStartOffset);
+        when(mockLog.logSegments(anyLong(), anyLong())).thenReturn(JavaConverters.collectionAsScalaIterable(Arrays.asList(oldSegment, activeSegment)));
+        when(mockLog.lastStableOffset()).thenReturn(250L);
+
+        RemoteLogManager.RLMTask task = remoteLogManager.new RLMTask(leaderTopicIdPartition, 128);
+        task.convertToLeader(0);
+
+        RemoteLogManager.RLMTask spyTask = spy(task);
+        spyTask.run();
+
+        // verify RLMTask tries to copy log segments to remote storage
+        verify(spyTask, times(1)).copyLogSegmentsToRemote(mockLog);
+    }
+
     private void verifyRemoteLogSegmentMetadata(RemoteLogSegmentMetadata remoteLogSegmentMetadata,
                                                 long oldSegmentStartOffset,
                                                 long oldSegmentEndOffset,
@@ -1316,12 +1379,13 @@ public class RemoteLogManagerTest {
         Set<TopicPartition> partitions = new HashSet<>();
         partitions.add(leaderTopicIdPartition.topicPartition());
         partitions.add(followerTopicIdPartition.topicPartition());
+
         remoteLogManager.onLeadershipChange(Collections.singleton(mockPartition(leaderTopicIdPartition)),
                 Collections.singleton(mockPartition(followerTopicIdPartition)), topicIds);
-        when(remoteLogMetadataManager.listRemoteLogSegments(eq(leaderTopicIdPartition)))
-                .thenReturn(listRemoteLogSegmentMetadata(leaderTopicIdPartition, 5, 100, 1024).iterator());
-        when(remoteLogMetadataManager.listRemoteLogSegments(eq(followerTopicIdPartition)))
-                .thenReturn(listRemoteLogSegmentMetadata(followerTopicIdPartition, 3, 100, 1024).iterator());
+        List<RemoteLogSegmentMetadata> leaderMetadataList = listRemoteLogSegmentMetadata(leaderTopicIdPartition, 5, 100, 1024);
+        List<RemoteLogSegmentMetadata> followerMetadataList = listRemoteLogSegmentMetadata(followerTopicIdPartition, 3, 100, 1024);
+        when(remoteLogMetadataManager.listRemoteLogSegments(eq(leaderTopicIdPartition))).thenReturn(leaderMetadataList.iterator());
+        when(remoteLogMetadataManager.listRemoteLogSegments(eq(followerTopicIdPartition))).thenReturn(followerMetadataList.iterator());
         CompletableFuture<Void> dummyFuture = new CompletableFuture<>();
         dummyFuture.complete(null);
         when(remoteLogMetadataManager.updateRemoteLogSegmentMetadata(any()))

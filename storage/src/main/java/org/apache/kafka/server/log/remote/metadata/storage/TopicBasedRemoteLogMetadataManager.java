@@ -344,6 +344,11 @@ public class TopicBasedRemoteLogMetadataManager implements RemoteLogMetadataMana
     }
 
     @Override
+    public boolean isInitialized(TopicIdPartition topicIdPartition) {
+        return remotePartitionMetadataStore.isInitialized(topicIdPartition);
+    }
+
+    @Override
     public void configure(Map<String, ?> configs) {
         Objects.requireNonNull(configs, "configs can not be null.");
 
