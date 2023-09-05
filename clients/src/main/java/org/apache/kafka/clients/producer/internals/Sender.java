@@ -371,7 +371,7 @@ public class Sender implements Runnable {
 
             log.debug("Requesting metadata update due to unknown leader topics from the batched records: {}",
                 result.unknownLeaderTopics);
-            this.metadata.requestUpdate();
+            this.metadata.requestUpdate(false);
         }
 
         // remove any nodes we aren't ready to send to
@@ -522,7 +522,7 @@ public class Sender implements Runnable {
         } else {
             // For non-coordinator requests, sleep here to prevent a tight loop when no node is available
             time.sleep(retryBackoffMs);
-            metadata.requestUpdate();
+            metadata.requestUpdate(false);
         }
 
         transactionManager.retry(nextRequestHandler);
@@ -685,7 +685,7 @@ public class Sender implements Runnable {
                             "to request metadata update now", batch.topicPartition,
                             error.exception(response.errorMessage).toString());
                 }
-                metadata.requestUpdate();
+                metadata.requestUpdate(false);
             }
         } else {
             completeBatch(batch, response);
