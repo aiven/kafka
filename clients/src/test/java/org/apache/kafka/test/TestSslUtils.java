@@ -143,6 +143,14 @@ public class TestSslUtils {
                 daysBeforeNow, daysAfterNow, issuer, parentKeyPair, isCA, isServerCert, isClientCert);
     }
 
+    public static X509Certificate generateSignedCertificate(String dn, KeyPair keyPair,
+                                                            int daysBeforeNow, int daysAfterNow, String issuer, KeyPair parentKeyPair,
+                                                            String algorithm, boolean isCA, boolean isServerCert, boolean isClientCert,
+                                                            String[] hostNames) throws CertificateException, IOException {
+        return new CertificateBuilder(0, algorithm).sanDnsNames(hostNames).generateSignedCertificate(dn, keyPair,
+                daysBeforeNow, daysAfterNow, issuer, parentKeyPair, isCA, isServerCert, isClientCert);
+    }
+
     public static KeyPair generateKeyPair(String algorithm) throws NoSuchAlgorithmException {
         KeyPairGenerator keyGen = KeyPairGenerator.getInstance(algorithm);
         keyGen.initialize(algorithm.equals("EC") ? 256 : 2048);
