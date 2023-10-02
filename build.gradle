@@ -1903,6 +1903,7 @@ project(':tools') {
     testImplementation project(':connect:api')
     testImplementation project(':connect:runtime')
     testImplementation project(':connect:runtime').sourceSets.test.output
+    testImplementation project(':storage:api').sourceSets.main.output
     testImplementation libs.junitJupiter
     testImplementation libs.mockitoCore
     testImplementation libs.mockitoJunitJupiter // supports MockitoExtension
