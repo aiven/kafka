@@ -747,6 +747,9 @@ subprojects {
     task reportCoverage(dependsOn: [coverageGen])
   }
 
+  dependencyCheck {
+    suppressionFile = "$rootDir/gradle/resources/dependencycheck-suppressions.xml"
+  }
 }
 
 gradle.taskGraph.whenReady { taskGraph ->
