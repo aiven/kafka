@@ -865,7 +865,7 @@ project(':core') {
     implementation project(':server-common')
     implementation project(':group-coordinator')
     implementation project(':metadata')
-    implementation project(':storage:api')
+    implementation project(':storage:storage-api')
     implementation project(':tools:tools-api')
     implementation project(':raft')
     implementation project(':storage')
@@ -907,7 +907,7 @@ project(':core') {
     testImplementation project(':metadata').sourceSets.test.output
     testImplementation project(':raft').sourceSets.test.output
     testImplementation project(':server-common').sourceSets.test.output
-    testImplementation project(':storage:api').sourceSets.test.output
+    testImplementation project(':storage:storage-api').sourceSets.test.output
     testImplementation libs.bcpkix
     testImplementation libs.mockitoCore
     testImplementation(libs.apacheda) {
@@ -1630,7 +1630,7 @@ project(':server-common') {
   }
 }
 
-project(':storage:api') {
+project(':storage:storage-api') {
   archivesBaseName = "kafka-storage-api"
 
   dependencies {
@@ -1706,7 +1706,7 @@ project(':storage') {
   }
 
   dependencies {
-    implementation project(':storage:api')
+    implementation project(':storage:storage-api')
     implementation project(':server-common')
     implementation project(':clients')
     implementation libs.caffeine
