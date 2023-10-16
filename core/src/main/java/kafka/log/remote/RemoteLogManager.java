@@ -120,6 +120,7 @@ import java.util.stream.Stream;
 
 import static org.apache.kafka.server.log.remote.metadata.storage.TopicBasedRemoteLogMetadataManagerConfig.REMOTE_LOG_METADATA_COMMON_CLIENT_PREFIX;
 import static org.apache.kafka.server.log.remote.storage.RemoteStorageMetrics.REMOTE_LOG_MANAGER_TASKS_AVG_IDLE_PERCENT_METRIC;
+import static org.apache.kafka.storage.internals.log.LogConfig.DEFAULT_MAX_MESSAGE_BYTES;
 
 /**
  * This class is responsible for
@@ -1246,8 +1247,14 @@ public class RemoteLogManager implements Closeable {
         Optional<UnifiedLog> logOptional = fetchLog.apply(tp);
         OptionalInt epoch = OptionalInt.empty();
 
+        // This represents the minimum range of data to request to the remote tier.
+        // May need to be configurable to handle certain cases (e.g. max msg bytes changing over time)
+        int maxBatchSize = DEFAULT_MAX_MESSAGE_BYTES;
+
         if (logOptional.isPresent()) {
-            Option<LeaderEpochFileCache> leaderEpochCache = logOptional.get().leaderEpochCache();
+            final UnifiedLog unifiedLog = logOptional.get();
+            maxBatchSize = unifiedLog.config().maxMessageSize();
+            Option<LeaderEpochFileCache> leaderEpochCache = unifiedLog.leaderEpochCache();
             if (leaderEpochCache.isDefined()) {
                 epoch = leaderEpochCache.get().epochForOffset(offset);
             }
@@ -1268,7 +1275,8 @@ public class RemoteLogManager implements Closeable {
         InputStream remoteSegInputStream = null;
         try {
             // Search forward for the position of the last offset that is greater than or equal to the target offset
-            remoteSegInputStream = remoteLogStorageManager.fetchLogSegment(remoteLogSegmentMetadata, startPos);
+            final int endPos = startPos + Math.max(maxBatchSize, maxBytes);
+            remoteSegInputStream = remoteLogStorageManager.fetchLogSegment(remoteLogSegmentMetadata, startPos, endPos);
             RemoteLogInputStream remoteLogInputStream = new RemoteLogInputStream(remoteSegInputStream);
 
             RecordBatch firstBatch = findFirstBatch(remoteLogInputStream, offset);
