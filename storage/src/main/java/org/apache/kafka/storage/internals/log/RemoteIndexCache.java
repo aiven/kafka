@@ -25,7 +25,6 @@ import org.apache.kafka.common.errors.CorruptRecordException;
 import org.apache.kafka.common.utils.Time;
 import org.apache.kafka.common.utils.Utils;
 import org.apache.kafka.server.log.remote.storage.RemoteLogSegmentMetadata;
-import org.apache.kafka.server.log.remote.storage.RemoteResourceNotFoundException;
 import org.apache.kafka.server.log.remote.storage.RemoteStorageException;
 import org.apache.kafka.server.log.remote.storage.RemoteStorageManager;
 import org.apache.kafka.server.log.remote.storage.RemoteStorageManager.IndexType;
@@ -33,7 +32,6 @@ import org.apache.kafka.server.util.ShutdownableThread;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.ByteArrayInputStream;
 import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
@@ -46,12 +44,15 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
-import java.util.function.Function;
+import java.util.function.BiFunction;
 import java.util.stream.Stream;
 
 import static org.apache.kafka.storage.internals.log.LogFileUtils.INDEX_FILE_SUFFIX;
@@ -302,27 +303,17 @@ public class RemoteIndexCache implements Closeable {
         log.info("RemoteIndexCache starts up in {} ms.", Time.SYSTEM.hiResClockMs() - start);
     }
 
-    private <T> T loadIndexFile(File file, RemoteLogSegmentMetadata remoteLogSegmentMetadata,
-                                Function<RemoteLogSegmentMetadata, InputStream> fetchRemoteIndex,
-                                Function<File, T> readIndex) throws IOException {
+    private <T> T loadIndexFile(File file,
+                                InputStream fetchRemoteIndex,
+                                Long startOffset,
+                                BiFunction<File, Long, T> readIndex) throws IOException {
         File indexFile = new File(cacheDir, file.getName());
-        T index = null;
-        if (Files.exists(indexFile.toPath())) {
-            try {
-                index = readIndex.apply(indexFile);
-            } catch (CorruptRecordException ex) {
-                log.info("Error occurred while loading the stored index file {}", indexFile.getPath(), ex);
-            }
+        File tmpIndexFile = new File(indexFile.getParentFile(), indexFile.getName() + RemoteIndexCache.TMP_FILE_SUFFIX);
+        try (InputStream inputStream = fetchRemoteIndex) {
+            Files.copy(inputStream, tmpIndexFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
         }
-        if (index == null) {
-            File tmpIndexFile = new File(indexFile.getParentFile(), indexFile.getName() + RemoteIndexCache.TMP_FILE_SUFFIX);
-            try (InputStream inputStream = fetchRemoteIndex.apply(remoteLogSegmentMetadata)) {
-                Files.copy(inputStream, tmpIndexFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
-            }
-            Utils.atomicMoveWithFallback(tmpIndexFile.toPath(), indexFile.toPath(), false);
-            index = readIndex.apply(indexFile);
-        }
-        return index;
+        Utils.atomicMoveWithFallback(tmpIndexFile.toPath(), indexFile.toPath(), false);
+        return readIndex.apply(indexFile, startOffset);
     }
 
     public Entry getIndexEntry(RemoteLogSegmentMetadata remoteLogSegmentMetadata) {
@@ -345,64 +336,75 @@ public class RemoteIndexCache implements Closeable {
         }
     }
 
+    final BiFunction<File, Long, OffsetIndex> fileOffsetIndexFunction = (file, startOffset) -> {
+        try {
+            OffsetIndex index = new OffsetIndex(file, startOffset, Integer.MAX_VALUE, false);
+            index.sanityCheck();
+            return index;
+        } catch (IOException e) {
+            throw new KafkaException(e);
+        }
+    };
+    final BiFunction<File, Long, TimeIndex> fileTimeIndexFunction = (file, startOffset) -> {
+        try {
+            TimeIndex index = new TimeIndex(file, startOffset, Integer.MAX_VALUE, false);
+            index.sanityCheck();
+            return index;
+        } catch (IOException e) {
+            throw new KafkaException(e);
+        }
+    };
+    final BiFunction<File, Long, TransactionIndex> fileTransactionIndexFunction = (file, startOffset) -> {
+        try {
+            TransactionIndex index = new TransactionIndex(startOffset, file);
+            index.sanityCheck();
+            return index;
+        } catch (IOException e) {
+            throw new KafkaException(e);
+        }
+    };
+
     private RemoteIndexCache.Entry createCacheEntry(RemoteLogSegmentMetadata remoteLogSegmentMetadata) {
         long startOffset = remoteLogSegmentMetadata.startOffset();
         try {
+            OffsetIndex offsetIndex = null;
+            TimeIndex timeIndex = null;
+            TransactionIndex txnIndex = null;
+
             File offsetIndexFile = remoteOffsetIndexFile(cacheDir, remoteLogSegmentMetadata);
-            OffsetIndex offsetIndex = loadIndexFile(offsetIndexFile, remoteLogSegmentMetadata, rlsMetadata -> {
-                try {
-                    return remoteStorageManager.fetchIndex(rlsMetadata, IndexType.OFFSET);
-                } catch (RemoteStorageException e) {
-                    throw new KafkaException(e);
-                }
-            }, file -> {
-                try {
-                    OffsetIndex index = new OffsetIndex(file, startOffset, Integer.MAX_VALUE, false);
-                    index.sanityCheck();
-                    return index;
-                } catch (IOException e) {
-                    throw new KafkaException(e);
-                }
-            });
             File timeIndexFile = remoteTimeIndexFile(cacheDir, remoteLogSegmentMetadata);
-            TimeIndex timeIndex = loadIndexFile(timeIndexFile, remoteLogSegmentMetadata, rlsMetadata -> {
-                try {
-                    return remoteStorageManager.fetchIndex(rlsMetadata, IndexType.TIMESTAMP);
-                } catch (RemoteStorageException e) {
-                    throw new KafkaException(e);
-                }
-            }, file -> {
-                try {
-                    TimeIndex index = new TimeIndex(file, startOffset, Integer.MAX_VALUE, false);
-                    index.sanityCheck();
-                    return index;
-                } catch (IOException e) {
-                    throw new KafkaException(e);
-                }
-            });
             File txnIndexFile = remoteTransactionIndexFile(cacheDir, remoteLogSegmentMetadata);
-            TransactionIndex txnIndex = loadIndexFile(txnIndexFile, remoteLogSegmentMetadata, rlsMetadata -> {
+
+            if (Files.exists(offsetIndexFile.toPath()) && Files.exists(timeIndexFile.toPath())) {
                 try {
-                    return remoteStorageManager.fetchIndex(rlsMetadata, IndexType.TRANSACTION);
-                } catch (RemoteResourceNotFoundException e) {
-                    // Don't throw an exception since the transaction index may not exist because of no transactional
-                    // records. Instead, we return an empty stream so that an empty file is created in the cache
-                    return new ByteArrayInputStream(new byte[0]);
-                } catch (RemoteStorageException e) {
-                    throw new KafkaException(e);
+                    offsetIndex = fileOffsetIndexFunction.apply(offsetIndexFile, startOffset);
+                } catch (CorruptRecordException ex) {
+                    log.info("Error occurred while loading the stored index file {}", offsetIndexFile.getPath(), ex);
                 }
-            }, file -> {
                 try {
-                    TransactionIndex index = new TransactionIndex(startOffset, file);
-                    index.sanityCheck();
-                    return index;
-                } catch (IOException e) {
-                    throw new KafkaException(e);
+                    timeIndex = fileTimeIndexFunction.apply(timeIndexFile, startOffset);
+                } catch (CorruptRecordException ex) {
+                    log.info("Error occurred while loading the stored index file {}", timeIndexFile.getPath(), ex);
                 }
-            });
+                if (Files.exists(txnIndexFile.toPath())) {
+                    try {
+                        txnIndex = fileTransactionIndexFunction.apply(txnIndexFile, startOffset);
+                    } catch (CorruptRecordException ex) {
+                        log.info("Error occurred while loading the stored index file {}", txnIndexFile.getPath(), ex);
+                    }
+                }
+            } else {
+                Set<IndexType> indexTypes = new HashSet<>(Arrays.asList(IndexType.OFFSET, IndexType.TIMESTAMP, IndexType.TRANSACTION));
+                Map<IndexType, InputStream> indexes = remoteStorageManager.fetchIndexes(remoteLogSegmentMetadata, indexTypes);
+                offsetIndex = loadIndexFile(offsetIndexFile, indexes.get(IndexType.OFFSET), startOffset, fileOffsetIndexFunction);
+                timeIndex = loadIndexFile(timeIndexFile, indexes.get(IndexType.TIMESTAMP), startOffset, fileTimeIndexFunction);
+                if (indexes.containsKey(IndexType.TRANSACTION)) {
+                    txnIndex = loadIndexFile(txnIndexFile, indexes.get(IndexType.TRANSACTION), startOffset, fileTransactionIndexFunction);
+                }
+            }
 
             return new Entry(offsetIndex, timeIndex, txnIndex);
-        } catch (IOException e) {
+        } catch (IOException | RemoteStorageException e) {
             throw new KafkaException(e);
         }
     }

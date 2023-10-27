@@ -22,8 +22,12 @@ import org.apache.kafka.server.log.remote.storage.RemoteLogSegmentMetadata.Custo
 
 import java.io.Closeable;
 import java.io.InputStream;
+import java.util.Arrays;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * This interface provides the lifecycle of remote log segments that includes copy, fetch, and delete from remote
@@ -107,6 +111,12 @@ public interface RemoteStorageManager extends Configurable, Closeable {
     InputStream fetchLogSegment(RemoteLogSegmentMetadata remoteLogSegmentMetadata,
                                 int startPosition) throws RemoteStorageException;
 
+    default InputStream fetchLogSegment(RemoteLogSegmentMetadata remoteLogSegmentMetadata,
+                                        Optional<RemoteLogSegmentMetadata> nextRemoteLogSegmentMetadata,
+                                        int startPosition) throws RemoteStorageException {
+        return fetchLogSegment(remoteLogSegmentMetadata, startPosition);
+    }
+
     /**
      * Returns the remote log segment data file/object as InputStream for the given {@link RemoteLogSegmentMetadata}
      * starting from the given startPosition. The stream will end at the smaller of endPosition and the end of the
@@ -123,6 +133,13 @@ public interface RemoteStorageManager extends Configurable, Closeable {
                                 int startPosition,
                                 int endPosition) throws RemoteStorageException;
 
+    default InputStream fetchLogSegment(RemoteLogSegmentMetadata remoteLogSegmentMetadata,
+                                        Optional<RemoteLogSegmentMetadata> nextRemoteLogSegmentMetadata,
+                                        int startPosition,
+                                        int endPosition) throws RemoteStorageException {
+        return fetchLogSegment(remoteLogSegmentMetadata, startPosition, endPosition);
+    }
+
     /**
      * Returns the index for the respective log segment of {@link RemoteLogSegmentMetadata}.
      * <p>
@@ -137,6 +154,24 @@ public interface RemoteStorageManager extends Configurable, Closeable {
      */
     InputStream fetchIndex(RemoteLogSegmentMetadata remoteLogSegmentMetadata,
                            IndexType indexType) throws RemoteStorageException;
+
+    default Map<IndexType, InputStream> fetchIndexes(RemoteLogSegmentMetadata remoteLogSegmentMetadata, Set<IndexType> indexTypes) throws RemoteStorageException {
+        Map<IndexType, InputStream> indexes = new HashMap<>(indexTypes.size());
+        for (IndexType indexType: indexTypes) {
+            try {
+                indexes.put(indexType, fetchIndex(remoteLogSegmentMetadata, indexType));
+            } catch (RemoteResourceNotFoundException e) {
+                // log
+            }
+        }
+        return indexes;
+    }
+
+    Set<IndexType> INDEX_TYPES = Arrays.stream(IndexType.values()).collect(Collectors.toSet());
+
+    default Map<IndexType, InputStream> fetchAllIndexes(RemoteLogSegmentMetadata remoteLogSegmentMetadata) throws RemoteStorageException {
+        return fetchIndexes(remoteLogSegmentMetadata, INDEX_TYPES);
+    }
 
     /**
      * Deletes the resources associated with the given {@code remoteLogSegmentMetadata}. Deletion is considered as
