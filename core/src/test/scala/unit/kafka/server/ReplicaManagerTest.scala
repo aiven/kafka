@@ -3990,6 +3990,7 @@ class ReplicaManagerTest {
     when(mockLog.logEndOffset).thenReturn(endOffset)
     when(mockLog.localLogStartOffset()).thenReturn(endOffset - 10)
     when(mockLog.remoteLogEnabled()).thenReturn(true)
+    when(mockLog.config).thenReturn(new LogConfig(Collections.emptyMap()))
 
     mockLog
   }
