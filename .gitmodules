@@ -1,0 +1,3 @@
+[submodule "tiered-storage-for-apache-kafka"]
+	path = tiered-storage-for-apache-kafka
+	url = git@github.com:Aiven-Open/tiered-storage-for-apache-kafka.git

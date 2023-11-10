@@ -46,3 +46,48 @@ docker_push:
 	docker push $(IMAGE_NAME):$(IMAGE_TAG)
 
 # TODO publish docker images
+
+
+.PHONY: failure-demo-prepare
+failure-demo-prepare:
+	git submodule init
+	git submodule update
+	cd tiered-storage-for-apache-kafka && make build
+	cd tiered-storage-for-apache-kafka/build/distributions && tar -xf tiered-storage-for-apache-kafka-0.0.1-SNAPSHOT.tgz
+	cd tiered-storage-for-apache-kafka/storage/gcs/build/distributions/ && tar -xf gcs-0.0.1-SNAPSHOT.tgz
+	./gradlew releaseTarGz -x test
+	cd core/build/distributions && tar -xf kafka_2.13-3.6.0.tgz
+
+.PHONY: failure-demo-clean
+failure-demo-clean:
+	docker compose down
+	rm -rf _failure_demo_kafka_data && git checkout -- _failure_demo_kafka_data
+	rm -rf _failure_demo_local_cache && git checkout -- _failure_demo_local_cache
+
+.PHONY: failure-demo-run-zk
+failure-demo-run-zk:
+	docker compose up -d
+
+.PHONY: failure-demo-create-topic
+failure-demo-create-topic:
+	core/build/distributions/kafka_2.13-3.6.0/bin/kafka-topics.sh --bootstrap-server localhost:9092 \
+		--create --topic topic1 \
+		--config remote.storage.enable=true \
+		--config segment.bytes=512000 \
+		--config local.retention.bytes=1 \
+		--config retention.bytes=10000000000000
+
+.PHONY: failure-demo-fill-topic
+failure-demo-fill-topic:
+	core/build/distributions/kafka_2.13-3.6.0/bin/kafka-producer-perf-test.sh \
+		--topic topic1 --num-records=5000 --throughput -1 --record-size 1000 \
+		--producer-props acks=1 batch.size=16384 bootstrap.servers=localhost:9092
+
+.PHONY: failure-demo-consume
+failure-demo-consume:
+	kcat -b localhost:9092 -t topic1 -o 0 -f "%o\n" -e -X fetch.wait.max.ms=3000
+
+.PHONY: failure-demo-delete-topic
+failure-demo-delete-topic:
+	core/build/distributions/kafka_2.13-3.6.0/bin/kafka-topics.sh --bootstrap-server localhost:9092 \
+		--delete --topic topic1

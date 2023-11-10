@@ -1,0 +1,17 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Kafka - failure demo" type="Application" factoryName="Application">
+    <option name="MAIN_CLASS_NAME" value="kafka.Kafka" />
+    <module name="kafka.core.main" />
+    <option name="PROGRAM_PARAMETERS" value="config/server.properties" />
+    <option name="VM_PARAMETERS" value="-Dlog4j.configuration=file:./config/log4j.properties" />
+    <extension name="coverage">
+      <pattern>
+        <option name="PATTERN" value="kafka.*" />
+        <option name="ENABLED" value="true" />
+      </pattern>
+    </extension>
+    <method v="2">
+      <option name="Make" enabled="true" />
+    </method>
+  </configuration>
+</component>

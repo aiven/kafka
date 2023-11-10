@@ -927,7 +927,7 @@ project(':core') {
     testImplementation libs.apachedsMavibotPartition
     testImplementation libs.apachedsJdbmPartition
     testImplementation libs.junitJupiter
-    testImplementation libs.slf4jlog4j
+    implementation libs.slf4jlog4j
     testImplementation(libs.jfreechart) {
       exclude group: 'junit', module: 'junit'
     }
