@@ -211,6 +211,7 @@ public class TransactionIndex implements Closeable {
     }
 
     private FileChannel channelOrNull() {
+        maybeReopenChannel();
         return maybeChannel.orElse(null);
     }
 
@@ -259,6 +260,16 @@ public class TransactionIndex implements Closeable {
             }
 
         };
+    }
+
+    private void maybeReopenChannel() {
+        if (maybeChannel.isPresent() && !maybeChannel.get().isOpen()) {
+            try {
+                maybeChannel = Optional.of(openChannel());
+            } catch (IOException e) {
+                throw new RuntimeException("Failed to re-open txn index file channel", e);
+            }
+        }
     }
 
 }
