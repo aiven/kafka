@@ -128,9 +128,6 @@ public class DedicatedMirrorIntegrationTest {
         EmbeddedKafkaCluster clusterA = startKafkaCluster("A", 1, brokerProps);
         EmbeddedKafkaCluster clusterB = startKafkaCluster("B", 1, brokerProps);
 
-        clusterA.start();
-        clusterB.start();
-
         try (Admin adminB = clusterB.createAdminClient()) {
 
             // Cluster aliases
@@ -201,9 +198,6 @@ public class DedicatedMirrorIntegrationTest {
         brokerProps.put("transaction.state.log.min.isr", "1");
         EmbeddedKafkaCluster clusterA = startKafkaCluster("A", 1, brokerProps);
         EmbeddedKafkaCluster clusterB = startKafkaCluster("B", 1, brokerProps);
-
-        clusterA.start();
-        clusterB.start();
 
         try (Admin adminB = clusterB.createAdminClient()) {
             // Cluster aliases
