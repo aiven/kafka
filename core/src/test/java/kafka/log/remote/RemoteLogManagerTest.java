@@ -67,6 +67,7 @@ import org.apache.kafka.storage.internals.log.ProducerStateManager;
 import org.apache.kafka.storage.internals.log.TimeIndex;
 import org.apache.kafka.storage.internals.log.TransactionIndex;
 import org.apache.kafka.test.TestUtils;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -211,6 +212,14 @@ public class RemoteLogManagerTest {
                 return 0L;
             }
         };
+    }
+
+    @AfterEach
+    void tearDown() {
+        if (remoteLogManager != null) {
+            remoteLogManager.close();
+            remoteLogManager = null;
+        }
     }
 
     @Test
