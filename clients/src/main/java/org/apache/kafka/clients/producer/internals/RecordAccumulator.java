@@ -932,7 +932,6 @@ public class RecordAccumulator {
 
             // the rest of the work by processing outside the lock
             // close() is particularly expensive
-
             batch.close();
             size += batch.records().sizeInBytes();
             ready.add(batch);
