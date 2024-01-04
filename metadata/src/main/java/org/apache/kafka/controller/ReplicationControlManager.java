@@ -626,13 +626,13 @@ public class ReplicationControlManager {
         Map<String, String> creationConfigs = translateCreationConfigs(topic.configs());
         Map<Integer, PartitionRegistration> newParts = new HashMap<>();
         Uuid topicId;
-        if (topic.id() != null) {
+        if (topic.id() == null || topic.id() == Uuid.ZERO_UUID) {
+            topicId = Uuid.randomUuid();
+        } else {
             if (topics.containsKey(topic.id())) {
                 return ApiError.fromThrowable(new InvalidTopicException("Topic id " + topic.id() + " already exists"));
             }
             topicId = topic.id();
-        } else {
-            topicId = Uuid.randomUuid();
         }
         if (!topic.assignments().isEmpty()) {
             if (topic.replicationFactor() != -1) {

@@ -69,6 +69,7 @@ public class SimpleExampleMessageTest {
     @Test
     public void shouldDefaultField() {
         final SimpleExampleMessageData out = new SimpleExampleMessageData();
+        System.out.println(Uuid.fromString(null));
         assertEquals(Uuid.fromString("AAAAAAAAAAAAAAAAAAAAAA"), out.processId());
         assertEquals(ByteUtils.EMPTY_BUF, out.zeroCopyByteBuffer());
         assertEquals(ByteUtils.EMPTY_BUF, out.nullableZeroCopyByteBuffer());
