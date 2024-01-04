@@ -95,10 +95,13 @@ public class ReplicaFetcherTierStateMachine implements TierStateMachine {
                                      PartitionFetchState currentFetchState,
                                      PartitionData fetchPartitionData) throws Exception {
 
+        log.error("Starting the tier state machine for partition: {} with currentFetchState: {} and fetchPartitionData: {}",
+                topicPartition, currentFetchState, fetchPartitionData);
         OffsetAndEpoch epochAndLeaderLocalStartOffset = leader.fetchEarliestLocalOffset(topicPartition, currentFetchState.currentLeaderEpoch());
+        log.error("Fetched the earliest local offset for partition: {} with epochAndLeaderLocalStartOffset: {}", topicPartition, epochAndLeaderLocalStartOffset);
         int epoch = epochAndLeaderLocalStartOffset.leaderEpoch();
         long leaderLocalStartOffset = epochAndLeaderLocalStartOffset.offset();
-
+        log.error("Building the remote log aux state for partition: {} with leaderLocalStartOffset: {} and epoch: {}", topicPartition, leaderLocalStartOffset, epoch);
         long offsetToFetch = buildRemoteLogAuxState(topicPartition, currentFetchState.currentLeaderEpoch(), leaderLocalStartOffset, epoch, fetchPartitionData.logStartOffset());
 
         OffsetAndEpoch fetchLatestOffsetResult = leader.fetchLatestOffset(topicPartition, currentFetchState.currentLeaderEpoch());
@@ -257,7 +260,7 @@ public class ReplicaFetcherTierStateMachine implements TierStateMachine {
                         ", leaderLocalLogStartOffset: " + leaderLocalLogStartOffset +
                         ", leaderLogStartOffset: " + leaderLogStartOffset +
                         ", epoch: " + targetEpoch +
-                        "as the previous remote log segment metadata was not found");
+                        " as the previous remote log segment metadata was not found");
             }
         } else {
             // If the tiered storage is not enabled throw an exception back so that it will retry until the tiered storage
