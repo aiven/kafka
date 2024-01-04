@@ -125,14 +125,16 @@ public class RemoteLogMetadataCache {
      */
     public Optional<RemoteLogSegmentMetadata> remoteLogSegmentMetadata(int leaderEpoch, long offset) {
         RemoteLogLeaderEpochState remoteLogLeaderEpochState = leaderEpochEntries.get(leaderEpoch);
-
+        log.error("leaderEpochEntries: [{}]", leaderEpochEntries);
         if (remoteLogLeaderEpochState == null) {
+            log.error("RETURNING EMPTY remoteLogLeaderEpochState == null for leaderEpoch: [{}]", leaderEpoch);
             return Optional.empty();
         }
 
         // Look for floor entry as the given offset may exist in this entry.
         RemoteLogSegmentId remoteLogSegmentId = remoteLogLeaderEpochState.floorEntry(offset);
         if (remoteLogSegmentId == null) {
+            log.error("RETURNING EMPTY remoteLogSegmentId == null for offset: [{}]", offset);
             // If the offset is lower than the minimum offset available in metadata then return empty.
             return Optional.empty();
         }
@@ -142,9 +144,11 @@ public class RemoteLogMetadataCache {
         // Check for epoch's offset boundaries with in this segment.
         //      1. Get the next epoch's start offset -1 if exists
         //      2. If no next epoch exists, then segment end offset can be considered as epoch's relative end offset.
+        log.error("FOuND METADATA: [{}]", metadata);
         Map.Entry<Integer, Long> nextEntry = metadata.segmentLeaderEpochs().higherEntry(leaderEpoch);
         long epochEndOffset = (nextEntry != null) ? nextEntry.getValue() - 1 : metadata.endOffset();
-
+        log.error("FOuND EPOCH END OFFSET: [{}]", epochEndOffset);
+        log.error("RETURNING EMPTY offset > epochEndOffset: [{}]", offset > epochEndOffset);
         // Return empty when target offset > epoch's end offset.
         return offset > epochEndOffset ? Optional.empty() : Optional.of(metadata);
     }
