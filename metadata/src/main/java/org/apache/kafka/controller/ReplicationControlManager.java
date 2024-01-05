@@ -626,6 +626,7 @@ public class ReplicationControlManager {
         Map<String, String> creationConfigs = translateCreationConfigs(topic.configs());
         Map<Integer, PartitionRegistration> newParts = new HashMap<>();
         Uuid topicId;
+        log.info("Received TopicId: {}", topic.id());
         if (topic.id() == null || topic.id() == Uuid.ZERO_UUID) {
             topicId = Uuid.randomUuid();
         } else {
@@ -634,6 +635,7 @@ public class ReplicationControlManager {
             }
             topicId = topic.id();
         }
+        log.info("Setting TopicId: {}", topicId);
         if (!topic.assignments().isEmpty()) {
             if (topic.replicationFactor() != -1) {
                 return new ApiError(INVALID_REQUEST,
