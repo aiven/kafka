@@ -267,6 +267,7 @@ class ConsumerTask implements Runnable, Closeable {
                 }
                 processedAssignmentPartitions.add(utp.topicIdPartition);
             });
+            log.error("Processed assignment partitions: {}", processedAssignmentPartitions);
             processedAssignmentOfUserTopicIdPartitions = new HashSet<>(processedAssignmentPartitions);
             clearResourcesForUnassignedUserTopicPartitions(processedAssignmentPartitions);
             isAllUserTopicPartitionsInitialized = false;
