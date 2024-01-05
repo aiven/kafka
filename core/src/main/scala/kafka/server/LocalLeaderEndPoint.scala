@@ -132,7 +132,9 @@ class LocalLeaderEndPoint(sourceBroker: BrokerEndPoint,
   override def fetchEarliestLocalOffset(topicPartition: TopicPartition, currentLeaderEpoch: Int): OffsetAndEpoch = {
     val partition = replicaManager.getPartitionOrException(topicPartition)
     val localLogStartOffset = partition.localLogOrException.localLogStartOffset()
+    error(s"Fetching earliest local offset for $topicPartition returned $localLogStartOffset and partition $partition")
     val epoch = partition.localLogOrException.leaderEpochCache.get.epochForOffset(localLogStartOffset)
+    error(s"Got epoch $epoch from ${partition.localLogOrException.leaderEpochCache}")
     new OffsetAndEpoch(localLogStartOffset, epoch.orElse(0))
   }
 
