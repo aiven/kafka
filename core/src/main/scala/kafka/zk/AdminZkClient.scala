@@ -109,7 +109,7 @@ class AdminZkClient(zkClient: KafkaZkClient,
       validateTopicCreate(topic, partitionReplicaAssignment, config)
 
     info(s"Creating topic $topic with configuration $config and initial partition " +
-      s"assignment $partitionReplicaAssignment")
+      s"assignment $partitionReplicaAssignment, usesTopicId $usesTopicId topicId $maybeTopicId")
 
     // write out the config if there is any, this isn't transactional with the partition assignments
     zkClient.setOrCreateEntityConfigs(ConfigType.Topic, topic, config)

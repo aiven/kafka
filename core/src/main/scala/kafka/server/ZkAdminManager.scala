@@ -166,13 +166,14 @@ class ZkAdminManager(val config: KafkaConfig,
       try {
         if (metadataCache.contains(topic.name))
           throw new TopicExistsException(s"Topic '${topic.name}' already exists.")
-        val maybeUuid = Option(topic.id())
-        maybeUuid match {
-          case Some(id) =>
+
+        val maybeUuid = topic.id() match {
+          case Uuid.ZERO_UUID => None
+          case id =>
             if (metadataCache.topicNamesToIds().containsValue(id)) {
               throw new TopicExistsException(s"Topic id '$id' already exists.")
             }
-          case _ =>
+            Some(id)
         }
 
         val nullConfigs = topic.configs.asScala.filter(_.value == null).map(_.name)
