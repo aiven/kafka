@@ -215,7 +215,7 @@ public class RemoteLogMetadataCache {
     }
 
     private void handleSegmentWithDeleteSegmentFinishedState(RemoteLogSegmentMetadata remoteLogSegmentMetadata) {
-        log.debug("Removing the entry as it reached the terminal state: [{}]", remoteLogSegmentMetadata);
+        log.error("Removing the entry as it reached the terminal state: [{}]", remoteLogSegmentMetadata);
 
         doHandleSegmentStateTransitionForLeaderEpochs(remoteLogSegmentMetadata,
                                                       (leaderEpoch, remoteLogLeaderEpochState, startOffset, segmentId) ->
@@ -236,6 +236,8 @@ public class RemoteLogMetadataCache {
             Integer leaderEpoch = entry.getKey();
             Long startOffset = entry.getValue();
             // leaderEpochEntries will be empty when resorting the metadata from snapshot.
+            log.error("Loading leaderEpochEntries: [{}] while handling state transition for remoteLogSegmentMetadata {} with state {}",
+                    leaderEpochEntries, remoteLogSegmentMetadata, remoteLogSegmentMetadata.state());
             RemoteLogLeaderEpochState remoteLogLeaderEpochState = leaderEpochEntries.computeIfAbsent(
                     leaderEpoch, x -> new RemoteLogLeaderEpochState());
             action.accept(leaderEpoch, remoteLogLeaderEpochState, startOffset, remoteLogSegmentId);
