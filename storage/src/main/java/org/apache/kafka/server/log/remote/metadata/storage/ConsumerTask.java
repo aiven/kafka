@@ -127,7 +127,7 @@ class ConsumerTask implements Runnable, Closeable {
                     maybeWaitForPartitionAssignments();
                 }
 
-                log.trace("Polling consumer to receive remote log metadata topic records");
+                log.debug("Polling consumer to receive remote log metadata topic records");
                 final ConsumerRecords<byte[], byte[]> consumerRecords = consumer.poll(Duration.ofMillis(pollTimeoutMs));
                 for (ConsumerRecord<byte[], byte[]> record : consumerRecords) {
                     processConsumerRecord(record);
@@ -153,11 +153,15 @@ class ConsumerTask implements Runnable, Closeable {
 
     private void processConsumerRecord(ConsumerRecord<byte[], byte[]> record) {
         final RemoteLogMetadata remoteLogMetadata = serde.deserialize(record.value());
+        log.error("Received remote log metadata: {} from partition: {} with offset: {}",
+            remoteLogMetadata, record.partition(), record.offset());
         if (shouldProcess(remoteLogMetadata, record.offset())) {
+            log.error("Processing remote log metadata: {} from partition: {} with offset: {}",
+                remoteLogMetadata, record.partition(), record.offset());
             remotePartitionMetadataEventHandler.handleRemoteLogMetadata(remoteLogMetadata);
             readOffsetsByUserTopicPartition.put(remoteLogMetadata.topicIdPartition(), record.offset());
         } else {
-            log.trace("The event {} is skipped because it is either already processed or not assigned to this consumer",
+            log.debug("The event {} is skipped because it is either already processed or not assigned to this consumer",
                     remoteLogMetadata);
         }
         log.trace("Updating consumed offset: {} for partition {}", record.offset(), record.partition());
@@ -254,6 +258,7 @@ class ConsumerTask implements Runnable, Closeable {
                 if (!utp.isAssigned) {
                     // Note that there can be a race between `remove` and `add` partition assignment. Calling the
                     // `maybeLoadPartition` here again to be sure that the partition gets loaded on the handler.
+                    log.error("Loading partition {} from maybeWaitForPartitionAssignments", utp.topicIdPartition);
                     remotePartitionMetadataEventHandler.maybeLoadPartition(utp.topicIdPartition);
                     utp.isAssigned = true;
                 }

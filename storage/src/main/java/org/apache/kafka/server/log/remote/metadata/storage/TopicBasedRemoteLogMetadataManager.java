@@ -287,8 +287,11 @@ public class TopicBasedRemoteLogMetadataManager implements RemoteLogMetadataMana
             if (!initialized.get()) {
                 // If it is not yet initialized, then keep them as pending partitions and assign them
                 // when it is initialized successfully in initializeResources().
+                log.error("Pending assign partitions {}", pendingAssignPartitions);
                 this.pendingAssignPartitions.addAll(allPartitions);
+                log.error("added more partitions to pending {} .", allPartitions);
             } else {
+                log.error("Assigning partitions {} while topic-based RLMM is already initialized.", allPartitions);
                 assignPartitions(allPartitions);
             }
         } finally {
@@ -426,6 +429,8 @@ public class TopicBasedRemoteLogMetadataManager implements RemoteLogMetadataMana
                     }
 
                     if (!pendingAssignPartitions.isEmpty()) {
+                        log.error("Pending assign partitions {} found while initializing topic-based RLMM resources.",
+                                pendingAssignPartitions);
                         assignPartitions(pendingAssignPartitions);
                         pendingAssignPartitions.clear();
                     }
