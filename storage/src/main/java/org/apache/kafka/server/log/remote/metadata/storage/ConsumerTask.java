@@ -160,12 +160,12 @@ class ConsumerTask implements Runnable, Closeable {
                 remoteLogMetadata, record.partition(), record.offset());
             remotePartitionMetadataEventHandler.handleRemoteLogMetadata(remoteLogMetadata);
             readOffsetsByUserTopicPartition.put(remoteLogMetadata.topicIdPartition(), record.offset());
+            log.error("Updating consumed offset: {} for partition {}", record.offset(), record.partition());
+            readOffsetsByMetadataPartition.put(record.partition(), record.offset());
         } else {
             log.debug("The event {} is skipped because it is either already processed or not assigned to this consumer",
                     remoteLogMetadata);
         }
-        log.trace("Updating consumed offset: {} for partition {}", record.offset(), record.partition());
-        readOffsetsByMetadataPartition.put(record.partition(), record.offset());
     }
 
     private boolean shouldProcess(final RemoteLogMetadata metadata, final long recordOffset) {
@@ -173,7 +173,7 @@ class ConsumerTask implements Runnable, Closeable {
         final Long readOffset = readOffsetsByUserTopicPartition.get(tpId);
         log.error("Checking if the event {} should be processed. Read offset: {} and record offset: {}",
             metadata, readOffset, recordOffset);
-        log.error("processedAssignmentOfUserTopicIdPartitions: {}", processedAssignmentOfUserTopicIdPartitions);
+        log.error("processedAssignmentOfUserTopicIdPartitions does not contain {}: {}",tpId, processedAssignmentOfUserTopicIdPartitions);
         return processedAssignmentOfUserTopicIdPartitions.contains(tpId) && (readOffset == null || readOffset < recordOffset);
     }
 
@@ -240,6 +240,7 @@ class ConsumerTask implements Runnable, Closeable {
             }
         }
         if (!metadataPartitionSnapshot.isEmpty()) {
+            log.error("Assigned metadata partitions: {}", metadataPartitionSnapshot);
             final Set<TopicPartition> remoteLogPartitions = toRemoteLogPartitions(metadataPartitionSnapshot);
             consumer.assign(remoteLogPartitions);
             this.assignedMetadataPartitions = Collections.unmodifiableSet(metadataPartitionSnapshot);
