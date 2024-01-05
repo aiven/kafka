@@ -171,6 +171,9 @@ class ConsumerTask implements Runnable, Closeable {
     private boolean shouldProcess(final RemoteLogMetadata metadata, final long recordOffset) {
         final TopicIdPartition tpId = metadata.topicIdPartition();
         final Long readOffset = readOffsetsByUserTopicPartition.get(tpId);
+        log.error("Checking if the event {} should be processed. Read offset: {} and record offset: {}",
+            metadata, readOffset, recordOffset);
+        log.error("processedAssignmentOfUserTopicIdPartitions: {}", processedAssignmentOfUserTopicIdPartitions);
         return processedAssignmentOfUserTopicIdPartitions.contains(tpId) && (readOffset == null || readOffset < recordOffset);
     }
 
