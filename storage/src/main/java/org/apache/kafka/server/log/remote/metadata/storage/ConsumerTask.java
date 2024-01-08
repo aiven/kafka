@@ -131,6 +131,10 @@ class ConsumerTask implements Runnable, Closeable {
 
                 log.debug("Polling consumer to receive remote log metadata topic records");
                 final ConsumerRecords<byte[], byte[]> consumerRecords = consumer.poll(Duration.ofMillis(pollTimeoutMs));
+                if (hasAssignmentChanged) {
+                    log.warn("The assignment has changed. Update processedAssignmentOfUserTopicIdPartitions records");
+                    maybeWaitForPartitionAssignments();
+                }
                 for (ConsumerRecord<byte[], byte[]> record : consumerRecords) {
                     processConsumerRecord(record);
                 }
@@ -157,7 +161,7 @@ class ConsumerTask implements Runnable, Closeable {
         final RemoteLogMetadata remoteLogMetadata = serde.deserialize(record.value());
         log.error("Received remote log metadata: {} from partition: {} with offset: {}",
             remoteLogMetadata, record.partition(), record.offset());
-        if (shouldProcess(record.partition(), record.offset())) {
+        if (shouldProcess(remoteLogMetadata, record.partition(), record.offset())) {
             log.error("Processing remote log metadata: {} from partition: {} with offset: {}",
                 remoteLogMetadata, record.partition(), record.offset());
             remotePartitionMetadataEventHandler.handleRemoteLogMetadata(remoteLogMetadata);
@@ -177,12 +181,13 @@ class ConsumerTask implements Runnable, Closeable {
 //        }
     }
 
-    private boolean shouldProcess(final int recordPartition, final long recordOffset) {
+    private boolean shouldProcess(final RemoteLogMetadata metadata, final int recordPartition, final long recordOffset) {
+        final TopicIdPartition tpId = metadata.topicIdPartition();
         final Long readOffset = readOffsetsByMetadataPartition.get(recordPartition);
-        log.error("Checking if the event should be processed. Read offset: {} and record offset: {} and record partition {} ",
-             readOffset, recordOffset, recordPartition);
+        log.error("Checking if the event {} should be processed. Read offset: {} and record offset: {} and record partition {} ",
+            metadata, readOffset, recordOffset, recordPartition);
 //        log.error("processedAssignmentOfUserTopicIdPartitions does not contain {}: {}",tpId, processedAssignmentOfUserTopicIdPartitions);
-        return (readOffset == null || readOffset < recordOffset);
+        return processedAssignmentOfUserTopicIdPartitions.contains(tpId) && (readOffset == null || readOffset < recordOffset);
     }
 
     private void maybeMarkUserPartitionsAsReady() {
@@ -284,7 +289,7 @@ class ConsumerTask implements Runnable, Closeable {
                 processedAssignmentPartitions.add(utp.topicIdPartition);
             });
             log.error("Processed assignment partitions: {}", processedAssignmentPartitions);
-//            processedAssignmentOfUserTopicIdPartitions = new HashSet<>(processedAssignmentPartitions);
+            processedAssignmentOfUserTopicIdPartitions = new HashSet<>(processedAssignmentPartitions);
             clearResourcesForUnassignedUserTopicPartitions(processedAssignmentPartitions);
             isAllUserTopicPartitionsInitialized = false;
             uninitializedAt = time.milliseconds();
