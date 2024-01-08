@@ -250,12 +250,12 @@ public class ConsumerTaskTest {
 
         // shouldn't read tpId2 records because it's not assigned
         addRecord(consumer, metadataPartition, tpId2, 3);
-        TestUtils.waitForCondition(() -> consumerTask.readOffsetForMetadataPartition(metadataPartition).equals(Optional.of(2L)), "Couldn't read record");
-        assertEquals(3, handler.metadataCounter);
+        TestUtils.waitForCondition(() -> consumerTask.readOffsetForMetadataPartition(metadataPartition).equals(Optional.of(3L)), "Couldn't read record");
+        assertEquals(4, handler.metadataCounter);
 
         addRecord(consumer, metadataPartition, tpId1, 4);
         TestUtils.waitForCondition(() -> consumerTask.readOffsetForMetadataPartition(metadataPartition).equals(Optional.of(4L)), "Couldn't read record");
-        assertEquals(4, handler.metadataCounter);
+        assertEquals(5, handler.metadataCounter);
     }
 
     @Test
