@@ -23,6 +23,7 @@ import org.apache.kafka.common.TopicIdPartition;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.errors.RetriableException;
 import org.apache.kafka.common.errors.WakeupException;
+import org.apache.kafka.common.record.Record;
 import org.apache.kafka.common.utils.Time;
 import org.apache.kafka.server.log.remote.metadata.storage.serialization.RemoteLogMetadataSerde;
 import org.apache.kafka.server.log.remote.storage.RemoteLogMetadata;
@@ -156,11 +157,11 @@ class ConsumerTask implements Runnable, Closeable {
         final RemoteLogMetadata remoteLogMetadata = serde.deserialize(record.value());
         log.error("Received remote log metadata: {} from partition: {} with offset: {}",
             remoteLogMetadata, record.partition(), record.offset());
-        if (shouldProcess(remoteLogMetadata, record.offset())) {
+        if (shouldProcess(remoteLogMetadata, record.partition(), record.offset())) {
             log.error("Processing remote log metadata: {} from partition: {} with offset: {}",
                 remoteLogMetadata, record.partition(), record.offset());
             remotePartitionMetadataEventHandler.handleRemoteLogMetadata(remoteLogMetadata);
-            readOffsetsByUserTopicPartition.put(remoteLogMetadata.topicIdPartition(), record.offset());
+            readOffsetsByMetadataPartition.put(record.partition(), record.offset());
         } else {
             log.debug("The event {} is skipped because it is either already processed or not assigned to this consumer",
                     remoteLogMetadata);
@@ -171,16 +172,16 @@ class ConsumerTask implements Runnable, Closeable {
 //                (readOffsetsByMetadataPartition.get(record.partition()) == record.offset() -1)) {
             log.error("Updating consumed offset: {} for partition {} previously read offsets {}",
                     record.offset(), record.partition(), readOffsetsByMetadataPartition.get(record.partition()));
-            readOffsetsByMetadataPartition.put(record.partition(), record.offset());
+//        readOffsetsByMetadataPartition.put(record.partition(), record.offset());
 //        }
     }
 
-    private boolean shouldProcess(final RemoteLogMetadata metadata, final long recordOffset) {
+    private boolean shouldProcess(final RemoteLogMetadata metadata, final int recordPartition, final long recordOffset) {
         final TopicIdPartition tpId = metadata.topicIdPartition();
-        final Long readOffset = readOffsetsByUserTopicPartition.get(tpId);
-        log.error("Checking if the event {} should be processed. Read offset: {} and record offset: {}",
-            metadata, readOffset, recordOffset);
-        log.error("processedAssignmentOfUserTopicIdPartitions does not contain {}: {}",tpId, processedAssignmentOfUserTopicIdPartitions);
+        final Long readOffset = readOffsetsByMetadataPartition.get(recordPartition);
+        log.error("Checking if the event {} should be processed. Read offset: {} and record offset: {} and record partition {} ",
+            metadata, readOffset, recordOffset, recordPartition);
+//        log.error("processedAssignmentOfUserTopicIdPartitions does not contain {}: {}",tpId, processedAssignmentOfUserTopicIdPartitions);
         return processedAssignmentOfUserTopicIdPartitions.contains(tpId) && (readOffset == null || readOffset < recordOffset);
     }
 
