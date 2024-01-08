@@ -246,7 +246,7 @@ class ConsumerTask implements Runnable, Closeable {
             final Set<TopicPartition> remoteLogPartitions = toRemoteLogPartitions(metadataPartitionSnapshot);
             consumer.assign(remoteLogPartitions);
             this.assignedMetadataPartitions = Collections.unmodifiableSet(metadataPartitionSnapshot);
-            log.error("Assigned metadata partitions: {}", assignedMetadataPartitions
+            log.error("Assigned metadata partitions: {}", assignedMetadataPartitions);
             // for newly assigned user-partitions, read from the beginning of the corresponding metadata partition
             final Set<TopicPartition> seekToBeginOffsetPartitions = assignedUserTopicIdPartitionsSnapshot
                 .stream()
