@@ -164,8 +164,12 @@ class ConsumerTask implements Runnable, Closeable {
             log.debug("The event {} is skipped because it is either already processed or not assigned to this consumer",
                     remoteLogMetadata);
         }
-        log.error("Updating consumed offset: {} for partition {}", record.offset(), record.partition());
-        readOffsetsByMetadataPartition.put(record.partition(), record.offset());
+        if(!readOffsetsByMetadataPartition.containsKey(record.partition()) ||
+                readOffsetsByMetadataPartition.get(record.partition()) == record.offset() -1) {
+            log.error("Updating consumed offset: {} for partition {} previously read offsets {}",
+                    record.offset(), record.partition(), readOffsetsByMetadataPartition.get(record.partition()));
+            readOffsetsByMetadataPartition.put(record.partition(), record.offset());
+        }
     }
 
     private boolean shouldProcess(final RemoteLogMetadata metadata, final long recordOffset) {
@@ -259,8 +263,8 @@ class ConsumerTask implements Runnable, Closeable {
             remoteLogPartitions.stream()
                 .filter(tp -> !seekToBeginOffsetPartitions.contains(tp) &&
                     readOffsetsByMetadataPartition.containsKey(tp.partition()))
-                .peek(tp -> log.error("Reading from the offset where the processing left last time for partition: {}",
-                    tp.partition()))
+                .peek(tp -> log.error("Reading from the offset {} where the processing left last time for partition: {}",
+                    readOffsetsByMetadataPartition.get(tp.partition()), tp.partition()))
                 .forEach(tp -> consumer.seek(tp, readOffsetsByMetadataPartition.get(tp.partition())));
             Set<TopicIdPartition> processedAssignmentPartitions = new HashSet<>();
             // mark all the user-topic-partitions as assigned to the consumer.
