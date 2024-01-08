@@ -161,7 +161,8 @@ class ConsumerTask implements Runnable, Closeable {
             log.error("Processing remote log metadata: {} from partition: {} with offset: {}",
                 remoteLogMetadata, record.partition(), record.offset());
             remotePartitionMetadataEventHandler.handleRemoteLogMetadata(remoteLogMetadata);
-            readOffsetsByMetadataPartition.put(record.partition(), record.offset());
+//            readOffsetsByMetadataPartition.put(record.partition(), record.offset());
+            readOffsetsByUserTopicPartition.put(remoteLogMetadata.topicIdPartition(), record.offset());
         } else {
             log.debug("The event {} is skipped because it is either already processed or not assigned to this consumer",
                     remoteLogMetadata);
@@ -172,7 +173,7 @@ class ConsumerTask implements Runnable, Closeable {
 //                (readOffsetsByMetadataPartition.get(record.partition()) == record.offset() -1)) {
             log.error("Updating consumed offset: {} for partition {} previously read offsets {}",
                     record.offset(), record.partition(), readOffsetsByMetadataPartition.get(record.partition()));
-//        readOffsetsByMetadataPartition.put(record.partition(), record.offset());
+        readOffsetsByMetadataPartition.put(record.partition(), record.offset());
 //        }
     }
 
@@ -296,15 +297,17 @@ class ConsumerTask implements Runnable, Closeable {
         // Note that there can be previously assigned user-topic-partitions where no records are there to read
         // (eg) none of the segments for a partition were uploaded. Those partition resources won't be cleared.
         // It can be fixed later when required since they are empty resources.
+        log.error("Clearing resources for unassigned user-topic-partitions {}", assignedPartitions);
         Set<TopicIdPartition> unassignedPartitions = readOffsetsByUserTopicPartition.keySet()
             .stream()
             .filter(e -> !assignedPartitions.contains(e))
             .collect(Collectors.toSet());
         unassignedPartitions.forEach(unassignedPartition -> {
             remotePartitionMetadataEventHandler.clearTopicPartition(unassignedPartition);
+            log.error("Cleared resources for unassigned user-topic-partition: {}", unassignedPartition);
             readOffsetsByUserTopicPartition.remove(unassignedPartition);
         });
-        log.info("Unassigned user-topic-partitions: {}", unassignedPartitions.size());
+        log.info("Unassigned user-topic-partitions: {}", unassignedPartitions);
     }
 
     public void addAssignmentsForPartitions(final Set<TopicIdPartition> partitions) {
