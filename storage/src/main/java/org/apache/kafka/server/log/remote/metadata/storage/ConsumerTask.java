@@ -27,6 +27,7 @@ import org.apache.kafka.common.utils.Time;
 import org.apache.kafka.server.log.remote.metadata.storage.serialization.RemoteLogMetadataSerde;
 import org.apache.kafka.server.log.remote.storage.RemoteLogMetadata;
 import org.apache.kafka.server.log.remote.storage.RemoteLogSegmentMetadata;
+import org.apache.kafka.server.log.remote.storage.RemoteLogSegmentState;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -164,8 +165,10 @@ class ConsumerTask implements Runnable, Closeable {
             log.debug("The event {} is skipped because it is either already processed or not assigned to this consumer",
                     remoteLogMetadata);
         }
-        if(!readOffsetsByMetadataPartition.containsKey(record.partition()) ||
-                readOffsetsByMetadataPartition.get(record.partition()) == record.offset() -1) {
+        if((!readOffsetsByMetadataPartition.containsKey(record.partition())
+                && remoteLogMetadata instanceof RemoteLogSegmentMetadata
+                && ((RemoteLogSegmentMetadata) remoteLogMetadata).state() == RemoteLogSegmentState.COPY_SEGMENT_STARTED)  ||
+                (readOffsetsByMetadataPartition.get(record.partition()) == record.offset() -1)) {
             log.error("Updating consumed offset: {} for partition {} previously read offsets {}",
                     record.offset(), record.partition(), readOffsetsByMetadataPartition.get(record.partition()));
             readOffsetsByMetadataPartition.put(record.partition(), record.offset());
