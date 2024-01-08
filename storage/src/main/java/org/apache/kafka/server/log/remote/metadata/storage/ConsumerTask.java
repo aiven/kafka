@@ -165,14 +165,14 @@ class ConsumerTask implements Runnable, Closeable {
             log.debug("The event {} is skipped because it is either already processed or not assigned to this consumer",
                     remoteLogMetadata);
         }
-        if((!readOffsetsByMetadataPartition.containsKey(record.partition())
-                && remoteLogMetadata instanceof RemoteLogSegmentMetadata
-                && ((RemoteLogSegmentMetadata) remoteLogMetadata).state() == RemoteLogSegmentState.COPY_SEGMENT_STARTED)  ||
-                (readOffsetsByMetadataPartition.get(record.partition()) == record.offset() -1)) {
+//        if((!readOffsetsByMetadataPartition.containsKey(record.partition())
+//                && remoteLogMetadata instanceof RemoteLogSegmentMetadata
+//                && ((RemoteLogSegmentMetadata) remoteLogMetadata).state() == RemoteLogSegmentState.COPY_SEGMENT_STARTED)  ||
+//                (readOffsetsByMetadataPartition.get(record.partition()) == record.offset() -1)) {
             log.error("Updating consumed offset: {} for partition {} previously read offsets {}",
                     record.offset(), record.partition(), readOffsetsByMetadataPartition.get(record.partition()));
             readOffsetsByMetadataPartition.put(record.partition(), record.offset());
-        }
+//        }
     }
 
     private boolean shouldProcess(final RemoteLogMetadata metadata, final long recordOffset) {
@@ -320,6 +320,7 @@ class ConsumerTask implements Runnable, Closeable {
         if (!addedPartitions.isEmpty() || !removedPartitions.isEmpty()) {
             synchronized (assignPartitionsLock) {
                 // Make a copy of the existing assignments and update the copy.
+                log.error("Existing assigned user-topic-partitions: {}", assignedUserTopicIdPartitions);
                 final Map<TopicIdPartition, UserTopicIdPartition> updatedUserPartitions = new HashMap<>(assignedUserTopicIdPartitions);
                 addedPartitions.forEach(tpId -> updatedUserPartitions.putIfAbsent(tpId, newUserTopicIdPartition(tpId)));
                 removedPartitions.forEach(updatedUserPartitions::remove);
