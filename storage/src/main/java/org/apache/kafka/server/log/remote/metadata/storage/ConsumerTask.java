@@ -164,7 +164,7 @@ class ConsumerTask implements Runnable, Closeable {
 //            readOffsetsByMetadataPartition.put(record.partition(), record.offset());
             readOffsetsByUserTopicPartition.put(remoteLogMetadata.topicIdPartition(), record.offset());
         } else {
-            log.debug("The event {} is skipped because it is either already processed or not assigned to this consumer",
+            log.error("The event {} is skipped because it is either already processed or not assigned to this consumer",
                     remoteLogMetadata);
         }
 //        if((!readOffsetsByMetadataPartition.containsKey(record.partition())
@@ -180,7 +180,7 @@ class ConsumerTask implements Runnable, Closeable {
     private boolean shouldProcess(final RemoteLogMetadata metadata, final long recordOffset) {
         final TopicIdPartition tpId = metadata.topicIdPartition();
         final Long readOffset = readOffsetsByUserTopicPartition.get(tpId);
-        log.error("Checking if the event {} should be processed. Read offset: {} and record offset: {} and record partition {} ",
+        log.error("Checking if the event {} should be processed. Read offset: {} and record offset: {}",
             metadata, readOffset, recordOffset);
 //        log.error("processedAssignmentOfUserTopicIdPartitions does not contain {}: {}",tpId, processedAssignmentOfUserTopicIdPartitions);
         return processedAssignmentOfUserTopicIdPartitions.contains(tpId) && (readOffset == null || readOffset < recordOffset);
