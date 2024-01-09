@@ -147,14 +147,11 @@ public class RemotePartitionMetadataStore extends RemotePartitionMetadataEventHa
 
     private FileBasedRemoteLogMetadataCache getRemoteLogMetadataCache(TopicIdPartition topicIdPartition)
             throws RemoteResourceNotFoundException {
-        log.error("Getting RemoteLogMetadataCache for topicIdPartition: {} from {}", topicIdPartition, idToRemoteLogMetadataCache);
         FileBasedRemoteLogMetadataCache remoteLogMetadataCache = idToRemoteLogMetadataCache.get(topicIdPartition);
         if (remoteLogMetadataCache == null) {
             throw new RemoteResourceNotFoundException("No resource found for partition: " + topicIdPartition);
         }
-        log.error("remoteLogMetadataCache.isInitialized(): {}", remoteLogMetadataCache.isInitialized());
-        log.error("remoteLogMetadataCache epoch entries: {}", remoteLogMetadataCache.leaderEpochEntries);
-        log.error("remoteLogMetadataCache idToSegmentMetadata entries: {}", remoteLogMetadataCache.idToSegmentMetadata);
+
         if (!remoteLogMetadataCache.isInitialized()) {
             // Throwing a retriable ReplicaNotAvailableException here for clients retry. We can introduce a new more
             // appropriate exception with a KIP in the future.
@@ -199,7 +196,7 @@ public class RemotePartitionMetadataStore extends RemotePartitionMetadataEventHa
     @Override
     public void markInitialized(TopicIdPartition partition) {
         idToRemoteLogMetadataCache.get(partition).markInitialized();
-        log.error("Remote log components are initialized for user-partition: {}", partition);
+        log.trace("Remote log components are initialized for user-partition: {}", partition);
     }
 
     @Override
