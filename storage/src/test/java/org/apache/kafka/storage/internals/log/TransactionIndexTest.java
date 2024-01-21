@@ -202,4 +202,20 @@ public class TransactionIndexTest {
         index.deleteIfExists();
         assertFalse(file.exists());
     }
+
+    @Test
+    public void testClosedTxnIndexChannel() throws IOException {
+        List<AbortedTxn> abortedTxns = new ArrayList<>(Arrays.asList(
+                new AbortedTxn(0L, 0, 10, 11),
+                new AbortedTxn(1L, 5, 15, 13),
+                new AbortedTxn(2L, 18, 35, 25),
+                new AbortedTxn(3L, 32, 50, 40)));
+        abortedTxns.forEach(txn -> assertDoesNotThrow(() -> index.append(txn)));
+        index.close();
+        assertTrue(index.isClosed());
+
+        TransactionIndex reopenedIndex = new TransactionIndex(0L, file);
+        assertEquals(abortedTxns, reopenedIndex);
+        reopenedIndex.close();
+    }
 }
