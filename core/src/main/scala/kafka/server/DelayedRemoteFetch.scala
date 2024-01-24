@@ -38,8 +38,10 @@ class DelayedRemoteFetch(remoteFetchTask: Future[Void],
                          fetchParams: FetchParams,
                          localReadResults: Seq[(TopicIdPartition, LogReadResult)],
                          replicaManager: ReplicaManager,
-                         responseCallback: Seq[(TopicIdPartition, FetchPartitionData)] => Unit)
-  extends DelayedOperation(fetchParams.maxWaitMs) {
+                         responseCallback: Seq[(TopicIdPartition, FetchPartitionData)] => Unit,
+                         // TODO: temporal workaround, wait for workaround on KAFKA-15776, see KIP-1018
+                         maxWaitMs: Long)
+  extends DelayedOperation(maxWaitMs) {
 
   if (fetchParams.isFromFollower) {
     throw new IllegalStateException(s"The follower should not invoke remote fetch. Fetch params are: $fetchParams")
