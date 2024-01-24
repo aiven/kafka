@@ -1606,8 +1606,10 @@ class ReplicaManager(val config: KafkaConfig,
         return Some(createLogReadResult(e))
     }
 
+    // TODO: temporal workaround, wait for workaround on KAFKA-15776, see KIP-1018
+    val maxWaitMs = config.remoteLogManagerConfig.fetchRemoteMaxWaitMs()
     val remoteFetch = new DelayedRemoteFetch(remoteFetchTask, remoteFetchResult, remoteFetchInfo,
-      fetchPartitionStatus, params, logReadResults, this, responseCallback)
+      fetchPartitionStatus, params, logReadResults, this, responseCallback, maxWaitMs)
 
     delayedRemoteFetchPurgatory.tryCompleteElseWatch(remoteFetch, Seq(key))
     None
