@@ -157,7 +157,7 @@ class ConsumerTask implements Runnable, Closeable {
             remotePartitionMetadataEventHandler.handleRemoteLogMetadata(remoteLogMetadata);
             readOffsetsByUserTopicPartition.put(remoteLogMetadata.topicIdPartition(), record.offset());
         } else {
-            log.trace("The event {} is skipped because it is either already processed or not assigned to this consumer",
+            log.info("The event {} is skipped because it is either already processed or not assigned to this consumer",
                     remoteLogMetadata);
         }
         log.trace("Updating consumed offset: {} for partition {}", record.offset(), record.partition());
@@ -167,6 +167,8 @@ class ConsumerTask implements Runnable, Closeable {
     private boolean shouldProcess(final RemoteLogMetadata metadata, final long recordOffset) {
         final TopicIdPartition tpId = metadata.topicIdPartition();
         final Long readOffset = readOffsetsByUserTopicPartition.get(tpId);
+        log.info("processedAssignmentOfUserTopicIdPartitions contains tpId " + tpId);
+        log.info("readOffset is null or readOffset < recordOffset " + readOffset + " " + recordOffset);
         return processedAssignmentOfUserTopicIdPartitions.contains(tpId) && (readOffset == null || readOffset < recordOffset);
     }
 
