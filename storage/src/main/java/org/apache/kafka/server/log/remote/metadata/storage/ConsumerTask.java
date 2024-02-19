@@ -32,15 +32,10 @@ import org.slf4j.LoggerFactory;
 
 import java.io.Closeable;
 import java.time.Duration;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static org.apache.kafka.server.log.remote.metadata.storage.TopicBasedRemoteLogMetadataManagerConfig.REMOTE_LOG_METADATA_TOPIC_NAME;
 
@@ -247,11 +242,14 @@ class ConsumerTask implements Runnable, Closeable {
                 .map(utp -> toRemoteLogPartition(utp.metadataPartition))
                 .collect(Collectors.toSet());
             consumer.seekToBeginning(seekToBeginOffsetPartitions);
+            log.info("Seek to beginning: " + seekToBeginOffsetPartitions);
             // for other metadata partitions, read from the offset where the processing left last time.
-            remoteLogPartitions.stream()
-                .filter(tp -> !seekToBeginOffsetPartitions.contains(tp) &&
-                    readOffsetsByMetadataPartition.containsKey(tp.partition()))
-                .forEach(tp -> consumer.seek(tp, readOffsetsByMetadataPartition.get(tp.partition())));
+            List<TopicPartition> topicPartitionStream = remoteLogPartitions.stream()
+                    .filter(tp -> !seekToBeginOffsetPartitions.contains(tp) &&
+                            readOffsetsByMetadataPartition.containsKey(tp.partition())).collect(Collectors.toList());
+            log.info("Seek to read offset: " + topicPartitionStream);
+            log.info(" read offsets: " + readOffsetsByMetadataPartition);
+            topicPartitionStream.forEach(tp -> consumer.seek(tp, readOffsetsByMetadataPartition.get(tp.partition())));
             Set<TopicIdPartition> processedAssignmentPartitions = new HashSet<>();
             // mark all the user-topic-partitions as assigned to the consumer.
             assignedUserTopicIdPartitionsSnapshot.forEach(utp -> {
