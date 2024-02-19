@@ -167,7 +167,7 @@ class ConsumerTask implements Runnable, Closeable {
     private boolean shouldProcess(final RemoteLogMetadata metadata, final long recordOffset) {
         final TopicIdPartition tpId = metadata.topicIdPartition();
         final Long readOffset = readOffsetsByUserTopicPartition.get(tpId);
-        log.info("processedAssignmentOfUserTopicIdPartitions contains tpId " + tpId);
+        log.info("processedAssignmentOfUserTopicIdPartitions contains tpId " + processedAssignmentOfUserTopicIdPartitions + " " + tpId);
         log.info("readOffset is null or readOffset < recordOffset " + readOffset + " " + recordOffset);
         return processedAssignmentOfUserTopicIdPartitions.contains(tpId) && (readOffset == null || readOffset < recordOffset);
     }
@@ -257,8 +257,10 @@ class ConsumerTask implements Runnable, Closeable {
                     // Note that there can be a race between `remove` and `add` partition assignment. Calling the
                     // `maybeLoadPartition` here again to be sure that the partition gets loaded on the handler.
                     remotePartitionMetadataEventHandler.maybeLoadPartition(utp.topicIdPartition);
+                    log.info("marking utp as assigned: " + utp);
                     utp.isAssigned = true;
                 }
+                log.info("adding utp to processedAssignment: " + utp + " " + utp.topicIdPartition);
                 processedAssignmentPartitions.add(utp.topicIdPartition);
             });
             processedAssignmentOfUserTopicIdPartitions = new HashSet<>(processedAssignmentPartitions);
