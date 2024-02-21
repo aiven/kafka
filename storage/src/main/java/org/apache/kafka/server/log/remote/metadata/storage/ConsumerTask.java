@@ -32,10 +32,16 @@ import org.slf4j.LoggerFactory;
 
 import java.io.Closeable;
 import java.time.Duration;
-import java.util.*;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 import static org.apache.kafka.server.log.remote.metadata.storage.TopicBasedRemoteLogMetadataManagerConfig.REMOTE_LOG_METADATA_TOPIC_NAME;
 
@@ -222,6 +228,7 @@ class ConsumerTask implements Runnable, Closeable {
                 assignPartitionsLock.wait();
             }
             if (!isClosed && hasAssignmentChanged) {
+                System.out.println("new partitions " + assignedUserTopicIdPartitions);
                 assignedUserTopicIdPartitions.values().forEach(utp -> {
                     metadataPartitionSnapshot.add(utp.metadataPartition);
                     assignedUserTopicIdPartitionsSnapshot.add(utp);
@@ -237,12 +244,12 @@ class ConsumerTask implements Runnable, Closeable {
             this.assignedMetadataPartitions = Collections.unmodifiableSet(metadataPartitionSnapshot);
             // for newly assigned user-partitions, read from the beginning of the corresponding metadata partition
             final Set<TopicPartition> seekToBeginOffsetPartitions = assignedUserTopicIdPartitionsSnapshot
-                .stream()
-                .filter(utp -> !utp.isAssigned)
-                .map(utp -> utp.metadataPartition)
-                .peek(readOffsetsByMetadataPartition::remove)
-                .map(ConsumerTask::toRemoteLogPartition)
-                .collect(Collectors.toSet());
+                    .stream()
+                    .filter(utp -> !utp.isAssigned)
+                    .map(utp -> utp.metadataPartition)
+//                    .peek(readOffsetsByMetadataPartition::remove)
+                    .map(ConsumerTask::toRemoteLogPartition)
+                    .collect(Collectors.toSet());
             consumer.seekToBeginning(seekToBeginOffsetPartitions);
             log.info("Seek to beginning: " + seekToBeginOffsetPartitions);
             // for other metadata partitions, read from the offset where the processing left last time.

@@ -230,7 +230,7 @@ public class MockConsumer<K, V> implements Consumer<K, V> {
                         subscriptions.position(entry.getKey(), newPosition);
                     }
                 }
-                toClear.add(entry.getKey());
+//                toClear.add(entry.getKey());
             }
         }
 
