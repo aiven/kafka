@@ -35,7 +35,6 @@ import java.time.Duration;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -158,7 +157,7 @@ class ConsumerTask implements Runnable, Closeable {
             remotePartitionMetadataEventHandler.handleRemoteLogMetadata(remoteLogMetadata);
             readOffsetsByUserTopicPartition.put(remoteLogMetadata.topicIdPartition(), record.offset());
         } else {
-            log.info("The event {} is skipped because it is either already processed or not assigned to this consumer",
+            log.trace("The event {} is skipped because it is either already processed or not assigned to this consumer",
                     remoteLogMetadata);
         }
         log.trace("Updating consumed offset: {} for partition {}", record.offset(), record.partition());
@@ -168,8 +167,6 @@ class ConsumerTask implements Runnable, Closeable {
     private boolean shouldProcess(final RemoteLogMetadata metadata, final long recordOffset) {
         final TopicIdPartition tpId = metadata.topicIdPartition();
         final Long readOffset = readOffsetsByUserTopicPartition.get(tpId);
-        log.info("processedAssignmentOfUserTopicIdPartitions contains tpId " + processedAssignmentOfUserTopicIdPartitions + " " + tpId);
-        log.info("readOffset is null or readOffset < recordOffset " + readOffset + " " + recordOffset);
         return processedAssignmentOfUserTopicIdPartitions.contains(tpId) && (readOffset == null || readOffset < recordOffset);
     }
 
@@ -228,7 +225,6 @@ class ConsumerTask implements Runnable, Closeable {
                 assignPartitionsLock.wait();
             }
             if (!isClosed && hasAssignmentChanged) {
-                System.out.println("new partitions " + assignedUserTopicIdPartitions);
                 assignedUserTopicIdPartitions.values().forEach(utp -> {
                     metadataPartitionSnapshot.add(utp.metadataPartition);
                     assignedUserTopicIdPartitionsSnapshot.add(utp);
@@ -238,8 +234,6 @@ class ConsumerTask implements Runnable, Closeable {
         }
         if (!metadataPartitionSnapshot.isEmpty()) {
             final Set<TopicPartition> remoteLogPartitions = toRemoteLogPartitions(metadataPartitionSnapshot);
-            log.info("Assigned metadata partitions: " + remoteLogPartitions);
-            log.info("assigned utps: " + assignedUserTopicIdPartitionsSnapshot);
             consumer.assign(remoteLogPartitions);
             this.assignedMetadataPartitions = Collections.unmodifiableSet(metadataPartitionSnapshot);
             // for newly assigned user-partitions, read from the beginning of the corresponding metadata partition
@@ -247,18 +241,18 @@ class ConsumerTask implements Runnable, Closeable {
                     .stream()
                     .filter(utp -> !utp.isAssigned)
                     .map(utp -> utp.metadataPartition)
-//                    .peek(readOffsetsByMetadataPartition::remove)
+                    // When reset to beginning is happening, we also need to reset the last read offset
+                    // Otherwise if the next reassignment request for the same metadata partition comes in
+                    // before the record of already assigned topic has been read, then the reset will happen again to the last read offset
+                    .peek(readOffsetsByMetadataPartition::remove)
                     .map(ConsumerTask::toRemoteLogPartition)
                     .collect(Collectors.toSet());
             consumer.seekToBeginning(seekToBeginOffsetPartitions);
-            log.info("Seek to beginning: " + seekToBeginOffsetPartitions);
             // for other metadata partitions, read from the offset where the processing left last time.
-            List<TopicPartition> topicPartitionStream = remoteLogPartitions.stream()
-                    .filter(tp -> !seekToBeginOffsetPartitions.contains(tp) &&
-                            readOffsetsByMetadataPartition.containsKey(tp.partition())).collect(Collectors.toList());
-            log.info("Seek to read offset: " + topicPartitionStream);
-            log.info(" read offsets: " + readOffsetsByMetadataPartition);
-            topicPartitionStream.forEach(tp -> consumer.seek(tp, readOffsetsByMetadataPartition.get(tp.partition())));
+            remoteLogPartitions.stream()
+                .filter(tp -> !seekToBeginOffsetPartitions.contains(tp) &&
+                    readOffsetsByMetadataPartition.containsKey(tp.partition()))
+                .forEach(tp -> consumer.seek(tp, readOffsetsByMetadataPartition.get(tp.partition())));
             Set<TopicIdPartition> processedAssignmentPartitions = new HashSet<>();
             // mark all the user-topic-partitions as assigned to the consumer.
             assignedUserTopicIdPartitionsSnapshot.forEach(utp -> {
@@ -266,10 +260,8 @@ class ConsumerTask implements Runnable, Closeable {
                     // Note that there can be a race between `remove` and `add` partition assignment. Calling the
                     // `maybeLoadPartition` here again to be sure that the partition gets loaded on the handler.
                     remotePartitionMetadataEventHandler.maybeLoadPartition(utp.topicIdPartition);
-                    log.info("marking utp as assigned: " + utp);
                     utp.isAssigned = true;
                 }
-                log.info("adding utp to processedAssignment: " + utp + " " + utp.topicIdPartition);
                 processedAssignmentPartitions.add(utp.topicIdPartition);
             });
             processedAssignmentOfUserTopicIdPartitions = new HashSet<>(processedAssignmentPartitions);
