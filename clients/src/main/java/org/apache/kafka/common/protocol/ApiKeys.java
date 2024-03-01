@@ -63,6 +63,7 @@ public enum ApiKeys {
     SASL_HANDSHAKE(ApiMessageType.SASL_HANDSHAKE),
     API_VERSIONS(ApiMessageType.API_VERSIONS),
     CREATE_TOPICS(ApiMessageType.CREATE_TOPICS, false, true),
+    CREATE_TOPICS_WITH_ID(ApiMessageType.CREATE_TOPICS_WITH_ID, false, true),
     DELETE_TOPICS(ApiMessageType.DELETE_TOPICS, false, true),
     DELETE_RECORDS(ApiMessageType.DELETE_RECORDS),
     INIT_PRODUCER_ID(ApiMessageType.INIT_PRODUCER_ID),
