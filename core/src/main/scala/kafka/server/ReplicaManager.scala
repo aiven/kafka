@@ -71,6 +71,7 @@ import java.util.{Optional, OptionalInt, OptionalLong}
 import scala.collection.{Map, Seq, Set, mutable}
 import scala.compat.java8.OptionConverters._
 import scala.jdk.CollectionConverters._
+import scala.util.Random
 
 /*
  * Result metadata of a log append operation on the log
@@ -1646,7 +1647,9 @@ class ReplicaManager(val config: KafkaConfig,
     var errorReadingData = false
 
     // The 1st topic-partition that has to be read from remote storage
-    var remoteFetchInfo: Optional[RemoteStorageFetchInfo] = Optional.empty()
+    // WORKAROUND: randomize partition fetched
+    // var remoteFetchInfo: Optional[RemoteStorageFetchInfo] = Optional.empty()
+    var remoteFetchInfos: Seq[Optional[RemoteStorageFetchInfo]] = Seq.empty
 
     var hasDivergingEpoch = false
     var hasPreferredReadReplica = false
@@ -1657,8 +1660,12 @@ class ReplicaManager(val config: KafkaConfig,
       brokerTopicStats.allTopicsStats.totalFetchRequestRate.mark()
       if (logReadResult.error != Errors.NONE)
         errorReadingData = true
-      if (!remoteFetchInfo.isPresent && logReadResult.info.delayedRemoteStorageFetch.isPresent) {
-        remoteFetchInfo = logReadResult.info.delayedRemoteStorageFetch
+      // WORKAROUND: randomize partition fetched
+      //if (!remoteFetchInfo.isPresent && logReadResult.info.delayedRemoteStorageFetch.isPresent) {
+      //  remoteFetchInfo = logReadResult.info.delayedRemoteStorageFetch
+      //}
+      if (logReadResult.info.delayedRemoteStorageFetch.isPresent) {
+        remoteFetchInfos = remoteFetchInfos ++ Seq(logReadResult.info.delayedRemoteStorageFetch)
       }
       if (logReadResult.divergingEpoch.nonEmpty)
         hasDivergingEpoch = true
@@ -1667,6 +1674,8 @@ class ReplicaManager(val config: KafkaConfig,
       bytesReadable = bytesReadable + logReadResult.info.records.sizeInBytes
       logReadResultMap.put(topicIdPartition, logReadResult)
     }
+
+    val remoteFetchInfo: Optional[RemoteStorageFetchInfo] = maybeRemoteFetchInfo(remoteFetchInfos)
 
     // Respond immediately if no remote fetches are required and any of the below conditions is true
     //                        1) fetch request does not want to wait
@@ -1721,6 +1730,18 @@ class ReplicaManager(val config: KafkaConfig,
         delayedFetchPurgatory.tryCompleteElseWatch(delayedFetch, delayedFetchKeys)
       }
     }
+  }
+
+  // WORKAROUND: randomize partition fetched
+  private val rnd = new Random()
+  def maybeRemoteFetchInfo(remoteFetchInfos: Seq[Optional[RemoteStorageFetchInfo]]): Optional[RemoteStorageFetchInfo] = {
+    val remoteFetchInfo: Optional[RemoteStorageFetchInfo] = if (remoteFetchInfos.isEmpty) {
+      Optional.empty()
+    } else {
+      val i = rnd.nextInt(remoteFetchInfos.size)
+      remoteFetchInfos(i)
+    }
+    remoteFetchInfo
   }
 
   /**

@@ -6558,6 +6558,51 @@ class ReplicaManagerTest {
       ))
     }
   }
+
+  @Test
+  def testRandomizedRemoteFetchInfo(): Unit = {
+    // Given
+    val props = TestUtils.createBrokerConfig(1, TestUtils.MockZkConnect, logDirCount = 2)
+    val config = KafkaConfig.fromProps(props)
+    val logDirFiles = config.logDirs.map(new File(_))
+    val logDirFailureChannel = new LogDirFailureChannel(config.logDirs.size)
+    val logManager = TestUtils.createLogManager(logDirFiles, defaultConfig = new LogConfig(new Properties()), time = time)
+    val mockZkClient = mock(classOf[KafkaZkClient])
+    val replicaManager = new ReplicaManager(
+      metrics = metrics,
+      config = config,
+      time = time,
+      scheduler = time.scheduler,
+      logManager = logManager,
+      quotaManagers = quotaManager,
+      metadataCache = MetadataCache.zkMetadataCache(config.brokerId, config.interBrokerProtocolVersion),
+      logDirFailureChannel = logDirFailureChannel,
+      alterPartitionManager = alterPartitionManager,
+      threadNamePrefix = Option(this.getClass.getName),
+      zkClient = Option(mockZkClient),
+    )
+
+    var infos: Seq[Optional[RemoteStorageFetchInfo]] = Seq()
+
+    // When
+    val emptyRemoteFetchInfo = replicaManager.maybeRemoteFetchInfo(infos)
+
+    // Then
+    assertFalse(emptyRemoteFetchInfo.isPresent)
+
+    // Given
+    val info0 = new RemoteStorageFetchInfo(1000, false, new TopicPartition(topic, 0), null, FetchIsolation.HIGH_WATERMARK, false)
+    val info1 = new RemoteStorageFetchInfo(1000, false, new TopicPartition(topic, 1), null, FetchIsolation.HIGH_WATERMARK, false)
+    val info2 = new RemoteStorageFetchInfo(1000, false, new TopicPartition(topic, 2), null, FetchIsolation.HIGH_WATERMARK, false)
+    infos = infos ++ Seq(Optional.of(info0), Optional.of(info1), Optional.of(info2))
+
+    // When
+    val someRemoteFetchInfo = replicaManager.maybeRemoteFetchInfo(infos)
+
+    // Then
+    assertTrue(someRemoteFetchInfo.isPresent)
+    println(someRemoteFetchInfo.get())
+  }
 }
 
 class MockReplicaSelector extends ReplicaSelector {
