@@ -26,8 +26,10 @@ import org.apache.kafka.common.utils.Utils;
 import org.apache.kafka.connect.mirror.MirrorCheckpointConfig;
 import org.apache.kafka.connect.mirror.MirrorCheckpointConnector;
 import org.apache.kafka.connect.mirror.MirrorClientConfig;
+import org.apache.kafka.connect.mirror.MirrorConnectorConfig;
 import org.apache.kafka.connect.mirror.MirrorMakerConfig;
 import org.apache.kafka.connect.mirror.OffsetSyncStore;
+import org.apache.kafka.connect.mirror.ReplicationPolicy;
 import org.apache.kafka.connect.mirror.SourceAndTarget;
 import org.apache.kafka.connect.mirror.admin.offsetinspector.ConsumerGroupOffsetsComparer;
 import org.apache.kafka.connect.mirror.admin.offsetinspector.ConsumerGroupsStateCollector;
@@ -39,6 +41,8 @@ import net.sourceforge.argparse4j.inf.ArgumentParser;
 import net.sourceforge.argparse4j.inf.ArgumentParserException;
 import net.sourceforge.argparse4j.inf.Namespace;
 
+import org.apache.kafka.connect.mirror.admin.offsetinspector.TopicPartitionState;
+import org.apache.kafka.connect.mirror.admin.offsetinspector.TopicPartitionStateCollector;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -49,21 +53,33 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.time.Duration;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 
 public final class ConsumerGroupOffsetSyncInspector {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ConsumerGroupOffsetSyncInspector.class);
-    private static final String CSV_ROW_FORMAT = "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s";
-    private static final String CSV_HEADER_FORMAT = String.format(CSV_ROW_FORMAT, "CLUSTER PAIR", "GROUP", "GROUP STATE", "TOPIC", "PARTITION",
-            "SOURCE OFFSET", "TARGET LAG TO SOURCE", "TARGET OFFSET", "TARGET LAG", "IS OK", "MESSAGE");
+    private static final String CSV_ROW_FORMAT = "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s";
+    private static final String CSV_HEADER_FORMAT = String.format(CSV_ROW_FORMAT,
+            "CLUSTER PAIR", "TOPIC", "PARTITION", "GROUP", // unique key
+            "SOURCE TOPIC EARLIEST OFFSET", "SOURCE TOPIC LATEST OFFSET", // source topic
+            "SOURCE GROUP STATE", "SOURCE GROUP OFFSET", "SOURCE GROUP LAG", // source group
+            "TARGET TOPIC EARLIEST OFFSET", "TARGET TOPIC LATEST OFFSET", // target topic
+            "TARGET GROUP STATE", "TARGET GROUP OFFSET", "TARGET GROUP LAG", // target group
+            "TARGET GROUP LAG TO SOURCE", "SOURCE HAS DATA", "TARGET HAS DATA", "IS OK", "BLOCKING COMPONENT", "MESSAGE" // derived
+    );
+    private static final String NO_DATA = "-";
 
     public static void main(final String[] args) throws IOException {
         final ArgumentParser parser = ArgumentParsers.newArgumentParser("mirror-maker-consumer-group-offset-sync-inspector");
@@ -200,6 +216,24 @@ public final class ConsumerGroupOffsetSyncInspector {
                     .build();
             final Map<GroupAndState, Map<TopicPartition, OffsetAndMetadata>> targetConsumerOffsets = targetCollector.getCommittedOffsets(sourceConsumerOffsets.keySet());
 
+            Set<TopicPartition> sourceTopicPartitions = sourceConsumerOffsets.values().stream().flatMap(map -> map.keySet().stream()).collect(Collectors.toSet());
+            Map<TopicPartition, TopicPartition> sourceToTargetPartition = mapToRemoteTopics(mirrorCheckpointConfig, sourceTopicPartitions);
+
+            final Map<TopicPartition, TopicPartitionState> sourceTopicStates = TopicPartitionStateCollector.builder()
+                    .withAdminTimeout(adminTimeout)
+                    .withAdminClient(sourceAdminClient)
+                    .withTopicPartitions(sourceTopicPartitions)
+                    .build()
+                    .getTopicStates();
+
+            final Map<TopicPartition, TopicPartitionState> targetTopicStates = TopicPartitionStateCollector.builder()
+                    .withAdminTimeout(adminTimeout)
+                    .withAdminClient(targetAdminClient)
+                    .withTopicPartitions(new HashSet<>(sourceToTargetPartition.values()))
+                    .build()
+                    .getTopicStates();
+
+
             // No more new tasks allowed.
             executor.shutdown();
             try {
@@ -209,9 +243,9 @@ public final class ConsumerGroupOffsetSyncInspector {
             }
 
             final ConsumerGroupOffsetsComparer comparer = ConsumerGroupOffsetsComparer.builder()
-                    .withOperationTimeout(adminTimeout)
-                    .withSourceAdminClient(sourceAdminClient)
-                    .withTargetAdminClient(targetAdminClient)
+                    .withTopicMappings(sourceToTargetPartition)
+                    .withSourceTopics(sourceTopicStates)
+                    .withTargetTopics(targetTopicStates)
                     .withSourceConsumerOffsets(sourceConsumerOffsets)
                     .withTargetConsumerOffsets(targetConsumerOffsets)
                     .withIncludeOkConsumerGroups(includeOkConsumerGroups)
@@ -233,6 +267,16 @@ public final class ConsumerGroupOffsetSyncInspector {
         return clusterResults;
     }
 
+    private static Map<TopicPartition, TopicPartition> mapToRemoteTopics(MirrorConnectorConfig config, Set<TopicPartition> sourcePartitions) {
+        ReplicationPolicy replicationPolicy = config.replicationPolicy();
+        try {
+            return sourcePartitions.stream()
+                    .collect(Collectors.toMap(Function.identity(), tp -> new TopicPartition(replicationPolicy.formatRemoteTopic(config.sourceClusterAlias(), tp.topic()), tp.partition())));
+        } finally {
+            Utils.maybeCloseQuietly(replicationPolicy, "replication policy");
+        }
+    }
+
     private void writeToOutputStream(final PrintStream out,
                                      final Map<SourceAndTarget, ConsumerGroupOffsetsComparer.ConsumerGroupsCompareResult> clusterResults) {
         try {
@@ -242,23 +286,36 @@ public final class ConsumerGroupOffsetSyncInspector {
             throw new RuntimeException(e);
         }
 
-        clusterResults.forEach((sourceAndTarget, result) -> result.getConsumerGroupsCompareResult().stream().sorted().forEach(groupResult -> {
+        clusterResults.forEach((sourceAndTarget, allResults) -> allResults.getConsumerGroupsCompareResult().stream().sorted().forEach(result -> {
             try {
-                final String sourceOffset = groupResult.getSourceOffset() == null
-                        ? "-"
-                        : groupResult.getSourceOffset().toString();
-                final String targetOffset = groupResult.getTargetOffset() == null
-                        ? "-"
-                        : groupResult.getTargetOffset().toString();
-                final String targetLag = groupResult.getTargetLag() == null
-                        ? "-"
-                        : groupResult.getTargetLag().toString();
-                out.write(
-                        String.format(CSV_ROW_FORMAT, sourceAndTarget.toString(),
-                                groupResult.getGroupId(), groupResult.getGroupState(), groupResult.getTopic(),
-                                groupResult.getPartition(), sourceOffset, groupResult.getLagAtTargetToSource(),
-                                targetOffset, targetLag,
-                                groupResult.isOk(), groupResult.getMessage()).getBytes(StandardCharsets.UTF_8));
+                out.write(String.format(CSV_ROW_FORMAT,
+                        // unique key
+                        sourceAndTarget.toString(),
+                        result.getTopic(),
+                        result.getPartition(),
+                        result.getGroupId(),
+                        // source topic
+                        result.getSourceEarliest(),
+                        result.getSourceLatest(),
+                        // source group
+                        result.getGroupState(),
+                        Objects.toString(result.getSourceOffset(), NO_DATA),
+                        Objects.toString(result.getSourceLag(), NO_DATA),
+                        // target topic
+                        Objects.toString(result.getTargetEarliest(), NO_DATA),
+                        Objects.toString(result.getTargetLatest(), NO_DATA),
+                        // target group
+                        Objects.toString(result.getTargetGroupState(), NO_DATA),
+                        Objects.toString(result.getTargetOffset(), NO_DATA),
+                        Objects.toString(result.getTargetLag(), NO_DATA),
+                        // derived
+                        Objects.toString(result.getLagAtTargetToSource(), NO_DATA),
+                        result.sourceHasData(),
+                        result.targetHasData(),
+                        result.isOk(),
+                        Objects.toString(result.blockingComponent(), NO_DATA),
+                        result.getMessage()
+                ).getBytes(StandardCharsets.UTF_8));
                 out.write("\n".getBytes(StandardCharsets.UTF_8));
             } catch (IOException e) {
                 throw new RuntimeException(e);

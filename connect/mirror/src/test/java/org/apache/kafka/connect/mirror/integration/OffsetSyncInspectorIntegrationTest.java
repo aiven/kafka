@@ -31,6 +31,7 @@ import org.apache.kafka.connect.mirror.admin.ConsumerGroupOffsetSyncInspector;
 import org.apache.kafka.connect.mirror.admin.offsetinspector.ConsumerGroupOffsetsComparer;
 import org.apache.kafka.connect.mirror.admin.offsetinspector.GroupAndState;
 
+import org.apache.kafka.connect.mirror.admin.offsetinspector.TopicPartitionState;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -44,6 +45,8 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
+import static org.apache.kafka.connect.mirror.admin.offsetinspector.ConsumerGroupOffsetsComparer.NOT_SYNCED_EMPTY_PARTITION_OTHER_SUCCESSFUL_MESSAGE;
+import static org.apache.kafka.connect.mirror.admin.offsetinspector.ConsumerGroupOffsetsComparer.SUCCESS_MESSAGE;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
@@ -122,10 +125,12 @@ public class OffsetSyncInspectorIntegrationTest extends MirrorConnectorsIntegrat
                         new ConsumerGroupOffsetsComparer.ConsumerGroupCompareResult(
                             new GroupAndState(consumerGroupTopic1, ConsumerGroupState.STABLE),
                                 new TopicPartition(testTopic1Name, partition),
+                                new TopicPartitionState(0L, (long) NUM_RECORDS_PER_PARTITION),
+                                new TopicPartitionState(0L, (long) NUM_RECORDS_PER_PARTITION),
                                 ((Integer) NUM_RECORDS_PER_PARTITION).longValue(),
                                 121212L,
                                 ((Integer) NUM_RECORDS_PER_PARTITION).longValue(),
-                            9L, true, "Target has offset sync.");
+                            9L, true, null, SUCCESS_MESSAGE);
                 expectedConsumerGroupCompareResult.add(result);
             }
             assertEquals(expectedConsumerGroupCompareResult, primaryToBackupResult.getConsumerGroupsCompareResult());
@@ -203,8 +208,10 @@ public class OffsetSyncInspectorIntegrationTest extends MirrorConnectorsIntegrat
                         new ConsumerGroupOffsetsComparer.ConsumerGroupCompareResult(
                                 new GroupAndState("consumer-group-dummy", ConsumerGroupState.EMPTY),
                                 new TopicPartition(testTopic1Name, partition),
+                                new TopicPartitionState(0L, (long) NUM_RECORDS_PER_PARTITION),
+                                new TopicPartitionState(0L, (long) NUM_RECORDS_PER_PARTITION),
                                 0L, 10L,
-                                0L, 10L, true, "Target has offset sync.");
+                                0L, 10L, true, null, SUCCESS_MESSAGE);
                 expectedConsumerGroupCompareResult.add(result);
             }
             for (int partition = 0; partition < NUM_PARTITIONS; partition++) {
@@ -213,14 +220,18 @@ public class OffsetSyncInspectorIntegrationTest extends MirrorConnectorsIntegrat
                     result = new ConsumerGroupOffsetsComparer.ConsumerGroupCompareResult(
                             new GroupAndState(consumerGroupTopic1, ConsumerGroupState.EMPTY),
                             new TopicPartition(testTopic1Name, partition),
+                            new TopicPartitionState(0L, (long) NUM_RECORDS_PER_PARTITION),
+                            new TopicPartitionState(0L, (long) NUM_RECORDS_PER_PARTITION),
                             9L, 1L,
-                            9L, 1L, true, "Target has offset sync.");
+                            9L, 1L, true, null, SUCCESS_MESSAGE);
                 } else {
                     result = new ConsumerGroupOffsetsComparer.ConsumerGroupCompareResult(
                             new GroupAndState(consumerGroupTopic1, ConsumerGroupState.EMPTY),
                             new TopicPartition(testTopic1Name, partition),
+                            new TopicPartitionState(0L, (long) NUM_RECORDS_PER_PARTITION),
+                            new TopicPartitionState(0L, (long) NUM_RECORDS_PER_PARTITION),
                             0L, 10L,
-                            0L, 10L, true, "Target has offset sync.");
+                            0L, 10L, true, null, SUCCESS_MESSAGE);
 
                 }
                 expectedConsumerGroupCompareResult.add(result);
@@ -295,18 +306,21 @@ public class OffsetSyncInspectorIntegrationTest extends MirrorConnectorsIntegrat
                     = primaryToBackupResult.getConsumerGroupsCompareResult();
             assertEquals(2, consumerGroupCompareResult.size());
             for (int partition = 0; partition < 2; partition++) {
-                final Long expectedSourceOffset = partition == 0 ? ((Integer) NUM_RECORDS_PER_PARTITION).longValue() : 0L;
-                final Long expectedTargetOffset = partition == 0 ? ((Integer) NUM_RECORDS_PER_PARTITION).longValue() : null;
+                final Long expectedSourceOffset = partition == 0 ? (long) NUM_RECORDS_PER_PARTITION : 0L;
+                final Long expectedTargetOffset = partition == 0 ? (long) NUM_RECORDS_PER_PARTITION : null;
                 final Long expectedTargetLag, expectedLagAtTargetToSource;
                 expectedTargetLag = expectedLagAtTargetToSource = partition == 0 ? 0L : null;
-                final String message = partition == 0 ? "Target has offset sync." : "Target consumer group missing the topic partition. Source partition is empty therefore offset not expected to be synced.";
+                final String message = partition == 0 ? SUCCESS_MESSAGE : NOT_SYNCED_EMPTY_PARTITION_OTHER_SUCCESSFUL_MESSAGE;
+                final String blockingComponent = partition == 0 ? null : "SOURCE PARTITION";
                 final ConsumerGroupOffsetsComparer.ConsumerGroupCompareResult result =
                         new ConsumerGroupOffsetsComparer.ConsumerGroupCompareResult(
                                 new GroupAndState(consumerGroupTopicPartition0Filled, ConsumerGroupState.STABLE),
                                 new TopicPartition(testTopic2Name, partition),
+                                new TopicPartitionState(0L, (long) NUM_RECORDS_PER_PARTITION),
+                                new TopicPartitionState(0L, (long) NUM_RECORDS_PER_PARTITION),
                                 expectedSourceOffset, expectedLagAtTargetToSource,
                                 expectedTargetOffset, expectedTargetLag,
-                                true, message);
+                                true, blockingComponent, message);
                 expectedConsumerGroupCompareResult.add(result);
             }
 

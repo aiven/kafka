@@ -145,7 +145,7 @@ public abstract class MirrorConnectorConfig extends AbstractConfig {
         return Duration.ofMillis(getLong(ADMIN_TASK_TIMEOUT_MILLIS));
     }
 
-    String sourceClusterAlias() {
+    public String sourceClusterAlias() {
         return getString(SOURCE_CLUSTER_ALIAS);
     }
 
@@ -153,7 +153,7 @@ public abstract class MirrorConnectorConfig extends AbstractConfig {
         return getString(TARGET_CLUSTER_ALIAS);
     }
 
-    ReplicationPolicy replicationPolicy() {
+    public ReplicationPolicy replicationPolicy() {
         return replicationPolicy;
     }
 
