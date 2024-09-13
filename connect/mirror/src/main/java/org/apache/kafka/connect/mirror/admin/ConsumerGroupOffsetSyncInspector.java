@@ -32,6 +32,7 @@ import org.apache.kafka.connect.mirror.OffsetSyncStore;
 import org.apache.kafka.connect.mirror.ReplicationPolicy;
 import org.apache.kafka.connect.mirror.SourceAndTarget;
 import org.apache.kafka.connect.mirror.admin.offsetinspector.ConsumerGroupOffsetsComparer;
+import org.apache.kafka.connect.mirror.admin.offsetinspector.ConsumerGroupResultsGrouper;
 import org.apache.kafka.connect.mirror.admin.offsetinspector.ConsumerGroupsStateCollector;
 import org.apache.kafka.connect.mirror.admin.offsetinspector.GroupAndState;
 
@@ -112,6 +113,11 @@ public final class ConsumerGroupOffsetSyncInspector {
                 .help("Emit consumer group inspection result for groups that are ok.")
                 .action(Arguments.storeTrue());
 
+        parser.addArgument("--emit-summary")
+                .required(false)
+                .help("Emit summary of consumer groups in addition to per-group CSV")
+                .action(Arguments.storeTrue());
+
         final Namespace ns;
         try {
             ns = parser.parseArgs(args);
@@ -128,8 +134,9 @@ public final class ConsumerGroupOffsetSyncInspector {
         final Duration requestTimeout = ns.get("request_timeout");
         final boolean includeInactiveGroups = ns.getBoolean("include_inactive_groups");
         final boolean includeOkConsumerGroups = ns.getBoolean("include_ok_groups");
+        final boolean emitSummary = ns.getBoolean("emit_summary");
         new ConsumerGroupOffsetSyncInspector().run(Utils.propsToStringMap(mm2Properties), outputFile,
-                adminTimeout, requestTimeout, includeInactiveGroups, includeOkConsumerGroups);
+                adminTimeout, requestTimeout, includeInactiveGroups, includeOkConsumerGroups, emitSummary);
     }
 
     public void run(
@@ -138,8 +145,8 @@ public final class ConsumerGroupOffsetSyncInspector {
             final Duration adminTimeout,
             final Duration requestTimeout,
             final boolean includeInactiveGroups,
-            final boolean includeOkConsumerGroups
-    ) throws IOException {
+            final boolean includeOkConsumerGroups,
+            final boolean emitSummary) throws IOException {
         final Map<SourceAndTarget, ConsumerGroupOffsetsComparer.ConsumerGroupsCompareResult> clusterResults =
                 inspect(mm2ConfigProps, adminTimeout, requestTimeout, includeInactiveGroups, includeOkConsumerGroups);
         LOGGER.info("Writing result CSV to {}", outputFile != null ? outputFile.getPath() : "STDOUT");
@@ -150,6 +157,14 @@ public final class ConsumerGroupOffsetSyncInspector {
                     false, StandardCharsets.UTF_8.name())) {
                 writeToOutputStream(out, clusterResults);
             }
+        }
+        if (emitSummary) {
+            ConsumerGroupResultsGrouper grouper = new ConsumerGroupResultsGrouper();
+            clusterResults.values()
+                    .stream()
+                    .flatMap(results -> results.getConsumerGroupsCompareResult().stream())
+                    .forEach(grouper);
+            grouper.writeToOutputStream(System.out);
         }
         LOGGER.info("Done.");
     }
