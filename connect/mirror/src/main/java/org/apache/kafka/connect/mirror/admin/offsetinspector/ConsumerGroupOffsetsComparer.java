@@ -37,8 +37,10 @@ public final class ConsumerGroupOffsetsComparer {
     public static final String SUCCESS_MESSAGE = "Successfully synced, operating normally";
     public static final String NOT_SYNCED_EMPTY_PARTITION_OTHER_SUCCESSFUL_MESSAGE = "Intentionally not synced because source partition is empty. Other partitions in this group are synced.";
     public static final String ERR_NOT_SYNCED_OTHER_SUCCESSFUL_MESSAGE = "Erroneously not synced. Source partition has data, and other partitions for this group are synced.";
+    private static final String NOT_SYNCED_GROUP_TOO_OLD_OTHER_SUCCESSFUL_MESSAGE = "Intentionally not synced because source group is too old. Other partitions in this group are synced.";
     public static final String NOT_SYNCED_EMPTY_PARTITION_ALL_NOT_SYNCED_MESSAGE = "Intentionally not synced because source partition is empty. Other partitions in this group are not synced.";
     public static final String ERR_NOT_SYNCED_ALL_NOT_SYNCED_MESSAGE = "Erroneously not synced. Source partition has data, and other partitions for this group are not synced.";
+    private static final String NOT_SYNCED_GROUP_TOO_OLD_ALL_NOT_SYNCED_MESSAGE = "Intentionally not synced because source group is too old. Other partitions in this group are not synced.";
 
     private final Map<TopicPartition, TopicPartition> sourceToTopicPartition;
     private final Map<TopicPartition, TopicPartitionState> sourceTopics;
@@ -118,14 +120,21 @@ public final class ConsumerGroupOffsetsComparer {
                         // If no target offset, check if source partition is empty.
                         // If source partition is empty Mirrormaker does not sync offset.
                         final boolean isEmpty = sourceTopicState.isEmpty();
+                        // Also check to see if the source group is earlier than any offset in the topic
+                        // MM2 doesn't translate consumer groups that are older than all the data.
+                        final boolean sourceGroupValid = sourceTopicState.contains(metadata.offset());
                         if (isEmpty) {
                             targetOk = true;
                             blockingComponent = "SOURCE PARTITION";
                             message = NOT_SYNCED_EMPTY_PARTITION_OTHER_SUCCESSFUL_MESSAGE;
-                        } else {
+                        } else if (sourceGroupValid) {
                             targetOk = false;
                             blockingComponent = "REPLICATION";
                             message = ERR_NOT_SYNCED_OTHER_SUCCESSFUL_MESSAGE;
+                        } else {
+                            targetOk = true;
+                            blockingComponent = "SOURCE GROUP";
+                            message = NOT_SYNCED_GROUP_TOO_OLD_OTHER_SUCCESSFUL_MESSAGE;
                         }
                         if (includeOkConsumerGroups || !targetOk) {
                             result.addConsumerGroupCompareResult(
@@ -144,14 +153,19 @@ public final class ConsumerGroupOffsetsComparer {
                     final String message;
                     final String blockingComponent;
                     final boolean isEmpty = sourceTopicState.isEmpty();
+                    final boolean sourceGroupValid = sourceTopicState.contains(metadata.offset());
                     if (isEmpty) {
                         targetOk = true;
                         blockingComponent = "SOURCE PARTITION";
                         message = NOT_SYNCED_EMPTY_PARTITION_ALL_NOT_SYNCED_MESSAGE;
-                    } else {
+                    } else if (sourceGroupValid) {
                         targetOk = false;
                         blockingComponent = "REPLICATION";
                         message = ERR_NOT_SYNCED_ALL_NOT_SYNCED_MESSAGE;
+                    } else {
+                        targetOk = true;
+                        blockingComponent = "SOURCE GROUP";
+                        message = NOT_SYNCED_GROUP_TOO_OLD_ALL_NOT_SYNCED_MESSAGE;
                     }
                     if (includeOkConsumerGroups || !targetOk) {
                         result.addConsumerGroupCompareResult(new ConsumerGroupCompareResult(groupAndState, sourceTopicPartition,
@@ -292,6 +306,14 @@ public final class ConsumerGroupOffsetsComparer {
             Long topicLatest = getSourceLatest();
             Long groupOffset = getSourceOffset();
             return (topicLatest == null || groupOffset == null) ? null : (topicLatest - groupOffset);
+        }
+
+        public boolean sourceGroupInTopic() {
+            Long topicEarliest = getSourceEarliest();
+            Long topicLatest = getSourceLatest();
+            Long groupOffset = getSourceOffset();
+            return topicEarliest != null && topicLatest != null && groupOffset != null
+                    && topicEarliest <= groupOffset && groupOffset <= topicLatest;
         }
 
         public Long getLagAtTargetToSource() {

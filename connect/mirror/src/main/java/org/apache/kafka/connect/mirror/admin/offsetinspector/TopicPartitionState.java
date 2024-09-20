@@ -31,6 +31,10 @@ public class TopicPartitionState {
         return earliest == null || earliest.equals(latest);
     }
 
+    public boolean contains(long offset) {
+        return earliest != null && latest != null && earliest <= offset && offset <= latest;
+    }
+
     public Long earliestOffset() {
         return earliest;
     }

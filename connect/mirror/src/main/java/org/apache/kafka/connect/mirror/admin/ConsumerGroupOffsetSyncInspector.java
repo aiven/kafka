@@ -71,14 +71,14 @@ import java.util.stream.Collectors;
 public final class ConsumerGroupOffsetSyncInspector {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ConsumerGroupOffsetSyncInspector.class);
-    private static final String CSV_ROW_FORMAT = "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s";
+    private static final String CSV_ROW_FORMAT = "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s";
     private static final String CSV_HEADER_FORMAT = String.format(CSV_ROW_FORMAT,
             "CLUSTER PAIR", "TOPIC", "PARTITION", "GROUP", // unique key
             "SOURCE TOPIC EARLIEST OFFSET", "SOURCE TOPIC LATEST OFFSET", // source topic
             "SOURCE GROUP STATE", "SOURCE GROUP OFFSET", "SOURCE GROUP LAG", // source group
             "TARGET TOPIC EARLIEST OFFSET", "TARGET TOPIC LATEST OFFSET", // target topic
             "TARGET GROUP STATE", "TARGET GROUP OFFSET", "TARGET GROUP LAG", // target group
-            "TARGET GROUP LAG TO SOURCE", "SOURCE HAS DATA", "TARGET HAS DATA", "IS OK", "BLOCKING COMPONENT", "MESSAGE" // derived
+            "TARGET GROUP LAG TO SOURCE", "SOURCE HAS DATA", "SOURCE GROUP VALID", "TARGET HAS DATA", "IS OK", "BLOCKING COMPONENT", "MESSAGE" // derived
     );
     private static final String NO_DATA = "-";
 
@@ -326,6 +326,7 @@ public final class ConsumerGroupOffsetSyncInspector {
                         // derived
                         Objects.toString(result.getLagAtTargetToSource(), NO_DATA),
                         result.sourceHasData(),
+                        result.sourceGroupInTopic(),
                         result.targetHasData(),
                         result.isOk(),
                         Objects.toString(result.blockingComponent(), NO_DATA),
