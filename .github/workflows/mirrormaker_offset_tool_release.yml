@@ -1,0 +1,40 @@
+# The workflow to create PRs with release commits.
+name: Create Mirrormaker Offset Sync Inspector release
+on:
+  push:
+    tags:
+      - mm2-offset-sync-inspector-*
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Create Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Setup Java SDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: 11
+          distribution: "temurin"
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build
+        run: |
+          github_ref=${{ github.ref }}
+          mm2_offset_sync_inspector_version=$(echo ${github_ref##*-})
+          MM2_OFFSET_SYNC_INSPECTOR_VERSION=${mm2_offset_sync_inspector_version} ./gradlew :connect:mirror:releaseMirrorMaker2OffsetToolInspectorTarGz
+          export release_file=$(ls ./connect/mirror/build/distributions/ | grep tgz)
+          echo release_file=${release_file} >> $GITHUB_ENV
+          echo release_file_path=`realpath ./connect/mirror/build/distributions/${release_file}` >> $GITHUB_ENV
+
+      - name: Upload MirrorMaker Offset Inspector tgz
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/mm2-offset-sync-inspector-')
+        with:
+          files: ${{ env.release_file_path }}
