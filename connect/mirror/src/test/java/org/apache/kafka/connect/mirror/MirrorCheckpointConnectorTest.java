@@ -26,6 +26,7 @@ import org.apache.kafka.connect.errors.RetriableException;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -86,6 +87,52 @@ public class MirrorCheckpointConnectorTest {
                 "MirrorCheckpointConnectorEnabled for " + CONSUMER_GROUP + " has incorrect size");
         assertEquals(CONSUMER_GROUP, output.get(0).get(MirrorCheckpointConfig.TASK_CONSUMER_GROUPS),
                 "MirrorCheckpointConnectorEnabled for " + CONSUMER_GROUP + " failed");
+    }
+
+    @Test
+    public void testMirrorCheckpointConnectorEnabledLimitMaxTasksDefaultOfOne() {
+        // enable the checkpoint emission
+        MirrorCheckpointConfig config = new MirrorCheckpointConfig(
+                makeProps("emit.checkpoints.enabled", "true"));
+
+        Set<String> knownConsumerGroups = new HashSet<>();
+        for (int i = 0; i < 500; i++) {
+            knownConsumerGroups.add(String.format("consumer-group-%d", i));
+        }
+        // MirrorCheckpointConnector as minimum to run taskConfig()
+        MirrorCheckpointConnector connector = new MirrorCheckpointConnector(knownConsumerGroups,
+                config);
+        List<Map<String, String>> output = connector.taskConfigs(100);
+        // expect 5 task will be created
+        final int expectedTaskCount = 1;
+        assertEquals(expectedTaskCount, output.size(), "Expected number of tasks incorrect.");
+        final long groupsInTask = Arrays.stream(output.get(0).get(MirrorCheckpointConfig.TASK_CONSUMER_GROUPS).split(",")).count();
+        assertEquals(500L, groupsInTask);
+    }
+
+    @Test
+    public void testMirrorCheckpointConnectorEnabledLimitMaxTasksToFive() {
+        // enable the checkpoint emission
+        MirrorCheckpointConfig config = new MirrorCheckpointConfig(
+                makeProps("emit.checkpoints.enabled", "true",
+                        "checkpoints.tasks.max", "5"));
+
+        Set<String> knownConsumerGroups = new HashSet<>();
+        for (int i = 0; i < 500; i++) {
+            knownConsumerGroups.add(String.format("consumer-group-%d", i));
+        }
+        // MirrorCheckpointConnector as minimum to run taskConfig()
+        MirrorCheckpointConnector connector = new MirrorCheckpointConnector(knownConsumerGroups,
+                config);
+        List<Map<String, String>> output = connector.taskConfigs(100);
+        // expect 5 task will be created
+        final int expectedTaskCount = 5;
+        assertEquals(expectedTaskCount, output.size(), "Expected number of tasks incorrect.");
+        output.forEach(task -> {
+            final long groupsInTask = Arrays.stream(task.get(MirrorCheckpointConfig.TASK_CONSUMER_GROUPS).split(",")).count();
+            assertEquals(100L, groupsInTask);
+        });
+
     }
 
     @Test
