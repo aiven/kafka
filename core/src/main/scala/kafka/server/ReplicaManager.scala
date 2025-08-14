@@ -1663,6 +1663,10 @@ class ReplicaManager(val config: KafkaConfig,
     var bytesReadable: Long = 0
     var errorReadingData = false
 
+    // define config overrides for consumer fetch batching
+    val maxWaitMs = if (params.isFromFollower) params.maxWaitMs else Math.max(params.maxWaitMs, config.fetchMaxWaitMs)
+    val minBytes = if (params.isFromFollower) params.minBytes else Math.max(params.minBytes, config.fetchMinBytes)
+
     // topic-partitions that have to be read from remote storage
     val remoteFetchInfos = new util.HashMap[TopicIdPartition, RemoteStorageFetchInfo]()
 
@@ -1693,7 +1697,7 @@ class ReplicaManager(val config: KafkaConfig,
     //                        4) some error happens while reading data
     //                        5) we found a diverging epoch
     //                        6) has a preferred read replica
-    if (remoteFetchInfos.isEmpty && (params.maxWaitMs <= 0 || fetchInfos.isEmpty || bytesReadable >= params.minBytes || errorReadingData ||
+    if (remoteFetchInfos.isEmpty && (maxWaitMs <= 0 || fetchInfos.isEmpty || bytesReadable >= minBytes || errorReadingData ||
       hasDivergingEpoch || hasPreferredReadReplica)) {
       val fetchPartitionData = logReadResults.map { case (tp, result) =>
         val isReassignmentFetch = params.isFromFollower && isAddingReplica(tp.topicPartition, params.replicaId)
@@ -1720,7 +1724,9 @@ class ReplicaManager(val config: KafkaConfig,
           fetchPartitionStatus = fetchPartitionStatus,
           replicaManager = this,
           quota = quota,
-          responseCallback = responseCallback
+          maxWaitMs = Some(maxWaitMs),
+          minBytes = Some(minBytes),
+          responseCallback = responseCallback,
         )
 
         // create a list of (topic, partition) pairs to use as keys for this delayed fetch operation

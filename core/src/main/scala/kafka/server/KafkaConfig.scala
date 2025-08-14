@@ -403,6 +403,8 @@ class KafkaConfig private(doLog: Boolean, val props: util.Map[_, _])
   /** ********* Fetch Configuration **************/
   val maxIncrementalFetchSessionCacheSlots = getInt(ServerConfigs.MAX_INCREMENTAL_FETCH_SESSION_CACHE_SLOTS_CONFIG)
   val fetchMaxBytes = getInt(ServerConfigs.FETCH_MAX_BYTES_CONFIG)
+  val fetchMaxWaitMs = getLong(ServerConfigs.FETCH_MAX_WAIT_MS_CONFIG)
+  val fetchMinBytes = getInt(ServerConfigs.FETCH_MIN_BYTES_CONFIG)
 
   /** ********* Request Limit Configuration ***********/
   val maxRequestPartitionSizeLimit = getInt(ServerConfigs.MAX_REQUEST_PARTITION_SIZE_LIMIT_CONFIG)

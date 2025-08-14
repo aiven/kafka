@@ -105,6 +105,20 @@ public class ServerConfigs {
     public static final int FETCH_MAX_BYTES_DEFAULT = 55 * 1024 * 1024;
     public static final String FETCH_MAX_BYTES_DOC = "The maximum number of bytes we will return for a fetch request. Must be at least 1024.";
 
+    public static final String FETCH_MIN_BYTES_CONFIG = "fetch.min.bytes";
+    public static final int FETCH_MIN_BYTES_DEFAULT = 1;
+    public static final String FETCH_MIN_BYTES_DOC = "The minimum number of bytes we will return for a fetch request. " +
+            "If the number of bytes available is less than this value, we will wait until more data is available or the request times out. This is useful for batching requests to improve throughput. " +
+            "This configuration is only used for fetch requests from consumers, and defines a lower-bound value to the consumer-defined fetch.min.bytes. " +
+            "If the consumer-defined fetch.min.bytes is smaller than this value, the server will use the consumer-defined value instead.";
+
+    public static final String FETCH_MAX_WAIT_MS_CONFIG = "fetch.max.wait.ms";
+    public static final int FETCH_MAX_WAIT_MS_DEFAULT = 100;
+    public static final String FETCH_MAX_WAIT_MS_DOC = "The maximum amount of time the server will block before answering a fetch request if there isn't sufficient data to immediately satisfy the request. " +
+            "This is useful for batching requests to improve throughput. If the number of bytes available is less than the configured value, we will wait until more data is available or the request times out. " +
+            "This configuration is only used for fetch requests from consumers, and defines a lower-bound value compared to the consumer-defined fetch.max.wait.ms. " +
+            "If the consumer-defined fetch.max.wait.ms is smaller than this value, the server will use the consumer-defined value instead.";
+
     /** ********* Request Limit Configuration **************/
     public static final String MAX_REQUEST_PARTITION_SIZE_LIMIT_CONFIG = "max.request.partition.size.limit";
     public static final int MAX_REQUEST_PARTITION_SIZE_LIMIT_DEFAULT = 2000;
@@ -149,6 +163,8 @@ public class ServerConfigs {
             /** ********* Fetch Configuration **************/
             .define(MAX_INCREMENTAL_FETCH_SESSION_CACHE_SLOTS_CONFIG, INT, MAX_INCREMENTAL_FETCH_SESSION_CACHE_SLOTS_DEFAULT, atLeast(0), MEDIUM, MAX_INCREMENTAL_FETCH_SESSION_CACHE_SLOTS_DOC)
             .define(FETCH_MAX_BYTES_CONFIG, INT, FETCH_MAX_BYTES_DEFAULT, atLeast(1024), MEDIUM, FETCH_MAX_BYTES_DOC)
+            .define(FETCH_MIN_BYTES_CONFIG, INT, FETCH_MIN_BYTES_DEFAULT, atLeast(1), MEDIUM, FETCH_MIN_BYTES_DOC)
+            .define(FETCH_MAX_WAIT_MS_CONFIG, INT, FETCH_MAX_WAIT_MS_DEFAULT, atLeast(0), MEDIUM, FETCH_MAX_WAIT_MS_DOC)
 
             /** ********* Request Limit Configuration ***********/
             .define(MAX_REQUEST_PARTITION_SIZE_LIMIT_CONFIG, INT, MAX_REQUEST_PARTITION_SIZE_LIMIT_DEFAULT, atLeast(1), MEDIUM, MAX_REQUEST_PARTITION_SIZE_LIMIT_DOC)
