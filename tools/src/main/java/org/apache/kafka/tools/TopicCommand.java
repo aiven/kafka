@@ -244,6 +244,7 @@ public abstract class TopicCommand {
         private final Optional<Integer> replicationFactor;
         private final Map<Integer, List<Integer>> replicaAssignment;
         private final Map<String, String> configsToAdd;
+        private final Optional<Uuid> topicId;
 
         private final TopicCommandOptions opts;
 
@@ -254,6 +255,7 @@ public abstract class TopicCommand {
             replicationFactor = options.replicationFactor();
             replicaAssignment = options.replicaAssignment().orElse(Map.of());
             configsToAdd = parseTopicConfigsToBeAdded(options);
+            topicId = options.topicId().map(Uuid::fromString);
         }
 
         boolean hasReplicaAssignment() {
@@ -453,7 +455,7 @@ public abstract class TopicCommand {
             try {
                 NewTopic newTopic = topic.hasReplicaAssignment()
                     ? new NewTopic(topic.name, topic.replicaAssignment)
-                    : new NewTopic(topic.name, topic.partitions, topic.replicationFactor.map(Integer::shortValue));
+                    : new NewTopic(topic.topicId.orElse(null), topic.name, topic.partitions, topic.replicationFactor.map(Integer::shortValue));
 
                 newTopic.configs(topic.configsToAdd);
                 CreateTopicsResult createResult = adminClient.createTopics(Set.of(newTopic),
