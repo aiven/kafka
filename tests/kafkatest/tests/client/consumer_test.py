@@ -12,7 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
+from antithesis.assertions import always
 from ducktape.mark import matrix
 from ducktape.utils.util import wait_until
 from ducktape.mark.resource import cluster
@@ -115,12 +115,17 @@ class OffsetValidationTest(VerifiableConsumerTest):
         self.rolling_bounce_brokers(consumer, clean_shutdown=True)
 
         unexpected_rebalances = consumer.num_rebalances() - num_rebalances
-        assert unexpected_rebalances == 0, \
+
+        condition = unexpected_rebalances == 0
+        always(condition, "[test_broker_rolling_bounce] No unexpected rebalances", {})
+        assert condition, \
             "Broker rolling bounce caused %d unexpected group rebalances" % unexpected_rebalances
 
         consumer.stop_all()
 
-        assert consumer.current_position(partition) == consumer.total_consumed(), \
+        condition = consumer.current_position(partition) == consumer.total_consumed()
+        always(condition, "[test_broker_rolling_bounce] Total consumed records match consumed positions", {})
+        assert condition, \
             "Total consumed records %d did not match consumed position %d" % \
             (consumer.total_consumed(), consumer.current_position(partition))
 
