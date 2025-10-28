@@ -12,7 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from antithesis.assertions import always
+from antithesis.assertions import always, always_or_unreachable
 from ducktape.mark import matrix
 from ducktape.utils.util import wait_until
 from ducktape.mark.resource import cluster
@@ -229,12 +229,12 @@ class OffsetValidationTest(VerifiableConsumerTest):
         # since there is no global rebalance being triggered.
         if static_membership:
             condition = num_revokes_after_bounce == 0
-            always(condition, "[test_static_consumer_bounce_with_eager_assignment] No unexpected revocations", {})
+            always_or_unreachable(condition, "[test_static_consumer_bounce_with_eager_assignment] No unexpected revocations", {})
             assert condition, \
                 "Unexpected revocation triggered when bouncing static member. Expecting 0 but had %d revocations" % num_revokes_after_bounce
         else:
             condition = num_revokes_after_bounce != 0
-            always(condition, "[test_static_consumer_bounce_with_eager_assignment] Expected revocations triggered", {})
+            always_or_unreachable(condition, "[test_static_consumer_bounce_with_eager_assignment] Expected revocations triggered", {})
             assert condition, \
                 "Revocations not triggered as expected when bouncing member with eager assignment"
 
@@ -243,14 +243,14 @@ class OffsetValidationTest(VerifiableConsumerTest):
             # if the total records consumed matches the current position, we haven't seen any duplicates
             # this can only be guaranteed with a clean shutdown
             condition = consumer.current_position(partition) == consumer.total_consumed()
-            always(condition, "[test_static_consumer_bounce_with_eager_assignment] Total consumed records match consumed position", {})
+            always_or_unreachable(condition, "[test_static_consumer_bounce_with_eager_assignment] Total consumed records match consumed position", {})
             assert condition, \
                 "Total consumed records %d did not match consumed position %d" % \
                 (consumer.total_consumed(), consumer.current_position(partition))
         else:
             # we may have duplicates in a hard failure
             condition = consumer.current_position(partition) <= consumer.total_consumed()
-            always(condition, "[test_static_consumer_bounce_with_eager_assignment] Current position less that total number of consumed records", {})
+            always_or_unreachable(condition, "[test_static_consumer_bounce_with_eager_assignment] Current position less that total number of consumed records", {})
             assert condition, \
                 "Current position %d greater than the total number of consumed records %d" % \
                 (consumer.current_position(partition), consumer.total_consumed())
