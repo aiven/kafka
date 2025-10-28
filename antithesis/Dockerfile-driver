@@ -5,6 +5,11 @@ RUN pip install antithesis
 USER root
 RUN mkdir -p /opt/kafka-dev
 RUN chown ducker /opt/kafka-dev
+# Autoinstrumentation of Python files.
+# https://antithesis.com/docs/using_antithesis/sdk/python/#instrumentation
+RUN mkdir -p /opt/antithesis/catalog
+RUN ln -s /usr/local/lib/python3.9/dist-packages/ducktape /opt/antithesis/catalog
+RUN ln -s /opt/kafka-dev/tests /opt/antithesis/catalog
 # Patch Ducktape to not fail the whole process.
 ADD antithesis/ducktape.patch /opt/kafka-dev
 RUN cd /usr/local/lib/python3.9/dist-packages/ && patch -p0 < /opt/kafka-dev/ducktape.patch
@@ -13,4 +18,4 @@ USER ducker
 ADD antithesis/test /opt/antithesis/test
 ADD antithesis/cluster.json /opt/kafka-dev
 ADD antithesis/entrypoint-driver.sh /opt/kafka-dev
-ADD tests /opt/kafka-dev/tests
+ADD tests/kafkatest /opt/kafka-dev/tests/kafkatest
