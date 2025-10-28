@@ -6,7 +6,7 @@ RUN chown ducker /opt/kafka-dev
 # Autoinstrumentation of JARs.
 # https://antithesis.com/docs/using_antithesis/sdk/java/instrumentation/
 RUN mkdir -p /opt/antithesis/catalog
-RUN ln -s /opt/kafka/libs/ /opt/antithesis/catalog
+RUN ln -s /opt/kafka-dev/libs/ /opt/antithesis/catalog
 USER ducker
 
 ADD bin /opt/kafka-dev/bin

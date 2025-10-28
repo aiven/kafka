@@ -228,22 +228,30 @@ class OffsetValidationTest(VerifiableConsumerTest):
         # under static membership, the live consumer shall not revoke any current running partitions,
         # since there is no global rebalance being triggered.
         if static_membership:
-            assert num_revokes_after_bounce == 0, \
+            condition = num_revokes_after_bounce == 0
+            always(condition, "[test_static_consumer_bounce_with_eager_assignment] No unexpected revocations", {})
+            assert condition, \
                 "Unexpected revocation triggered when bouncing static member. Expecting 0 but had %d revocations" % num_revokes_after_bounce
         else:
-            assert num_revokes_after_bounce != 0, \
+            condition = num_revokes_after_bounce != 0
+            always(condition, "[test_static_consumer_bounce_with_eager_assignment] Expected revocations triggered", {})
+            assert condition, \
                 "Revocations not triggered as expected when bouncing member with eager assignment"
 
         consumer.stop_all()
         if clean_shutdown:
             # if the total records consumed matches the current position, we haven't seen any duplicates
             # this can only be guaranteed with a clean shutdown
-            assert consumer.current_position(partition) == consumer.total_consumed(), \
+            condition = consumer.current_position(partition) == consumer.total_consumed()
+            always(condition, "[test_static_consumer_bounce_with_eager_assignment] Total consumed records match consumed position", {})
+            assert condition, \
                 "Total consumed records %d did not match consumed position %d" % \
                 (consumer.total_consumed(), consumer.current_position(partition))
         else:
             # we may have duplicates in a hard failure
-            assert consumer.current_position(partition) <= consumer.total_consumed(), \
+            condition = consumer.current_position(partition) <= consumer.total_consumed()
+            always(condition, "[test_static_consumer_bounce_with_eager_assignment] Current position less that total number of consumed records", {})
+            assert condition, \
                 "Current position %d greater than the total number of consumed records %d" % \
                 (consumer.current_position(partition), consumer.total_consumed())
 
