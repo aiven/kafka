@@ -1,5 +1,6 @@
 import sys
 import os
+import shutil
 import json
 from collections import defaultdict
 from ducktape.tests.loader import TestLoader
@@ -21,6 +22,8 @@ for t in loader.load(symbols=[input_str]):
     key = (t.file, t.cls.__name__, t.function.__name__)
     grouped_tests[key].append(t)
 
+if os.path.exists(output_dir):
+    shutil.rmtree(output_dir)
 antithesis_test_dir = os.path.abspath(output_dir)
 os.makedirs(antithesis_test_dir, exist_ok=True)
 
@@ -50,7 +53,6 @@ for (file, cls, function), tests in grouped_tests.items():
         filename = f"singleton_driver__{test_file_name}__{cls}__{function}__{i}.sh"
         filepath = os.path.join(test_category_dir, filename)
 
-        # Generate the shell script content
         script_content = f"""#!/bin/bash
 set -ex
 
