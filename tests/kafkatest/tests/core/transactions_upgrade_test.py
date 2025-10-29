@@ -12,6 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from antithesis.assertions import always_or_unreachable
 
 from kafkatest.services.kafka import KafkaService, quorum, consumer_group
 from kafkatest.services.kafka.quorum import isolated_kraft
@@ -245,11 +246,31 @@ class TransactionsUpgradeTest(Test):
         num_dups = abs(len(output_messages) - len(output_message_set))
         num_dups_in_concurrent_consumer = abs(len(concurrently_consumed_messages)
                                               - len(concurrently_consumed_message_set))
-        assert num_dups == 0, "Detected %d duplicates in the output stream" % num_dups
-        assert input_message_set == output_message_set, "Input and output message sets are not equal. Num input messages %d. Num output messages %d" %\
-            (len(input_message_set), len(output_message_set))
+        condition = num_dups == 0
+        always_or_unreachable(condition,
+                              "[TransactionsUpgradeTest.test_transactions_upgrade] No duplicates",
+                              {"num_dups": num_dups})
+        assert condition, "Detected %d duplicates in the output stream" % num_dups
 
-        assert num_dups_in_concurrent_consumer == 0, "Detected %d dups in concurrently consumed messages" % num_dups_in_concurrent_consumer
-        assert input_message_set == concurrently_consumed_message_set, \
+        condition = input_message_set == output_message_set
+        always_or_unreachable(condition,
+                              "[TransactionsUpgradeTest.test_transactions_upgrade] Input and output message sets are equal",
+                              {"len(input_message_set)": len(input_message_set),
+                               "len(output_message_set)": len(output_message_set)})
+        assert condition, "Input and output message sets are not equal. Num input messages %d. Num output messages %d" % \
+                            (len(input_message_set), len(output_message_set))
+
+        condition = num_dups_in_concurrent_consumer == 0
+        always_or_unreachable(condition,
+                              "[TransactionsUpgradeTest.test_transactions_upgrade] No dups in concurrently consumed messages",
+                              {"num_dups_in_concurrent_consumer": num_dups_in_concurrent_consumer})
+        assert condition, "Detected %d dups in concurrently consumed messages" % num_dups_in_concurrent_consumer
+
+        condition = input_message_set == concurrently_consumed_message_set
+        always_or_unreachable(condition,
+                              "[TransactionsUpgradeTest.test_transactions_upgrade] Input and concurrently consumed output message sets are equal",
+                              {"len(input_message_set)": len(input_message_set),
+                               "len(concurrently_consumed_message_set)": len(concurrently_consumed_message_set)})
+        assert condition, \
             "Input and concurrently consumed output message sets are not equal. Num input messages: %d. Num concurrently_consumed_messages: %d" %\
             (len(input_message_set), len(concurrently_consumed_message_set))

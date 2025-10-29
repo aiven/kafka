@@ -284,7 +284,7 @@ class GroupModeTransactionsTest(Test):
         input_partition_count = len(input_messages_by_partition)
         concurrently_consumed_partitions_count = len(concurrently_consumed_message_by_partition)
         condition = input_partition_count == concurrently_consumed_partitions_count
-        always_or_unreachable(condition, "[test_transactions] Input partitions count and concurrently consumed partitions count match",
+        always_or_unreachable(condition, "[GroupModeTransactionsTest.test_transactions] Input partitions count and concurrently consumed partitions count match",
                               {"input_partition_count": input_partition_count, "concurrently_consumed_partitions_count": concurrently_consumed_partitions_count})
         assert condition, "The lengths of partition count doesn't match: " \
                                                                 "input partitions count %d, " \
@@ -292,7 +292,7 @@ class GroupModeTransactionsTest(Test):
                            (input_partition_count, concurrently_consumed_partitions_count)
 
         output_partition_count = len(output_messages_by_partition)
-        always_or_unreachable(condition, "[test_transactions] Input partitions count and output partitions count match",
+        always_or_unreachable(condition, "[GroupModeTransactionsTest.test_transactions] Input partitions count and output partitions count match",
                               {"input_partition_count": input_partition_count, "output_partition_count": concurrently_consumed_partitions_count})
         assert input_partition_count == \
                output_partition_count, "The lengths of partition count doesn't match: " \
@@ -307,13 +307,13 @@ class GroupModeTransactionsTest(Test):
             condition = p in output_messages_by_partition
             assert condition, "Partition %d not in output messages"
             always_or_unreachable(condition,
-                                  "[test_transactions] All input partitions in output partitions",
+                                  "[GroupModeTransactionsTest.test_transactions] All input partitions in output partitions",
                                   {"input_partitions": list(input_messages_by_partition.keys()),
                                    "output_partitions": list(output_messages_by_partition.keys())})
             condition = p in concurrently_consumed_message_by_partition
             assert condition, "Partition %d not in concurrently consumed messages"
             always_or_unreachable(condition,
-                                  "[test_transactions] All input partitions in concurrently consumed partitions",
+                                  "[GroupModeTransactionsTest.test_transactions] All input partitions in concurrently consumed partitions",
                                   {"input_partitions": list(input_messages_by_partition.keys()),
                                    "concurrently_consumed_partitions": list(concurrently_consumed_message_by_partition.keys())})
 
@@ -327,27 +327,27 @@ class GroupModeTransactionsTest(Test):
                                               - len(concurrently_consumed_message_set))
             condition = num_dups == 0
             always_or_unreachable(condition,
-                                  "[test_transactions] No duplicates",
+                                  "[GroupModeTransactionsTest.test_transactions] No duplicates",
                                   {"num_dups": num_dups})
             assert condition, "Detected %d duplicates in the output stream" % num_dups
 
             condition = input_message_set == output_message_set
             always_or_unreachable(condition,
-                                  "[test_transactions] Input and output message sets are equal",
+                                  "[GroupModeTransactionsTest.test_transactions] Input and output message sets are equal",
                                   {"len(input_message_set)": len(input_message_set),
                                    "len(output_message_set)": len(output_message_set)})
             assert condition, "Input and output message sets are not equal. Num input messages %d. Num output messages %d" % \
                                 (len(input_message_set), len(output_message_set))
 
             condition = num_dups_in_concurrent_consumer == 0
-            assert condition, "Detected %d dups in concurrently consumed messages" % num_dups_in_concurrent_consumer
             always_or_unreachable(condition,
-                                  "[test_transactions] No dups in concurrently consumed messages",
+                                  "[GroupModeTransactionsTest.test_transactions] No dups in concurrently consumed messages",
                                   {"num_dups_in_concurrent_consumer": num_dups_in_concurrent_consumer})
+            assert condition, "Detected %d dups in concurrently consumed messages" % num_dups_in_concurrent_consumer
 
             condition = input_message_set == concurrently_consumed_message_set
             always_or_unreachable(condition,
-                                  "[test_transactions] Input and concurrently consumed output message sets are equal",
+                                  "[GroupModeTransactionsTest.test_transactions] Input and concurrently consumed output message sets are equal",
                                   {"len(input_message_set)": len(input_message_set),
                                    "len(concurrently_consumed_message_set)": len(concurrently_consumed_message_set)})
             assert condition, \
@@ -356,15 +356,15 @@ class GroupModeTransactionsTest(Test):
 
             condition = input_messages == sorted(input_messages)
             always_or_unreachable(condition,
-                                  "[test_transactions] Seed messages were in order", {})
+                                  "[GroupModeTransactionsTest.test_transactions] Seed messages were in order", {})
             assert condition, "The seed messages themselves were not in order"
 
             condition = output_messages == input_messages
             always_or_unreachable(condition,
-                                  "[test_transactions] Output messages were in order", {})
+                                  "[GroupModeTransactionsTest.test_transactions] Output messages were in order", {})
             assert condition, "Output messages are not in order"
 
             condition = concurrently_consumed_messages == output_messages
             always_or_unreachable(condition,
-                                  "[test_transactions] Concurrently consumed messages were in order", {})
+                                  "[GroupModeTransactionsTest.test_transactions] Concurrently consumed messages were in order", {})
             assert condition, "Concurrently consumed messages are not in order"
