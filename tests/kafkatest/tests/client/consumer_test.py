@@ -12,7 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from antithesis.assertions import always, always_or_unreachable
+from antithesis.assertions import always_or_unreachable
 from ducktape.mark import matrix
 from ducktape.utils.util import wait_until
 from ducktape.mark.resource import cluster
@@ -117,8 +117,8 @@ class OffsetValidationTest(VerifiableConsumerTest):
         unexpected_rebalances = consumer.num_rebalances() - num_rebalances
 
         condition = unexpected_rebalances == 0
-        always(condition, "[test_broker_rolling_bounce] No unexpected rebalances",
-               {"unexpected_rebalances": unexpected_rebalances})
+        always_or_unreachable(condition, "[test_broker_rolling_bounce] No unexpected rebalances",
+                              {"unexpected_rebalances": unexpected_rebalances})
         assert condition, \
             "Broker rolling bounce caused %d unexpected group rebalances" % unexpected_rebalances
 
@@ -127,8 +127,8 @@ class OffsetValidationTest(VerifiableConsumerTest):
         current_position = consumer.current_position(partition)
         total_consumed = consumer.total_consumed()
         condition = current_position == total_consumed
-        always(condition, "[test_broker_rolling_bounce] Total consumed records matches consumed positions",
-               {"current_position": current_position, "total_consumed": total_consumed})
+        always_or_unreachable(condition, "[test_broker_rolling_bounce] Total consumed records matches consumed positions",
+                              {"current_position": current_position, "total_consumed": total_consumed})
         assert condition, \
             "Total consumed records %d did not match consumed position %d" % \
             (total_consumed, current_position)
@@ -556,16 +556,16 @@ class OffsetValidationTest(VerifiableConsumerTest):
         current_position = consumer.current_position(partition)
         total_consumed = consumer.total_consumed()
         condition = current_position == total_consumed
-        always(condition, "[test_group_consumption] Total consumed records matches consumed position", 
-               {"current_position": current_position, "total_consumed": total_consumed})
+        always_or_unreachable(condition, "[test_group_consumption] Total consumed records matches consumed position",
+                              {"current_position": current_position, "total_consumed": total_consumed})
         assert condition, \
             "Total consumed records %d did not match consumed position %d" % \
             (total_consumed, current_position)
 
         last_commit = consumer.last_commit(partition)
         condition = last_commit == current_position
-        always(condition, "[test_group_consumption] Last committed offset matches last consumed position", 
-               {"last_commit": last_commit, "current_position": current_position})
+        always_or_unreachable(condition, "[test_group_consumption] Last committed offset matches last consumed position",
+                              {"last_commit": last_commit, "current_position": current_position})
         assert condition, \
             "Last committed offset %d did not match last consumed position %d" % \
             (last_commit, current_position)
