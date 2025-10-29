@@ -117,17 +117,21 @@ class OffsetValidationTest(VerifiableConsumerTest):
         unexpected_rebalances = consumer.num_rebalances() - num_rebalances
 
         condition = unexpected_rebalances == 0
-        always(condition, "[test_broker_rolling_bounce] No unexpected rebalances", {})
+        always(condition, "[test_broker_rolling_bounce] No unexpected rebalances",
+               {"unexpected_rebalances": unexpected_rebalances})
         assert condition, \
             "Broker rolling bounce caused %d unexpected group rebalances" % unexpected_rebalances
 
         consumer.stop_all()
 
-        condition = consumer.current_position(partition) == consumer.total_consumed()
-        always(condition, "[test_broker_rolling_bounce] Total consumed records match consumed positions", {})
+        current_position = consumer.current_position(partition)
+        total_consumed = consumer.total_consumed()
+        condition = current_position == total_consumed
+        always(condition, "[test_broker_rolling_bounce] Total consumed records matches consumed positions",
+               {"current_position": current_position, "total_consumed": total_consumed})
         assert condition, \
             "Total consumed records %d did not match consumed position %d" % \
-            (consumer.total_consumed(), consumer.current_position(partition))
+            (total_consumed, current_position)
 
     @cluster(num_nodes=7)
     @matrix(
@@ -165,17 +169,25 @@ class OffsetValidationTest(VerifiableConsumerTest):
             self.rolling_bounce_consumers(consumer, clean_shutdown=clean_shutdown)
 
         consumer.stop_all()
+        current_position = consumer.current_position(partition)
+        total_consumed = consumer.total_consumed()
         if clean_shutdown:
             # if the total records consumed matches the current position, we haven't seen any duplicates
             # this can only be guaranteed with a clean shutdown
-            assert consumer.current_position(partition) == consumer.total_consumed(), \
+            condition = current_position == total_consumed
+            always_or_unreachable(condition, "[test_consumer_bounce] Total consumed records matches consumed position",
+                                  {"current_position": current_position, "total_consumed": total_consumed})
+            assert condition, \
                 "Total consumed records %d did not match consumed position %d" % \
-                (consumer.total_consumed(), consumer.current_position(partition))
+                (total_consumed, current_position)
         else:
             # we may have duplicates in a hard failure
-            assert consumer.current_position(partition) <= consumer.total_consumed(), \
+            condition = current_position <= total_consumed
+            always_or_unreachable(condition, "[test_consumer_bounce] Current position less that total number of consumed records", 
+                                  {"current_position": current_position, "total_consumed": total_consumed})
+            assert condition, \
                 "Current position %d greater than the total number of consumed records %d" % \
-                (consumer.current_position(partition), consumer.total_consumed())
+                (current_position, total_consumed)
 
     @cluster(num_nodes=7)
     @matrix(
@@ -229,31 +241,37 @@ class OffsetValidationTest(VerifiableConsumerTest):
         # since there is no global rebalance being triggered.
         if static_membership:
             condition = num_revokes_after_bounce == 0
-            always_or_unreachable(condition, "[test_static_consumer_bounce_with_eager_assignment] No unexpected revocations", {})
+            always_or_unreachable(condition, "[test_static_consumer_bounce_with_eager_assignment] No unexpected revocations", 
+                                  {"num_revokes_after_bounce": num_revokes_after_bounce})
             assert condition, \
                 "Unexpected revocation triggered when bouncing static member. Expecting 0 but had %d revocations" % num_revokes_after_bounce
         else:
             condition = num_revokes_after_bounce != 0
-            always_or_unreachable(condition, "[test_static_consumer_bounce_with_eager_assignment] Expected revocations triggered", {})
+            always_or_unreachable(condition, "[test_static_consumer_bounce_with_eager_assignment] Expected revocations triggered",
+                                  {"num_revokes_after_bounce": num_revokes_after_bounce})
             assert condition, \
                 "Revocations not triggered as expected when bouncing member with eager assignment"
 
         consumer.stop_all()
+        current_position = consumer.current_position(partition)
+        total_consumed = consumer.total_consumed()
         if clean_shutdown:
             # if the total records consumed matches the current position, we haven't seen any duplicates
             # this can only be guaranteed with a clean shutdown
-            condition = consumer.current_position(partition) == consumer.total_consumed()
-            always_or_unreachable(condition, "[test_static_consumer_bounce_with_eager_assignment] Total consumed records match consumed position", {})
+            condition = current_position == total_consumed
+            always_or_unreachable(condition, "[test_static_consumer_bounce_with_eager_assignment] Total consumed records matches consumed position",
+                                  {"current_position": current_position, "total_consumed": total_consumed})
             assert condition, \
                 "Total consumed records %d did not match consumed position %d" % \
-                (consumer.total_consumed(), consumer.current_position(partition))
+                (total_consumed, current_position)
         else:
             # we may have duplicates in a hard failure
-            condition = consumer.current_position(partition) <= consumer.total_consumed()
-            always_or_unreachable(condition, "[test_static_consumer_bounce_with_eager_assignment] Current position less that total number of consumed records", {})
+            condition = current_position <= total_consumed
+            always_or_unreachable(condition, "[test_static_consumer_bounce_with_eager_assignment] Current position less that total number of consumed records",
+                                  {"current_position": current_position, "total_consumed": total_consumed})
             assert condition, \
                 "Current position %d greater than the total number of consumed records %d" % \
-                (consumer.current_position(partition), consumer.total_consumed())
+                (current_position, total_consumed)
 
     @cluster(num_nodes=7)
     @matrix(
@@ -336,10 +354,25 @@ class OffsetValidationTest(VerifiableConsumerTest):
             else:
                 # Consumer protocol: Existing members should remain active and new conflicting ones should not be able to join.
                 self.await_consumed_messages(consumer)
-                assert num_rebalances == consumer.num_rebalances(), "Static consumers attempt to join with instance id in use should not cause a rebalance"
-                assert len(consumer.joined_nodes()) == len(consumer.nodes)
-                assert len(conflict_consumer.joined_nodes()) == 0
+
+                condition = num_rebalances == consumer.num_rebalances()
+                assert condition, "Static consumers attempt to join with instance id in use should not cause a rebalance"
+                always_or_unreachable(condition, "[test_fencing_static_consumer] Static consumers attempt to join with instance id in use should not cause a rebalance",
+                                      {"num_rebalances": num_rebalances, "consumer.num_rebalances()": consumer.num_rebalances()})
+
+                condition = len(consumer.joined_nodes()) == len(consumer.nodes)
+                assert condition
+                always_or_unreachable(condition, "[test_fencing_static_consumer] Number of consumers joined nodes equals to number of nodes", 
+                                      {
+                                          "len(consumer.joined_nodes())": len(consumer.joined_nodes()),
+                                          "len(consumer.nodes)": len(consumer.nodes)
+                                      })
                 
+                condition = len(conflict_consumer.joined_nodes()) == 0
+                assert condition
+                always_or_unreachable(condition, "[test_fencing_static_consumer] No conflicts", 
+                                      {"len(conflict_consumer.joined_nodes())": len(conflict_consumer.joined_nodes())})
+
                 # Stop existing nodes, so conflicting ones should be able to join.
                 consumer.stop_all()
                 wait_until(lambda: len(consumer.dead_nodes()) == len(consumer.nodes),
@@ -399,23 +432,35 @@ class OffsetValidationTest(VerifiableConsumerTest):
 
         consumer.stop_all()
 
+        current_position = consumer.current_position(partition)
+        total_consumed = consumer.total_consumed()
         if clean_shutdown:
             # if the total records consumed matches the current position, we haven't seen any duplicates
             # this can only be guaranteed with a clean shutdown
-            assert consumer.current_position(partition) == consumer.total_consumed(), \
+            condition = current_position == total_consumed
+            always_or_unreachable(condition, "[test_consumer_failure] Total consumed records matches consumed position",
+                                  {"current_position": current_position, "total_consumed": total_consumed})
+            assert condition, \
                 "Total consumed records %d did not match consumed position %d" % \
-                (consumer.total_consumed(), consumer.current_position(partition))
+                (total_consumed, current_position)
         else:
             # we may have duplicates in a hard failure
-            assert consumer.current_position(partition) <= consumer.total_consumed(), \
+            condition = current_position <= total_consumed
+            always_or_unreachable(condition, "[test_consumer_failure] Current position less that total number of consumed records", 
+                                  {"current_position": current_position, "total_consumed": total_consumed})
+            assert condition, \
                 "Current position %d greater than the total number of consumed records %d" % \
-                (consumer.current_position(partition), consumer.total_consumed())
+                (current_position, total_consumed)
 
         # if autocommit is not turned on, we can also verify the last committed offset
         if not enable_autocommit:
-            assert consumer.last_commit(partition) == consumer.current_position(partition), \
+            last_commit = consumer.last_commit(partition)
+            condition = last_commit == current_position
+            always_or_unreachable(condition, "[test_consumer_failure] Last committed offset matches last consumed position", 
+                                  {"last_commit": last_commit, "current_position": current_position})
+            assert condition, \
                 "Last committed offset %d did not match last consumed position %d" % \
-                (consumer.last_commit(partition), consumer.current_position(partition))
+                (last_commit, current_position)
 
     @cluster(num_nodes=7)
     @matrix(
@@ -445,20 +490,32 @@ class OffsetValidationTest(VerifiableConsumerTest):
         self.await_consumed_messages(consumer, min_messages=1000)
 
         # verify that there were no rebalances on failover.
-        assert num_rebalances == consumer.num_rebalances(), "Broker failure should not cause a rebalance"
+        condition = num_rebalances == consumer.num_rebalances()
+        always_or_unreachable(condition, "[test_broker_failure] No rebalances on broker failure",
+                              {"num_rebalances": num_rebalances, "consumer.num_rebalances()": consumer.num_rebalances()})
+        assert condition, "Broker failure should not cause a rebalance"
 
         consumer.stop_all()
 
         # if the total records consumed matches the current position, we haven't seen any duplicates
-        assert consumer.current_position(partition) == consumer.total_consumed(), \
+        current_position = consumer.current_position(partition)
+        total_consumed = consumer.total_consumed()
+        condition = current_position == total_consumed
+        always_or_unreachable(condition, "[test_broker_failure] Total consumed records matches consumed position",
+                              {"current_position": current_position, "total_consumed": total_consumed})
+        assert condition, \
             "Total consumed records %d did not match consumed position %d" % \
-            (consumer.total_consumed(), consumer.current_position(partition))
+            (total_consumed, current_position)
 
         # if autocommit is not turned on, we can also verify the last committed offset
         if not enable_autocommit:
-            assert consumer.last_commit(partition) == consumer.current_position(partition), \
+            last_commit = consumer.last_commit(partition)
+            condition = last_commit == current_position
+            always_or_unreachable(condition, "[test_broker_failure] Last committed offset matches last consumed position",
+                                  {"last_commit": last_commit, "current_position": current_position})
+            assert condition, \
                 "Last committed offset %d did not match last consumed position %d" % \
-                (consumer.last_commit(partition), consumer.current_position(partition))
+                (last_commit, current_position)
 
     @cluster(num_nodes=7)
     @matrix(
@@ -496,13 +553,22 @@ class OffsetValidationTest(VerifiableConsumerTest):
                 self.await_members(consumer, self.num_consumers - num_stopped)
                 self.await_consumed_messages(consumer)
 
-        assert consumer.current_position(partition) == consumer.total_consumed(), \
+        current_position = consumer.current_position(partition)
+        total_consumed = consumer.total_consumed()
+        condition = current_position == total_consumed
+        always(condition, "[test_group_consumption] Total consumed records matches consumed position", 
+               {"current_position": current_position, "total_consumed": total_consumed})
+        assert condition, \
             "Total consumed records %d did not match consumed position %d" % \
-            (consumer.total_consumed(), consumer.current_position(partition))
+            (total_consumed, current_position)
 
-        assert consumer.last_commit(partition) == consumer.current_position(partition), \
+        last_commit = consumer.last_commit(partition)
+        condition = last_commit == current_position
+        always(condition, "[test_group_consumption] Last committed offset matches last consumed position", 
+               {"last_commit": last_commit, "current_position": current_position})
+        assert condition, \
             "Last committed offset %d did not match last consumed position %d" % \
-            (consumer.last_commit(partition), consumer.current_position(partition))
+            (last_commit, current_position)
 
 class AssignmentValidationTest(VerifiableConsumerTest):
     TOPIC = "test_topic"
