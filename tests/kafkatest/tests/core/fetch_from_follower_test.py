@@ -16,6 +16,7 @@
 import time
 from collections import defaultdict
 
+from antithesis.assertions import always_or_unreachable
 from ducktape.mark import matrix
 from ducktape.mark.resource import cluster
 
@@ -130,7 +131,14 @@ class FetchFromFollowerTest(ProduceConsumeValidateTest):
         self.logger.debug("Saw the following preferred read replicas %s",
                           dict(all_captured_preferred_read_replicas.items()))
 
-        assert all_captured_preferred_read_replicas[non_leader_idx] > 0, \
+        condition = all_captured_preferred_read_replicas[non_leader_idx] > 0
+        always_or_unreachable(condition, "[test_consumer_preferred_read_replica] Non-leader broker must be preferred replica",
+                              {
+                                  "non_leader_idx": non_leader_idx,
+                                  "metadata_quorum": metadata_quorum,
+                                  "group_protocol": group_protocol
+                              })
+        assert condition, \
             "Expected to see broker %d (%s) as a preferred replica" % (non_leader_idx, non_leader_rack)
 
         # Validate consumed messages

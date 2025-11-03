@@ -12,7 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
+from antithesis.assertions import unreachable
 from ducktape.cluster.remoteaccount import RemoteCommandError
 from ducktape.mark import parametrize
 from ducktape.mark.resource import cluster
@@ -89,10 +89,13 @@ class AuthorizerTest(Test):
         try:
             self.logger.info("Expecting this to fail: %s" % alter_client_quotas_cmd_log_msg)
             node.account.ssh(alter_client_quotas_cmd)
+            unreachable("[test_authorizer] Client quotas command to fail with an authorization error", {})
             raise Exception("Expected alter client quotas command to fail with an authorization error, but it succeeded")
         except RemoteCommandError as e:
             if "ClusterAuthorizationException: Cluster authorization failed." not in str(e):
                 self.logger.error("Expected alter client quotas command to fail with an authorization error, but it failed with some other issue")
+                unreachable("[test_authorizer] Client quotas command to fail with an authorization error",
+                            {"actual_error": str(e)})
                 raise e
             self.logger.info("alter client quotas command failed with an authorization error as expected")
 
