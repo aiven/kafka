@@ -145,9 +145,10 @@ class KafkaService(KafkaPathResolverMixin, JmxMixin, Service):
 
     """
     PERSISTENT_ROOT = "/mnt/kafka"
-    STDOUT_STDERR_CAPTURE = os.path.join(PERSISTENT_ROOT, "server-start-stdout-stderr.log")
+    LOGS_ROOT = os.getenv("ANTITHESIS_OUTPUT_DIR") or PERSISTENT_ROOT
+    STDOUT_STDERR_CAPTURE = os.path.join(LOGS_ROOT, "server-start-stdout-stderr.log")
     # Logs such as controller.log, server.log, etc all go here
-    OPERATIONAL_LOG_DIR = os.path.join(PERSISTENT_ROOT, "kafka-operational-logs")
+    OPERATIONAL_LOG_DIR = os.path.join(LOGS_ROOT, "kafka-operational-logs")
     OPERATIONAL_LOG_INFO_DIR = os.path.join(OPERATIONAL_LOG_DIR, "info")
     OPERATIONAL_LOG_DEBUG_DIR = os.path.join(OPERATIONAL_LOG_DIR, "debug")
     # Kafka log segments etc go here

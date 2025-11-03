@@ -35,9 +35,10 @@ class ConnectServiceBase(KafkaPathResolverMixin, Service):
     CONFIG_FILE = os.path.join(PERSISTENT_ROOT, "connect.properties")
     # The log file contains normal log4j logs written using a file appender. stdout and stderr are handled separately
     # so they can be used for other output, e.g. verifiable source & sink.
-    LOG_FILE = os.path.join(PERSISTENT_ROOT, "connect.log")
-    STDOUT_FILE = os.path.join(PERSISTENT_ROOT, "connect.stdout")
-    STDERR_FILE = os.path.join(PERSISTENT_ROOT, "connect.stderr")
+    LOGS_ROOT = os.getenv("ANTITHESIS_OUTPUT_DIR") or PERSISTENT_ROOT
+    LOG_FILE = os.path.join(LOGS_ROOT, "connect.log")
+    STDOUT_FILE = os.path.join(LOGS_ROOT, "connect.stdout")
+    STDERR_FILE = os.path.join(LOGS_ROOT, "connect.stderr")
     PID_FILE = os.path.join(PERSISTENT_ROOT, "connect.pid")
     EXTERNAL_CONFIGS_FILE = os.path.join(PERSISTENT_ROOT, "connect-external-configs.properties")
     CONNECT_REST_PORT = 8083

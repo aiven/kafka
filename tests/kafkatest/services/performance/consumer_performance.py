@@ -45,9 +45,10 @@ class ConsumerPerformanceService(PerformanceService):
 
     # Root directory for persistent output
     PERSISTENT_ROOT = "/mnt/consumer_performance"
-    LOG_DIR = os.path.join(PERSISTENT_ROOT, "logs")
-    STDOUT_CAPTURE = os.path.join(PERSISTENT_ROOT, "consumer_performance.stdout")
-    STDERR_CAPTURE = os.path.join(PERSISTENT_ROOT, "consumer_performance.stderr")
+    LOGS_ROOT = os.getenv("ANTITHESIS_OUTPUT_DIR") or PERSISTENT_ROOT
+    LOG_DIR = os.path.join(LOGS_ROOT, "logs")
+    STDOUT_CAPTURE = os.path.join(LOGS_ROOT, "consumer_performance.stdout")
+    STDERR_CAPTURE = os.path.join(LOGS_ROOT, "consumer_performance.stderr")
     LOG_FILE = os.path.join(LOG_DIR, "consumer_performance.log")
     CONFIG_FILE = os.path.join(PERSISTENT_ROOT, "consumer.properties")
 

@@ -212,9 +212,10 @@ class VerifiableConsumer(KafkaPathResolverMixin, VerifiableClientMixin, Backgrou
     """
 
     PERSISTENT_ROOT = "/mnt/verifiable_consumer"
-    STDOUT_CAPTURE = os.path.join(PERSISTENT_ROOT, "verifiable_consumer.stdout")
-    STDERR_CAPTURE = os.path.join(PERSISTENT_ROOT, "verifiable_consumer.stderr")
-    LOG_DIR = os.path.join(PERSISTENT_ROOT, "logs")
+    LOGS_ROOT = os.getenv("ANTITHESIS_OUTPUT_DIR") or PERSISTENT_ROOT
+    STDOUT_CAPTURE = os.path.join(LOGS_ROOT, "verifiable_consumer.stdout")
+    STDERR_CAPTURE = os.path.join(LOGS_ROOT, "verifiable_consumer.stderr")
+    LOG_DIR = os.path.join(LOGS_ROOT, "logs")
     LOG_FILE = os.path.join(LOG_DIR, "verifiable_consumer.log")
     CONFIG_FILE = os.path.join(PERSISTENT_ROOT, "verifiable_consumer.properties")
 

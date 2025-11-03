@@ -37,9 +37,10 @@ class VerifiableProducer(KafkaPathResolverMixin, VerifiableClientMixin, Backgrou
     """
 
     PERSISTENT_ROOT = "/mnt/verifiable_producer"
-    STDOUT_CAPTURE = os.path.join(PERSISTENT_ROOT, "verifiable_producer.stdout")
-    STDERR_CAPTURE = os.path.join(PERSISTENT_ROOT, "verifiable_producer.stderr")
-    LOG_DIR = os.path.join(PERSISTENT_ROOT, "logs")
+    LOGS_ROOT = os.getenv("ANTITHESIS_OUTPUT_DIR") or PERSISTENT_ROOT
+    STDOUT_CAPTURE = os.path.join(LOGS_ROOT, "verifiable_producer.stdout")
+    STDERR_CAPTURE = os.path.join(LOGS_ROOT, "verifiable_producer.stderr")
+    LOG_DIR = os.path.join(LOGS_ROOT, "logs")
     LOG_FILE = os.path.join(LOG_DIR, "verifiable_producer.log")
     CONFIG_FILE = os.path.join(PERSISTENT_ROOT, "verifiable_producer.properties")
 
