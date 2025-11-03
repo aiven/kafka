@@ -14,6 +14,8 @@
 # limitations under the License.
 
 import random
+
+from antithesis.assertions import reachable
 from ducktape.mark import matrix
 from ducktape.mark.resource import cluster
 from ducktape.tests.test import Test
@@ -130,6 +132,12 @@ class StreamsUpgradeTest(Test):
                 monitor.wait_until("SMOKE-TEST-CLIENT-CLOSED",
                                    timeout_sec=60,
                                    err_msg="Never saw output 'SMOKE-TEST-CLIENT-CLOSED' on " + str(node.account))
+        reachable("[test_app_upgrade] Test ended",
+                  {
+                      "from_version": from_version,
+                      "bounce_type": bounce_type,
+                      "metadata_quorum": metadata_quorum,
+                  })
 
     def start_all_nodes_with(self, version):
 

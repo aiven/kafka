@@ -14,6 +14,8 @@
 # limitations under the License.
 
 import time
+
+from antithesis.assertions import reachable
 from ducktape.mark import matrix
 from ducktape.mark.resource import cluster
 from kafkatest.services.kafka import quorum
@@ -82,6 +84,11 @@ class StreamsBrokerDownResilience(BaseStreamsTest):
                                     timeout_sec=120)
 
         self.kafka.stop()
+        reachable("[test_streams_resilient_to_broker_down] Test ended",
+                  {
+                      "metadata_quorum": metadata_quorum,
+                      "group_protocol": group_protocol,
+                  })
 
     @cluster(num_nodes=7)
     @matrix(metadata_quorum=[quorum.combined_kraft],
@@ -153,6 +160,11 @@ class StreamsBrokerDownResilience(BaseStreamsTest):
                                         timeout_sec=120)
 
         self.kafka.stop()
+        reachable("[test_streams_runs_with_broker_down_initially] Test ended",
+                  {
+                      "metadata_quorum": metadata_quorum,
+                      "group_protocol": group_protocol,
+                  })
 
     @cluster(num_nodes=9)
     @matrix(metadata_quorum=[quorum.combined_kraft],
@@ -239,6 +251,11 @@ class StreamsBrokerDownResilience(BaseStreamsTest):
                                     timeout_sec=120)
 
         self.kafka.stop()
+        reachable("[test_streams_should_scale_in_while_brokers_down] Test ended",
+                  {
+                      "metadata_quorum": metadata_quorum,
+                      "group_protocol": group_protocol,
+                  })
 
     @cluster(num_nodes=9)
     @matrix(metadata_quorum=[quorum.combined_kraft],
@@ -349,3 +366,8 @@ class StreamsBrokerDownResilience(BaseStreamsTest):
                                         num_messages=self.num_messages,
                                         timeout_sec=120)
         self.kafka.stop()
+        reachable("[test_streams_should_failover_while_brokers_down] Test ended",
+                  {
+                      "metadata_quorum": metadata_quorum,
+                      "group_protocol": group_protocol,
+                  })

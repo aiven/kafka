@@ -12,7 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
+from antithesis.assertions import reachable
 from ducktape.utils.util import wait_until
 from ducktape.tests.test import Test
 from ducktape.mark.resource import cluster
@@ -227,7 +227,17 @@ class StreamsBrokerBounceTest(Test):
         # Fail brokers
         self.fail_broker_type(failure_mode, broker_type)
 
-        return self.collect_results(sleep_time_secs)
+        result = self.collect_results(sleep_time_secs)
+        reachable("[test_broker_type_bounce] Test ended",
+                  {
+                      "failure_mode": failure_mode,
+                      "broker_type": broker_type,
+                      "sleep_time_secs": sleep_time_secs,
+                      "num_threads": num_threads,
+                      "metadata_quorum": metadata_quorum,
+                      "group_protocol": group_protocol,
+                  })
+        return result
 
     @ignore
     @cluster(num_nodes=7)
@@ -252,7 +262,16 @@ class StreamsBrokerBounceTest(Test):
 
         self.processor1.start()
 
-        return self.collect_results(sleep_time_secs)
+        result = self.collect_results(sleep_time_secs)
+        reachable("[test_broker_type_bounce_at_start] Test ended",
+                  {
+                      "failure_mode": failure_mode,
+                      "broker_type": broker_type,
+                      "sleep_time_secs": sleep_time_secs,
+                      "metadata_quorum": metadata_quorum,
+                      "group_protocol": group_protocol,
+                  })
+        return result
 
     @cluster(num_nodes=10)
     @matrix(failure_mode=["clean_shutdown", "hard_shutdown", "clean_bounce", "hard_bounce"],
@@ -272,7 +291,15 @@ class StreamsBrokerBounceTest(Test):
         # Fail brokers
         self.fail_many_brokers(failure_mode, num_failures)
 
-        return self.collect_results(120)
+        result = self.collect_results(120)
+        reachable("[test_many_brokers_bounce] Test ended",
+                  {
+                      "failure_mode": failure_mode,
+                      "num_failures": num_failures,
+                      "metadata_quorum": metadata_quorum,
+                      "group_protocol": group_protocol,
+                  })
+        return result
 
     @cluster(num_nodes=10)
     @matrix(failure_mode=["clean_bounce", "hard_bounce"],
@@ -299,4 +326,12 @@ class StreamsBrokerBounceTest(Test):
         # Fail brokers
         self.fail_many_brokers(failure_mode, num_failures)
 
-        return self.collect_results(120)
+        result = self.collect_results(120)
+        reachable("[test_all_brokers_bounce] Test ended",
+                  {
+                      "failure_mode": failure_mode,
+                      "num_failures": num_failures,
+                      "metadata_quorum": metadata_quorum,
+                      "group_protocol": group_protocol,
+                  })
+        return result
