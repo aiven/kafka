@@ -12,7 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
+from antithesis.assertions import reachable
 from ducktape.utils.util import wait_until
 
 from ducktape.mark import matrix
@@ -179,3 +179,17 @@ class ReplicationTest(EndToEndTest):
         self.await_startup()
         failures[failure_mode](self, broker_type)
         self.run_validation(enable_idempotence=enable_idempotence)
+
+        reachable("[test_replication_with_broker_failure] Test ended",
+                  {
+                      "failure_mode": failure_mode,
+                      "security_protocol": security_protocol,
+                      "broker_type": broker_type,
+                      "client_sasl_mechanism": client_sasl_mechanism,
+                      "interbroker_sasl_mechanism": interbroker_sasl_mechanism,
+                      "compression_type": compression_type,
+                      "enable_idempotence": enable_idempotence,
+                      "tls_version": tls_version,
+                      "metadata_quorum": metadata_quorum,
+                      "num_controllers": num_controllers,
+                  })

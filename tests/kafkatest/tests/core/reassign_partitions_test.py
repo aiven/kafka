@@ -12,7 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
+from antithesis.assertions import reachable
 from ducktape.mark import matrix
 from ducktape.mark.resource import cluster
 from ducktape.utils.util import wait_until
@@ -178,3 +178,11 @@ class ReassignPartitionsTest(ProduceConsumeValidateTest):
         # Once KAFKA-18905 is fixed, the idempotent producer should be enabled.
         self.enable_idempotence = False
         self.run_produce_consume_validate(core_test_action=lambda: self.reassign_partitions(bounce_brokers))
+
+        reachable("[test_reassign_partitions] Test ended",
+                  {
+                      "bounce_brokers": bounce_brokers,
+                      "reassign_from_offset_zero": reassign_from_offset_zero,
+                      "metadata_quorum": metadata_quorum,
+                      "group_protocol": group_protocol
+                  })

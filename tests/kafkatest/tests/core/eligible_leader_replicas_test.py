@@ -12,6 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from antithesis.assertions import always_or_unreachable
 
 from kafkatest.services.kafka import KafkaService, quorum, consumer_group
 from kafkatest.services.console_consumer import ConsoleConsumer
@@ -156,6 +157,17 @@ class EligibleLeaderReplicasTest(Test):
         output_messages_set = set(self.get_messages_from_topic(self.topic, self.num_seed_messages, group_protocol))
         input_message_set = set(input_messages)
 
-        assert input_message_set == output_messages_set, \
+        condition = input_message_set == output_messages_set
+        num_input_message = len(input_message_set)
+        num_output_messages = len(output_messages_set)
+        always_or_unreachable(condition,
+                              "[test_basic_eligible_leader_replicas] Input and concurrently consumed output message sets must be equal",
+                              {
+                                  "num_input_message": num_input_message,
+                                  "num_output_messages": num_output_messages,
+                                  "metadata_quorum": metadata_quorum,
+                                  "group_protocol": group_protocol,
+                              })
+        assert condition, \
             "Input and concurrently consumed output message sets are not equal. Num input messages: %d. Num concurrently_consumed_messages: %d" % \
-            (len(input_message_set), len(output_messages_set))
+            (num_input_message, num_output_messages)

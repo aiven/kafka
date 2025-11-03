@@ -19,6 +19,7 @@ import re
 from functools import partial
 from typing import List
 
+from antithesis.assertions import reachable
 from ducktape.cluster.cluster import ClusterNode
 from ducktape.mark import matrix
 from ducktape.mark.resource import cluster
@@ -128,6 +129,8 @@ class TestQuorumReconfiguration(ProduceConsumeValidateTest):
                                                            self.kafka.idx(inactive_controller),
                                                            inactive_controller,
                                                            [self.kafka.idx(node) for node in self.kafka.nodes[2:]]))
+        reachable("[test_combined_mode_reconfig] Test ended",
+                  {"metadata_quorum": metadata_quorum})
 
     @cluster(num_nodes=7)
     @matrix(metadata_quorum=[isolated_kraft])
@@ -169,6 +172,8 @@ class TestQuorumReconfiguration(ProduceConsumeValidateTest):
                                                            controller_quorum.node_id_as_isolated_controller(inactive_controller),
                                                            inactive_controller,
                                                            [self.kafka.idx(node) for node in self.kafka.nodes]))
+        reachable("[test_isolated_mode_reconfig] Test ended",
+                  {"metadata_quorum": metadata_quorum})
 
 def check_nodes_in_output(pattern: str, output: str, *node_ids: int):
     nodes = json_from_line(pattern, output)

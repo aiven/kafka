@@ -95,7 +95,7 @@ class AuthorizerTest(Test):
             if "ClusterAuthorizationException: Cluster authorization failed." not in str(e):
                 self.logger.error("Expected alter client quotas command to fail with an authorization error, but it failed with some other issue")
                 unreachable("[test_authorizer] Client quotas command to fail with an authorization error",
-                            {"actual_error": str(e)})
+                            {"error": str(e)})
                 raise e
             self.logger.info("alter client quotas command failed with an authorization error as expected")
 

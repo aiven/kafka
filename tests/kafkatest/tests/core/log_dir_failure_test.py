@@ -12,7 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
+from antithesis.assertions import always_or_unreachable, unreachable
 from ducktape.utils.util import wait_until
 from ducktape.mark import matrix
 from ducktape.mark.resource import cluster
@@ -121,15 +121,35 @@ class LogDirFailureTest(ProduceConsumeValidateTest):
             # We assume that partition of topic2 is created in the second log directory of respective brokers.
             broker_node = select_node(self, broker_type, self.topic2)
             broker_idx = self.kafka.idx(broker_node)
-            assert broker_idx in self.kafka.isr_idx_list(self.topic2), \
-                   "Broker %d should be in isr set %s" % (broker_idx, str(self.kafka.isr_idx_list(self.topic2)))
+            isr_idx_list = self.kafka.isr_idx_list(self.topic2)
+            condition = broker_idx in isr_idx_list
+            always_or_unreachable(condition, "[test_replication_with_disk_failure] Broker should be in isr set",
+                                  {
+                                      "broker_idx": broker_idx,
+                                      "isr_idx_list": isr_idx_list,
+                                      "bounce_broker": bounce_broker,
+                                      "security_protocol": security_protocol,
+                                      "broker_type": broker_type,
+                                      "metadata_quorum": metadata_quorum,
+                                   })
+            assert condition, \
+                   "Broker %d should be in isr set %s" % (broker_idx, str(isr_idx_list))
 
             # Verify that topic1 and the consumer offset topic is in the first log directory and topic2 is in the second log directory
             topic_1_partition_0 = KafkaService.DATA_LOG_DIR_1 + "/test_topic_1-0"
             topic_2_partition_0 = KafkaService.DATA_LOG_DIR_2 + "/test_topic_2-0"
             offset_topic_partition_0 = KafkaService.DATA_LOG_DIR_1 + "/__consumer_offsets-0"
             for path in [topic_1_partition_0, topic_2_partition_0, offset_topic_partition_0]:
-                assert path_exists(broker_node, path), "%s should exist" % path
+                condition = path_exists(broker_node, path)
+                always_or_unreachable(condition, "[test_replication_with_disk_failure] Path should exist",
+                                      {
+                                          "path": path,
+                                          "bounce_broker": bounce_broker,
+                                          "security_protocol": security_protocol,
+                                          "broker_type": broker_type,
+                                          "metadata_quorum": metadata_quorum,
+                                      })
+                assert condition, "%s should exist" % path
 
             self.logger.debug("Making log dir %s inaccessible" % (KafkaService.DATA_LOG_DIR_2))
             cmd = "chmod a-w %s -R" % (KafkaService.DATA_LOG_DIR_2)
@@ -146,7 +166,16 @@ class LogDirFailureTest(ProduceConsumeValidateTest):
             wait_until(lambda: self.kafka.leader(self.topic2, partition=0) != broker_node,
                        timeout_sec=60,
                        err_msg="Broker %d should not be leader of topic %s and partition 0" % (broker_idx, self.topic2))
-            assert self.kafka.alive(broker_node), "Broker %d should be still online" % (broker_idx)
+            condition = self.kafka.alive(broker_node)
+            always_or_unreachable(condition, "[test_replication_with_disk_failure] Broker should be still online",
+                                  {
+                                      "broker_idx": broker_idx,
+                                      "bounce_broker": bounce_broker,
+                                      "security_protocol": security_protocol,
+                                      "broker_type": broker_type,
+                                      "metadata_quorum": metadata_quorum,
+                                  })
+            assert condition, "Broker %d should be still online" % (broker_idx)
             wait_until(lambda: broker_idx not in self.kafka.isr_idx_list(self.topic2),
                        timeout_sec=60,
                        err_msg="Broker %d should not be in isr set %s" % (broker_idx, str(self.kafka.isr_idx_list(self.topic2))))
@@ -172,7 +201,18 @@ class LogDirFailureTest(ProduceConsumeValidateTest):
             self.consumer_start_timeout_sec = 90
             self.start_producer_and_consumer()
 
-            assert self.kafka.isr_idx_list(self.topic1) == [broker_idx], \
+            condition = self.kafka.isr_idx_list(self.topic1) == [broker_idx]
+            always_or_unreachable(condition, "[test_replication_with_disk_failure] In-sync replicas of topic and partition 0",
+                                  {
+                                      "topic": self.topic1,
+                                      "expected": [broker_idx],
+                                      "actual": self.kafka.isr_idx_list(self.topic1),
+                                      "bounce_broker": bounce_broker,
+                                      "security_protocol": security_protocol,
+                                      "broker_type": broker_type,
+                                      "metadata_quorum": metadata_quorum,
+                                  })
+            assert condition, \
                    "In-sync replicas of topic %s and partition 0 should be %s" % (self.topic1, str([broker_idx]))
 
             self.stop_producer_and_consumer()
@@ -181,4 +221,12 @@ class LogDirFailureTest(ProduceConsumeValidateTest):
         except BaseException as e:
             for s in self.test_context.services:
                 self.mark_for_collect(s)
+            unreachable("[test_replication_with_disk_failure] Global exception should never happen",
+                        {
+                            "error": str(e),
+                            "bounce_broker": bounce_broker,
+                            "security_protocol": security_protocol,
+                            "broker_type": broker_type,
+                            "metadata_quorum": metadata_quorum,
+                        })
             raise
