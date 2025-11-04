@@ -16,18 +16,24 @@
 Configuration:
   Appenders:
     File:
-      name: FILE
-      fileName: {{ log_file }}
-      append: true
-      immediateFlush: true
-      PatternLayout:
-        pattern: "[%d] %p %m (%c)%n"
+      - name: FILE
+        fileName: {{ log_file }}
+        append: true
+        immediateFlush: true
+        PatternLayout:
+          pattern: "[%d] %p %m (%c)%n"
+      - name: ANTITHESIS_FILE
+        fileName: {{ antithesis_log_file }}
+        append: true
+        PatternLayout:
+          pattern: "[%d] %p %m (%c)%n"
 
   Loggers:
     Root:
       level: {{ log_level|default("INFO") }}
       AppenderRef:
         - ref: FILE
+        - ref: ANTITHESIS_FILE
 
     {% if loggers is defined %}
     Logger:

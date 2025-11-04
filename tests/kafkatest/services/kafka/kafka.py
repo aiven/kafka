@@ -166,6 +166,8 @@ class KafkaService(KafkaPathResolverMixin, JmxMixin, Service):
     ADMIN_CLIENT_AS_BROKER_JAAS_CONF_PROPERTY = "java.security.auth.login.config=/mnt/security/admin_client_as_broker_jaas.conf"
     KRB5_CONF = "java.security.krb5.conf=/mnt/security/krb5.conf"
     SECURITY_PROTOCOLS = [SecurityConfig.PLAINTEXT, SecurityConfig.SSL, SecurityConfig.SASL_PLAINTEXT, SecurityConfig.SASL_SSL]
+    ANTITHESIS_LOG_DIR = os.path.join(os.getenv("ANTITHESIS_OUTPUT_DIR") or "/logs", "kafka-operational-logs")
+    ANTITHESIS_LOG_FILE = os.path.join(ANTITHESIS_LOG_DIR, "kafka.log")
 
     logs = {
         "kafka_server_start_stdout_stderr": {
@@ -882,7 +884,7 @@ class KafkaService(KafkaPathResolverMixin, JmxMixin, Service):
         self.logger.info(prop_file)
         node.account.create_file(KafkaService.CONFIG_FILE, prop_file)
         node.account.create_file(os.path.join(self.PERSISTENT_ROOT, get_log4j_config(node)),
-                                 self.render(get_log4j_config(node), log_dir=KafkaService.OPERATIONAL_LOG_DIR))
+                                 self.render(get_log4j_config(node), log_dir=KafkaService.OPERATIONAL_LOG_DIR, antithesis_log_file=KafkaService.ANTITHESIS_LOG_FILE))
 
         if self.quorum_info.using_kraft:
             # format log directories if necessary

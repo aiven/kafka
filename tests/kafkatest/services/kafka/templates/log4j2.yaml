@@ -26,6 +26,13 @@ Configuration:
       PatternLayout:
         pattern: "${logPattern}"
 
+    File:
+      - name: ANTITHESIS_FILE
+        fileName: {{ antithesis_log_file }}
+        append: true
+        PatternLayout:
+          pattern: "[%d] %p %m (%c)%n"
+
     RollingFile:
       - name: KafkaInfoAppender
         fileName: "${log_dir}/info/server.log"
@@ -176,6 +183,7 @@ Configuration:
       level: {{ log_level|default("DEBUG") }}
       AppenderRef:
         - ref: STDOUT
+        - ref: ANTITHESIS_FILE
 
     Logger:
       - name: kafka.producer.async.DefaultEventHandler

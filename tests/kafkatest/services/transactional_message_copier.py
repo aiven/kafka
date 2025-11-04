@@ -34,6 +34,8 @@ class TransactionalMessageCopier(KafkaPathResolverMixin, BackgroundThreadService
     STDERR_CAPTURE = os.path.join(PERSISTENT_ROOT, "transactional_message_copier.stderr")
     LOG_DIR = os.path.join(PERSISTENT_ROOT, "logs")
     LOG_FILE = os.path.join(LOG_DIR, "transactional_message_copier.log")
+    ANTITHESIS_LOG_DIR = os.path.join(os.getenv("ANTITHESIS_OUTPUT_DIR") or "/logs", "transactional_message_copier")
+    ANTITHESIS_LOG_FILE = os.path.join(ANTITHESIS_LOG_DIR, "transactional_message_copier.log")
 
     logs = {
         "transactional_message_copier_stdout": {
@@ -78,7 +80,8 @@ class TransactionalMessageCopier(KafkaPathResolverMixin, BackgroundThreadService
                          allow_fail=False)
         # Create and upload log properties
         log_config = self.render(get_log4j_config_for_tools(node),
-                                 log_file=TransactionalMessageCopier.LOG_FILE)
+                                 log_file=TransactionalMessageCopier.LOG_FILE,
+                                 antithesis_log_file=TransactionalMessageCopier.ANTITHESIS_LOG_FILE)
         node.account.create_file(get_log4j_config_for_tools(node), log_config)
         # Configure security
         self.security_config = self.kafka.security_config.client_config(node=node)

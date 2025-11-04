@@ -39,6 +39,8 @@ class ConsoleConsumer(KafkaPathResolverMixin, JmxMixin, BackgroundThreadService)
     CONFIG_FILE = os.path.join(PERSISTENT_ROOT, "console_consumer.properties")
     JMX_TOOL_LOG = os.path.join(PERSISTENT_ROOT, "jmx_tool.log")
     JMX_TOOL_ERROR_LOG = os.path.join(PERSISTENT_ROOT, "jmx_tool.err.log")
+    ANTITHESIS_LOG_DIR = os.path.join(os.getenv("ANTITHESIS_OUTPUT_DIR") or "/logs", "console_consumer")
+    ANTITHESIS_LOG_FILE = os.path.join(ANTITHESIS_LOG_DIR, "console_consumer.log")
 
     logs = {
         "consumer_stdout": {
@@ -226,7 +228,9 @@ class ConsoleConsumer(KafkaPathResolverMixin, JmxMixin, BackgroundThreadService)
         node.account.create_file(ConsoleConsumer.CONFIG_FILE, prop_file)
 
         # Create and upload log properties
-        log_config = self.render(get_log4j_config_for_tools(node), log_file=ConsoleConsumer.LOG_FILE)
+        log_config = self.render(get_log4j_config_for_tools(node),
+                                 log_file=ConsoleConsumer.LOG_FILE,
+                                 antithesis_log_file=ConsoleConsumer.ANTITHESIS_LOG_FILE)
         node.account.create_file(get_log4j_config_for_tools(node), log_config)
 
         # Run and capture output
