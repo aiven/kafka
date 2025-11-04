@@ -30,10 +30,9 @@ class TransactionalMessageCopier(KafkaPathResolverMixin, BackgroundThreadService
     use in system testing.
     """
     PERSISTENT_ROOT = "/mnt/transactional_message_copier"
-    LOGS_ROOT = os.getenv("ANTITHESIS_OUTPUT_DIR") or PERSISTENT_ROOT
-    STDOUT_CAPTURE = os.path.join(LOGS_ROOT, "transactional_message_copier.stdout")
-    STDERR_CAPTURE = os.path.join(LOGS_ROOT, "transactional_message_copier.stderr")
-    LOG_DIR = os.path.join(LOGS_ROOT, "logs")
+    STDOUT_CAPTURE = os.path.join(PERSISTENT_ROOT, "transactional_message_copier.stdout")
+    STDERR_CAPTURE = os.path.join(PERSISTENT_ROOT, "transactional_message_copier.stderr")
+    LOG_DIR = os.path.join(PERSISTENT_ROOT, "logs")
     LOG_FILE = os.path.join(LOG_DIR, "transactional_message_copier.log")
 
     logs = {

@@ -26,10 +26,9 @@ class EndToEndLatencyService(PerformanceService):
 
     # Root directory for persistent output
     PERSISTENT_ROOT = "/mnt/end_to_end_latency"
-    LOGS_ROOT = os.getenv("ANTITHESIS_OUTPUT_DIR") or PERSISTENT_ROOT
-    LOG_DIR = os.path.join(LOGS_ROOT, "logs")
-    STDOUT_CAPTURE = os.path.join(LOGS_ROOT, "end_to_end_latency.stdout")
-    STDERR_CAPTURE = os.path.join(LOGS_ROOT, "end_to_end_latency.stderr")
+    LOG_DIR = os.path.join(PERSISTENT_ROOT, "logs")
+    STDOUT_CAPTURE = os.path.join(PERSISTENT_ROOT, "end_to_end_latency.stdout")
+    STDERR_CAPTURE = os.path.join(PERSISTENT_ROOT, "end_to_end_latency.stderr")
     LOG_FILE = os.path.join(LOG_DIR, "end_to_end_latency.log")
     CONFIG_FILE = os.path.join(PERSISTENT_ROOT, "client.properties")
 

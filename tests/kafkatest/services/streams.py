@@ -33,12 +33,11 @@ class StreamsTestBaseService(KafkaPathResolverMixin, JmxMixin, Service):
 
     # The log file contains normal log4j logs written using a file appender. stdout and stderr are handled separately
     CONFIG_FILE = os.path.join(PERSISTENT_ROOT, "streams.properties")
-    LOGS_ROOT = os.getenv("ANTITHESIS_OUTPUT_DIR") or PERSISTENT_ROOT
-    LOG_FILE = os.path.join(LOGS_ROOT, "streams.log")
-    STDOUT_FILE = os.path.join(LOGS_ROOT, "streams.stdout")
-    STDERR_FILE = os.path.join(LOGS_ROOT, "streams.stderr")
-    JMX_LOG_FILE = os.path.join(LOGS_ROOT, "jmx_tool.log")
-    JMX_ERR_FILE = os.path.join(LOGS_ROOT, "jmx_tool.err.log")
+    LOG_FILE = os.path.join(PERSISTENT_ROOT, "streams.log")
+    STDOUT_FILE = os.path.join(PERSISTENT_ROOT, "streams.stdout")
+    STDERR_FILE = os.path.join(PERSISTENT_ROOT, "streams.stderr")
+    JMX_LOG_FILE = os.path.join(PERSISTENT_ROOT, "jmx_tool.log")
+    JMX_ERR_FILE = os.path.join(PERSISTENT_ROOT, "jmx_tool.err.log")
     PID_FILE = os.path.join(PERSISTENT_ROOT, "streams.pid")
 
     CLEAN_NODE_ENABLED = True

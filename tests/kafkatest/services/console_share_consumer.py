@@ -31,14 +31,13 @@ it to standard output.
 class ConsoleShareConsumer(KafkaPathResolverMixin, JmxMixin, BackgroundThreadService):
     # Root directory for persistent output
     PERSISTENT_ROOT = "/mnt/console_share_consumer"
-    LOGS_ROOT = os.getenv("ANTITHESIS_OUTPUT_DIR") or PERSISTENT_ROOT
-    STDOUT_CAPTURE = os.path.join(LOGS_ROOT, "console_share_consumer.stdout")
-    STDERR_CAPTURE = os.path.join(LOGS_ROOT, "console_share_consumer.stderr")
-    LOG_DIR = os.path.join(LOGS_ROOT, "logs")
+    STDOUT_CAPTURE = os.path.join(PERSISTENT_ROOT, "console_share_consumer.stdout")
+    STDERR_CAPTURE = os.path.join(PERSISTENT_ROOT, "console_share_consumer.stderr")
+    LOG_DIR = os.path.join(PERSISTENT_ROOT, "logs")
     LOG_FILE = os.path.join(LOG_DIR, "console_share_consumer.log")
     CONFIG_FILE = os.path.join(PERSISTENT_ROOT, "console_share_consumer.properties")
-    JMX_TOOL_LOG = os.path.join(LOGS_ROOT, "jmx_tool.log")
-    JMX_TOOL_ERROR_LOG = os.path.join(LOGS_ROOT, "jmx_tool.err.log")
+    JMX_TOOL_LOG = os.path.join(PERSISTENT_ROOT, "jmx_tool.log")
+    JMX_TOOL_ERROR_LOG = os.path.join(PERSISTENT_ROOT, "jmx_tool.err.log")
 
     logs = {
         "share_consumer_stdout": {

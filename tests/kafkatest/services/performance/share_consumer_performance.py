@@ -38,10 +38,9 @@ class ShareConsumerPerformanceService(PerformanceService):
 
     # Root directory for persistent output
     PERSISTENT_ROOT = "/mnt/share_consumer_performance"
-    LOGS_ROOT = os.getenv("ANTITHESIS_OUTPUT_DIR") or PERSISTENT_ROOT
-    LOG_DIR = os.path.join(LOGS_ROOT, "logs")
-    STDOUT_CAPTURE = os.path.join(LOGS_ROOT, "share_consumer_performance.stdout")
-    STDERR_CAPTURE = os.path.join(LOGS_ROOT, "share_consumer_performance.stderr")
+    LOG_DIR = os.path.join(PERSISTENT_ROOT, "logs")
+    STDOUT_CAPTURE = os.path.join(PERSISTENT_ROOT, "share_consumer_performance.stdout")
+    STDERR_CAPTURE = os.path.join(PERSISTENT_ROOT, "share_consumer_performance.stderr")
     LOG_FILE = os.path.join(LOG_DIR, "share_consumer_performance.log")
     CONFIG_FILE = os.path.join(PERSISTENT_ROOT, "share_consumer.properties")
 

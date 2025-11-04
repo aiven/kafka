@@ -46,11 +46,10 @@ class TrogdorService(KafkaPathResolverMixin, Service):
     """
 
     PERSISTENT_ROOT="/mnt/trogdor"
-    LOGS_ROOT = os.getenv("ANTITHESIS_OUTPUT_DIR") or PERSISTENT_ROOT
-    COORDINATOR_STDOUT_STDERR = os.path.join(LOGS_ROOT, "trogdor-coordinator-stdout-stderr.log")
-    AGENT_STDOUT_STDERR = os.path.join(LOGS_ROOT, "trogdor-agent-stdout-stderr.log")
-    COORDINATOR_LOG = os.path.join(LOGS_ROOT, "trogdor-coordinator.log")
-    AGENT_LOG = os.path.join(LOGS_ROOT, "trogdor-agent.log")
+    COORDINATOR_STDOUT_STDERR = os.path.join(PERSISTENT_ROOT, "trogdor-coordinator-stdout-stderr.log")
+    AGENT_STDOUT_STDERR = os.path.join(PERSISTENT_ROOT, "trogdor-agent-stdout-stderr.log")
+    COORDINATOR_LOG = os.path.join(PERSISTENT_ROOT, "trogdor-coordinator.log")
+    AGENT_LOG = os.path.join(PERSISTENT_ROOT, "trogdor-agent.log")
     CONFIG_PATH = os.path.join(PERSISTENT_ROOT, "trogdor.conf")
     DEFAULT_AGENT_PORT=8888
     DEFAULT_COORDINATOR_PORT=8889
