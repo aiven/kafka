@@ -217,6 +217,8 @@ class VerifiableConsumer(KafkaPathResolverMixin, VerifiableClientMixin, Backgrou
     LOG_DIR = os.path.join(PERSISTENT_ROOT, "logs")
     LOG_FILE = os.path.join(LOG_DIR, "verifiable_consumer.log")
     CONFIG_FILE = os.path.join(PERSISTENT_ROOT, "verifiable_consumer.properties")
+    ANTITHESIS_LOG_DIR = os.path.join(os.getenv("ANTITHESIS_OUTPUT_DIR") or "/logs", "verifiable_consumer")
+    ANTITHESIS_LOG_FILE = os.path.join(ANTITHESIS_LOG_DIR, "verifiable_consumer.log")
 
     logs = {
         "verifiable_consumer_stdout": {

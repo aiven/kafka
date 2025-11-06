@@ -42,6 +42,8 @@ class VerifiableProducer(KafkaPathResolverMixin, VerifiableClientMixin, Backgrou
     LOG_DIR = os.path.join(PERSISTENT_ROOT, "logs")
     LOG_FILE = os.path.join(LOG_DIR, "verifiable_producer.log")
     CONFIG_FILE = os.path.join(PERSISTENT_ROOT, "verifiable_producer.properties")
+    ANTITHESIS_LOG_DIR = os.path.join(os.getenv("ANTITHESIS_OUTPUT_DIR") or "/logs", "verifiable_producer")
+    ANTITHESIS_LOG_FILE = os.path.join(ANTITHESIS_LOG_DIR, "verifiable_producer.log")
 
     logs = {
         "verifiable_producer_stdout": {

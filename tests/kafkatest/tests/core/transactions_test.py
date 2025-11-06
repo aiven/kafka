@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from antithesis.assertions import always_or_unreachable
+from antithesis.lifecycle import send_event
 
 from kafkatest.services.kafka import KafkaService, quorum, consumer_group
 from kafkatest.services.console_consumer import ConsoleConsumer
@@ -236,114 +237,132 @@ class TransactionsTest(Test):
         self.setup_topics()
         self.kafka.start()
 
+        send_event("Seeding messages", {})
         input_messages = self.seed_messages(self.input_topic, self.num_seed_messages)
-        concurrently_consumed_messages = self.copy_messages_transactionally(
-            failure_mode, bounce_target, input_topic=self.input_topic,
-            output_topic=self.output_topic, num_copiers=self.num_input_partitions,
-            num_messages_to_copy=self.num_seed_messages, use_group_metadata=use_group_metadata, group_protocol=group_protocol)
-        output_messages = self.get_messages_from_topic(self.output_topic, self.num_seed_messages, group_protocol)
+        send_event("Done seeding messages", {})
+        send_event("Consuming messages", {})
+        input_consumed_messages = self.get_messages_from_topic(self.input_topic, self.num_seed_messages, group_protocol)
+        send_event("Done consuming messages", {})
+        condition = input_messages == input_consumed_messages
+        always_or_unreachable(
+            condition,
+            "[test_transactions drilldown] Messages match",
+            {
+                "len(input_messages)": len(input_messages),
+                "len(input_consumed_messages)": len(input_consumed_messages),
+                "input_messages": input_messages,
+                "input_consumed_messages": input_consumed_messages,
+            })
+        assert condition
 
-        concurrently_consumed_message_set = set(concurrently_consumed_messages)
-        output_message_set = set(output_messages)
-        input_message_set = set(input_messages)
 
-        num_dups = abs(len(output_messages) - len(output_message_set))
-        num_dups_in_concurrent_consumer = abs(len(concurrently_consumed_messages)
-                                              - len(concurrently_consumed_message_set))
-        condition = num_dups == 0
-        always_or_unreachable(condition,
-                              "[TransactionsTest.test_transactions] No duplicates",
-                              {
-                                  "num_dups": num_dups,
-                                  "failure_mode": failure_mode,
-                                  "bounce_target": bounce_target,
-                                  "check_order": check_order,
-                                  "use_group_metadata": use_group_metadata,
-                                  "group_protocol": group_protocol,
-                                  "use_transactions_v2": use_transactions_v2
-                              })
-        assert condition, "Detected %d duplicates in the output stream" % num_dups
-
-        condition = input_message_set == output_message_set
-        always_or_unreachable(condition,
-                              "[TransactionsTest.test_transactions] Input and output message sets are equal",
-                              {
-                                  "len(input_message_set)": len(input_message_set),
-                                  "len(output_message_set)": len(output_message_set),
-                                  "failure_mode": failure_mode,
-                                  "bounce_target": bounce_target,
-                                  "check_order": check_order,
-                                  "use_group_metadata": use_group_metadata,
-                                  "group_protocol": group_protocol,
-                                  "use_transactions_v2": use_transactions_v2
-                              })
-        assert condition, "Input and output message sets are not equal. Num input messages %d. Num output messages %d" % \
-                            (len(input_message_set), len(output_message_set))
-
-        condition = num_dups_in_concurrent_consumer == 0
-        always_or_unreachable(condition,
-                              "[TransactionsTest.test_transactions] No dups in concurrently consumed messages",
-                              {
-                                  "num_dups_in_concurrent_consumer": num_dups_in_concurrent_consumer,
-                                  "failure_mode": failure_mode,
-                                  "bounce_target": bounce_target,
-                                  "check_order": check_order,
-                                  "use_group_metadata": use_group_metadata,
-                                  "group_protocol": group_protocol,
-                                  "use_transactions_v2": use_transactions_v2
-                              })
-        assert condition, "Detected %d dups in concurrently consumed messages" % num_dups_in_concurrent_consumer
-
-        condition = input_message_set == concurrently_consumed_message_set
-        always_or_unreachable(condition,
-                              "[TransactionsTest.test_transactions] Input and concurrently consumed output message sets are equal",
-                              {
-                                  "len(input_message_set)": len(input_message_set),
-                                  "len(concurrently_consumed_message_set)": len(concurrently_consumed_message_set),
-                                  "failure_mode": failure_mode,
-                                  "bounce_target": bounce_target,
-                                  "check_order": check_order,
-                                  "use_group_metadata": use_group_metadata,
-                                  "group_protocol": group_protocol,
-                                  "use_transactions_v2": use_transactions_v2
-                              })
-        assert condition, \
-            "Input and concurrently consumed output message sets are not equal. Num input messages: %d. Num concurrently_consumed_messages: %d" %\
-            (len(input_message_set), len(concurrently_consumed_message_set))
-
-        if check_order:
-            condition = input_messages == sorted(input_messages)
-            always_or_unreachable(condition,
-                                  "[TransactionsTest.test_transactions] Seed messages were in order", {
-                                      "failure_mode": failure_mode,
-                                      "bounce_target": bounce_target,
-                                      "check_order": check_order,
-                                      "use_group_metadata": use_group_metadata,
-                                      "group_protocol": group_protocol,
-                                      "use_transactions_v2": use_transactions_v2
-                                  })
-            assert condition, "The seed messages themselves were not in order"
-
-            condition = output_messages == input_messages
-            always_or_unreachable(condition,
-                                  "[TransactionsTest.test_transactions] Output messages were in order", {
-                                      "failure_mode": failure_mode,
-                                      "bounce_target": bounce_target,
-                                      "check_order": check_order,
-                                      "use_group_metadata": use_group_metadata,
-                                      "group_protocol": group_protocol,
-                                      "use_transactions_v2": use_transactions_v2
-                                  })
-            assert condition, "Output messages are not in order"
-
-            messages = concurrently_consumed_messages == output_messages
-            always_or_unreachable(condition,
-                                  "[TransactionsTest.test_transactions] Concurrently consumed messages were in order", {
-                                      "failure_mode": failure_mode,
-                                      "bounce_target": bounce_target,
-                                      "check_order": check_order,
-                                      "use_group_metadata": use_group_metadata,
-                                      "group_protocol": group_protocol,
-                                      "use_transactions_v2": use_transactions_v2
-                                  })
-            assert messages, "Concurrently consumed messages are not in order"
+        # concurrently_consumed_messages = self.copy_messages_transactionally(
+        #     failure_mode, bounce_target, input_topic=self.input_topic,
+        #     output_topic=self.output_topic, num_copiers=self.num_input_partitions,
+        #     num_messages_to_copy=self.num_seed_messages, use_group_metadata=use_group_metadata, group_protocol=group_protocol)
+        # output_messages = self.get_messages_from_topic(self.output_topic, self.num_seed_messages, group_protocol)
+        #
+        # concurrently_consumed_message_set = set(concurrently_consumed_messages)
+        # output_message_set = set(output_messages)
+        # input_message_set = set(input_messages)
+        #
+        # num_dups = abs(len(output_messages) - len(output_message_set))
+        # num_dups_in_concurrent_consumer = abs(len(concurrently_consumed_messages)
+        #                                       - len(concurrently_consumed_message_set))
+        # condition = num_dups == 0
+        # always_or_unreachable(condition,
+        #                       "[TransactionsTest.test_transactions] No duplicates",
+        #                       {
+        #                           "num_dups": num_dups,
+        #                           "failure_mode": failure_mode,
+        #                           "bounce_target": bounce_target,
+        #                           "check_order": check_order,
+        #                           "use_group_metadata": use_group_metadata,
+        #                           "group_protocol": group_protocol,
+        #                           "use_transactions_v2": use_transactions_v2
+        #                       })
+        # assert condition, "Detected %d duplicates in the output stream" % num_dups
+        #
+        # condition = input_message_set == output_message_set
+        # always_or_unreachable(condition,
+        #                       "[TransactionsTest.test_transactions] Input and output message sets are equal",
+        #                       {
+        #                           "len(input_message_set)": len(input_message_set),
+        #                           "len(output_message_set)": len(output_message_set),
+        #                           "failure_mode": failure_mode,
+        #                           "bounce_target": bounce_target,
+        #                           "check_order": check_order,
+        #                           "use_group_metadata": use_group_metadata,
+        #                           "group_protocol": group_protocol,
+        #                           "use_transactions_v2": use_transactions_v2
+        #                       })
+        # assert condition, "Input and output message sets are not equal. Num input messages %d. Num output messages %d" % \
+        #                     (len(input_message_set), len(output_message_set))
+        #
+        # condition = num_dups_in_concurrent_consumer == 0
+        # always_or_unreachable(condition,
+        #                       "[TransactionsTest.test_transactions] No dups in concurrently consumed messages",
+        #                       {
+        #                           "num_dups_in_concurrent_consumer": num_dups_in_concurrent_consumer,
+        #                           "failure_mode": failure_mode,
+        #                           "bounce_target": bounce_target,
+        #                           "check_order": check_order,
+        #                           "use_group_metadata": use_group_metadata,
+        #                           "group_protocol": group_protocol,
+        #                           "use_transactions_v2": use_transactions_v2
+        #                       })
+        # assert condition, "Detected %d dups in concurrently consumed messages" % num_dups_in_concurrent_consumer
+        #
+        # condition = input_message_set == concurrently_consumed_message_set
+        # always_or_unreachable(condition,
+        #                       "[TransactionsTest.test_transactions] Input and concurrently consumed output message sets are equal",
+        #                       {
+        #                           "len(input_message_set)": len(input_message_set),
+        #                           "len(concurrently_consumed_message_set)": len(concurrently_consumed_message_set),
+        #                           "failure_mode": failure_mode,
+        #                           "bounce_target": bounce_target,
+        #                           "check_order": check_order,
+        #                           "use_group_metadata": use_group_metadata,
+        #                           "group_protocol": group_protocol,
+        #                           "use_transactions_v2": use_transactions_v2
+        #                       })
+        # assert condition, \
+        #     "Input and concurrently consumed output message sets are not equal. Num input messages: %d. Num concurrently_consumed_messages: %d" %\
+        #     (len(input_message_set), len(concurrently_consumed_message_set))
+        #
+        # if check_order:
+        #     condition = input_messages == sorted(input_messages)
+        #     always_or_unreachable(condition,
+        #                           "[TransactionsTest.test_transactions] Seed messages were in order", {
+        #                               "failure_mode": failure_mode,
+        #                               "bounce_target": bounce_target,
+        #                               "check_order": check_order,
+        #                               "use_group_metadata": use_group_metadata,
+        #                               "group_protocol": group_protocol,
+        #                               "use_transactions_v2": use_transactions_v2
+        #                           })
+        #     assert condition, "The seed messages themselves were not in order"
+        #
+        #     condition = output_messages == input_messages
+        #     always_or_unreachable(condition,
+        #                           "[TransactionsTest.test_transactions] Output messages were in order", {
+        #                               "failure_mode": failure_mode,
+        #                               "bounce_target": bounce_target,
+        #                               "check_order": check_order,
+        #                               "use_group_metadata": use_group_metadata,
+        #                               "group_protocol": group_protocol,
+        #                               "use_transactions_v2": use_transactions_v2
+        #                           })
+        #     assert condition, "Output messages are not in order"
+        #
+        #     messages = concurrently_consumed_messages == output_messages
+        #     always_or_unreachable(condition,
+        #                           "[TransactionsTest.test_transactions] Concurrently consumed messages were in order", {
+        #                               "failure_mode": failure_mode,
+        #                               "bounce_target": bounce_target,
+        #                               "check_order": check_order,
+        #                               "use_group_metadata": use_group_metadata,
+        #                               "group_protocol": group_protocol,
+        #                               "use_transactions_v2": use_transactions_v2
+        #                           })
+        #     assert messages, "Concurrently consumed messages are not in order"

@@ -20,6 +20,7 @@ import re
 import signal
 import time
 
+from antithesis.lifecycle import send_event
 from ducktape.services.service import Service
 from ducktape.utils.util import wait_until
 from ducktape.cluster.remoteaccount import RemoteCommandError
@@ -1565,8 +1566,17 @@ class KafkaService(KafkaPathResolverMixin, JmxMixin, Service):
         # ensure we wait for the broker to start by setting concurrent start to False for the invocation of start_node()
         orig_concurrent_start = self.concurrent_start
         self.concurrent_start = False
+
+        antithesis_event_details = {
+            "node_id": node.config["node.id"],
+            "node_name": node.name,
+        }
+        send_event("Stopping node", antithesis_event_details)
         self.stop_node(node, clean_shutdown, timeout_sec)
+        send_event("Stopped node", antithesis_event_details)
+        send_event("Starting node", antithesis_event_details)
         self.start_node(node, timeout_sec)
+        send_event("Started node", antithesis_event_details)
         self.concurrent_start = orig_concurrent_start
 
     def _describe_topic_line_for_partition(self, partition, describe_topic_output):

@@ -250,15 +250,26 @@ public class LogSegment implements Closeable {
     public void append(long largestOffset,
                        MemoryRecords records) throws IOException {
         if (records.sizeInBytes() > 0) {
-            LOGGER.trace("Inserting {} bytes at end offset {} at position {}",
-                records.sizeInBytes(), largestOffset, log.sizeInBytes());
+            final boolean ourTopic = log.file().toPath().toString().contains("input-topic");
+            
+            if (ourTopic) {
+                LOGGER.debug("QQWWEE Inserting {} bytes at end offset {} at position {}",
+                    records.sizeInBytes(), largestOffset, log.sizeInBytes());
+            } else {
+                LOGGER.trace("Inserting {} bytes at end offset {} at position {}",
+                    records.sizeInBytes(), largestOffset, log.sizeInBytes());
+            }
             int physicalPosition = log.sizeInBytes();
 
             ensureOffsetInRange(largestOffset);
 
             // append the messages
             long appendedBytes = log.append(records);
-            LOGGER.trace("Appended {} to {} at end offset {}", appendedBytes, log.file(), largestOffset);
+            if (ourTopic) {
+                LOGGER.debug("QQWWEE Appended {} to {} at end offset {}. Size: {}", appendedBytes, log.file(), largestOffset, log.sizeInBytes());
+            } else {
+                LOGGER.trace("Appended {} to {} at end offset {}", appendedBytes, log.file(), largestOffset);
+            }
 
             for (RecordBatch batch : records.batches()) {
                 long batchMaxTimestamp = batch.maxTimestamp();
