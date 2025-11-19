@@ -188,6 +188,7 @@ public class ReplicationControlManager {
         private ClusterControlManager clusterControl = null;
         private Optional<CreateTopicPolicy> createTopicPolicy = Optional.empty();
         private FeatureControlManager featureControl = null;
+        private AivenTopicPolicy aivenTopicPolicy = null;
 
         Builder setSnapshotRegistry(SnapshotRegistry snapshotRegistry) {
             this.snapshotRegistry = snapshotRegistry;
@@ -274,6 +275,11 @@ public class ReplicationControlManager {
             return this;
         }
 
+        public Builder setAivenTopicPolicy(AivenTopicPolicy aivenTopicPolicy) {
+            this.aivenTopicPolicy = aivenTopicPolicy;
+            return this;
+        }
+
         ReplicationControlManager build() {
             if (configurationControl == null) {
                 throw new IllegalStateException("Configuration control must be set before building");
@@ -301,7 +307,8 @@ public class ReplicationControlManager {
                 configurationControl,
                 clusterControl,
                 createTopicPolicy,
-                featureControl);
+                featureControl,
+                aivenTopicPolicy);
         }
     }
 
@@ -476,6 +483,8 @@ public class ReplicationControlManager {
      */
     final KRaftClusterDescriber clusterDescriber = new KRaftClusterDescriber();
 
+    private final AivenTopicPolicy aivenTopicPolicy;
+
     private ReplicationControlManager(
         SnapshotRegistry snapshotRegistry,
         LogContext logContext,
@@ -493,7 +502,8 @@ public class ReplicationControlManager {
         ConfigurationControlManager configurationControl,
         ClusterControlManager clusterControl,
         Optional<CreateTopicPolicy> createTopicPolicy,
-        FeatureControlManager featureControl
+        FeatureControlManager featureControl,
+        AivenTopicPolicy aivenTopicPolicy
     ) {
         this.snapshotRegistry = snapshotRegistry;
         this.log = logContext.logger(ReplicationControlManager.class);
@@ -516,6 +526,7 @@ public class ReplicationControlManager {
         this.createTopicPolicy = createTopicPolicy;
         this.featureControl = featureControl;
         this.clusterControl = clusterControl;
+        this.aivenTopicPolicy = aivenTopicPolicy;
         this.topicsByName = new TimelineHashMap<>(snapshotRegistry, 0);
         this.topicsWithCollisionChars = new TimelineHashMap<>(snapshotRegistry, 0);
         this.topics = new TimelineHashMap<>(snapshotRegistry, 0);
@@ -955,6 +966,10 @@ public class ReplicationControlManager {
                             "partitions should be a consecutive 0-based integer sequence");
                 }
             }
+            if (aivenTopicPolicy != null) {
+                ApiError aivenPolicyError = aivenTopicPolicy.validateTopicCreation(topic.name(), newParts.size(), topics);
+                if (aivenPolicyError.isFailure()) return aivenPolicyError;
+            }
             ApiError error = maybeCheckCreateTopicPolicy(() -> {
                 Map<Integer, List<Integer>> assignments = new HashMap<>();
                 newParts.forEach((key, value) -> assignments.put(key, Replicas.toList(value.replicas)));
@@ -976,6 +991,10 @@ public class ReplicationControlManager {
             // For unmanaged diskless (legacy): always RF=1.
             short disklessReplicationFactor = isDisklessManagedReplicasEnabled ? classicReplicationFactor : 1;
             short replicationFactor = disklessEnabled ? disklessReplicationFactor : classicReplicationFactor;
+            if (aivenTopicPolicy != null) {
+                ApiError aivenPolicyError = aivenTopicPolicy.validateTopicCreation(topic.name(), numPartitions, topics);
+                if (aivenPolicyError.isFailure()) return aivenPolicyError;
+            }
             try {
                 TopicAssignment topicAssignment;
                 Predicate<Integer> brokerFilter;
@@ -2349,6 +2368,12 @@ public class ReplicationControlManager {
         }
         short replicationFactor = (short) partitionInfo.replicas.length;
         int startPartitionId = topicInfo.parts.size();
+
+        if (aivenTopicPolicy != null) {
+            ApiError aivenApiError = aivenTopicPolicy.validatePartitionCreation(
+                topic.name(), topic.count(), additional, topics);
+            if (aivenApiError.isFailure()) throw aivenApiError.exception();
+        }
 
         List<PartitionAssignment> partitionAssignments;
         List<List<Integer>> isrs;
