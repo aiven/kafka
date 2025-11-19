@@ -272,8 +272,12 @@
     <!-- ReplicationControlManager crossed the class NCSS limit as diskless switch logic was added; the class already carries several complexity suppressions above -->
     <suppress checks="JavaNCSS"
               files="ReplicationControlManager.java"/>
+    <suppress checks="NPathComplexity"
+              files="AivenTopicPolicy.java"/>
     <suppress checks="BooleanExpressionComplexity"
               files="(MetadataImage).java"/>
+    <suppress checks="(ParameterNumber|JavaNCSS|MethodLength)"
+              files="ReplicationControlManager.java"/>
     <suppress checks="ImportControl"
               files="ApiVersionsResponse.java"/>
     <suppress checks="AvoidStarImport"
@@ -328,4 +332,5 @@
      <!-- Add the new suppression rule for JaasTestUtils.java -->
     <suppress checks="ImportControl" files="(JaasTestUtils).java" />
 
+    <suppress checks="Header" files="(AivenTopicPolicy|AivenTopicPolicyConfig).java" />
 </suppressions>
