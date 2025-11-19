@@ -1621,6 +1621,9 @@ public final class QuorumController implements Controller {
             setSnapshotRegistry(snapshotRegistry).
             setClusterControlManager(clusterControl).
             build();
+
+        AivenTopicPolicy aivenTopicPolicy = new AivenTopicPolicy();
+        aivenTopicPolicy.configure(staticConfig);
         this.replicationControl = new ReplicationControlManager.Builder().
             setSnapshotRegistry(snapshotRegistry).
             setLogContext(logContext).
@@ -1640,6 +1643,7 @@ public final class QuorumController implements Controller {
             setClusterControl(clusterControl).
             setCreateTopicPolicy(createTopicPolicy).
             setFeatureControl(featureControl).
+            setAivenTopicPolicy(aivenTopicPolicy).
             build();
         this.scramControlManager = new ScramControlManager.Builder().
             setLogContext(logContext).
