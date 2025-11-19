@@ -311,6 +311,8 @@
               files="(QuorumController|QuorumControllerTest|ReplicationControlManager|ReplicationControlManagerTest).java"/>
     <suppress checks="(ParameterNumber|ClassDataAbstractionCoupling)"
               files="(QuorumController).java"/>
+    <suppress checks="(ParameterNumber|JavaNCSS|MethodLength)"
+              files="ReplicationControlManager.java"/>
     <suppress checks="(CyclomaticComplexity|NPathComplexity)"
               files="(ConfigurationControlManager|PartitionRegistration|PartitionChangeBuilder|ScramParser).java"/>
     <suppress checks="CyclomaticComplexity"
@@ -372,4 +374,8 @@
 
      <!-- Add the new suppression rule for JaasTestUtils.java -->
     <suppress checks="ImportControl" files="(JaasTestUtils).java" />
+
+    <suppress checks="Header" files="(AivenTopicPolicy|AivenTopicPolicyConfig).java" />
+    <suppress checks="JavaNCSS"
+              files="ReplicationControlManagerTest.java"/>
 </suppressions>
