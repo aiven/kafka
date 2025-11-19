@@ -371,6 +371,9 @@ if (repo != null) {
         '.opencode/**',
         '.github/copilot-instructions.md',
         // end of inkless ignored files
+        // Aiven topic policy: Aiven-licensed sources living in the apache namespace
+        'metadata/src/main/java/org/apache/kafka/controller/AivenTopicPolicy.java',
+        'metadata/src/main/java/org/apache/kafka/controller/AivenTopicPolicyConfig.java',
         'licenses/*',
         '**/generated/**',
         'clients/src/test/resources/serializedData/*',
