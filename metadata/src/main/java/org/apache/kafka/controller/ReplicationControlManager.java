@@ -974,7 +974,7 @@ public class ReplicationControlManager {
                 }
             }
             if (aivenTopicPolicy != null) {
-                ApiError aivenPolicyError = aivenTopicPolicy.validateTopicCreation(topic.name(), newParts.size(), topics);
+                ApiError aivenPolicyError = aivenTopicPolicy.validateTopicCreation(topic, newParts.size(), topics);
                 if (aivenPolicyError.isFailure()) return aivenPolicyError;
             }
             ApiError error = maybeCheckCreateTopicPolicy(() -> {
@@ -999,7 +999,7 @@ public class ReplicationControlManager {
             short disklessReplicationFactor = isDisklessManagedReplicasEnabled ? classicReplicationFactor : 1;
             short replicationFactor = disklessEnabled ? disklessReplicationFactor : classicReplicationFactor;
             if (aivenTopicPolicy != null) {
-                ApiError aivenPolicyError = aivenTopicPolicy.validateTopicCreation(topic.name(), numPartitions, topics);
+                ApiError aivenPolicyError = aivenTopicPolicy.validateTopicCreation(topic, numPartitions, topics);
                 if (aivenPolicyError.isFailure()) return aivenPolicyError;
             }
             try {
