@@ -323,6 +323,8 @@
     <!-- ReplicationControlManager has multiple long methods; suppression needed for diskless managed replicas logic -->
     <suppress checks="MethodLength"
               files="ReplicationControlManager.java"/>
+    <suppress checks="NPathComplexity"
+              files="AivenTopicPolicy.java"/>
     <suppress checks="BooleanExpressionComplexity"
               files="(MetadataImage).java"/>
     <suppress checks="(ParameterNumber|JavaNCSS|MethodLength)"
