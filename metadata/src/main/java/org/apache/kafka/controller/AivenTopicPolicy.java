@@ -4,6 +4,8 @@
 package org.apache.kafka.controller;
 
 import org.apache.kafka.common.Configurable;
+import java.util.stream.Collectors;
+import java.util.regex.Pattern;
 import org.apache.kafka.common.message.CreateTopicsRequestData.CreatableTopic;
 import org.apache.kafka.common.Uuid;
 import org.apache.kafka.common.protocol.Errors;
@@ -11,7 +13,6 @@ import org.apache.kafka.common.requests.ApiError;
 import org.apache.kafka.timeline.TimelineHashMap;
 
 import java.util.Map;
-import java.util.Set;
 
 /**
  * The policy class that allows putting limitations such as "max user topics", "max user partitions",
@@ -21,12 +22,15 @@ final class AivenTopicPolicy implements Configurable {
     private static final long LATEST_SNAPSHOT = Long.MAX_VALUE;
 
     private volatile AivenTopicPolicyConfig config;
-    private volatile Set<String> excludedTopics;
+    private volatile Pattern excludedTopicsPattern;
 
     @Override
     public void configure(final Map<String, ?> configs) {
         this.config = new AivenTopicPolicyConfig(configs);
-        this.excludedTopics = config.excludedTopics();
+        this.excludedTopicsPattern = Pattern.compile(
+            config.excludedTopics().stream()
+            .collect(Collectors.joining("|"))
+        );
     }
 
     ApiError validateTopicCreation(
@@ -35,7 +39,7 @@ final class AivenTopicPolicy implements Configurable {
         final TimelineHashMap<Uuid, ReplicationControlManager.TopicControlInfo> topics
     ) {
         // Always allow for excluded topics.
-        if (excludedTopics.contains(topic.name())) {
+        if (excludedTopicsPattern.matcher(topic.name()).matches()) {
             return ApiError.NONE;
         }
 
@@ -51,7 +55,7 @@ final class AivenTopicPolicy implements Configurable {
             int currentUserTopics = 0;
             int currentUserPartitions = 0;
             for (final var value : topics.values()) {
-                if (!excludedTopics.contains(value.name())) {
+                if (!excludedTopicsPattern.matcher(value.name()).matches()) {
                     currentUserTopics += 1;
                     currentUserPartitions += value.numPartitions(LATEST_SNAPSHOT);
                 }
@@ -93,7 +97,7 @@ final class AivenTopicPolicy implements Configurable {
         final TimelineHashMap<Uuid, ReplicationControlManager.TopicControlInfo> topics
     ) {
         // Always allow for excluded topics.
-        if (excludedTopics.contains(topic)) {
+        if (excludedTopicsPattern.matcher(topic).matches()) {
             return ApiError.NONE;
         }
 
@@ -109,7 +113,7 @@ final class AivenTopicPolicy implements Configurable {
             final int maxUserPartitions = config.maxUserPartitions().get();
             int currentUserPartitions = 0;
             for (final var value : topics.values()) {
-                if (!excludedTopics.contains(value.name())) {
+                if (!excludedTopicsPattern.matcher(value.name()).matches()) {
                     currentUserPartitions += value.numPartitions(LATEST_SNAPSHOT);
                 }
             }
