@@ -6647,15 +6647,18 @@ public class ReplicationControlManagerTest {
 
     }
 
-    void testAivenTopicPolicyCreateTopicMaxUserTopics() {
-        String excludedTopic1 = "__consumer_offsets";
-        String excludedTopic2 = "__transaction_state";
+    @ParameterizedTest
+    @CsvSource({
+        "__consumer_offsets,__consumer_offsets,__transaction_state,__transaction_state",
+        "__connect_offsets-12345,__connect_offsets-.*,__connect_configs-98765,__connect_configs-.*",
+    })
+    void testAivenTopicPolicyCreateTopicMaxUserTopics(String excludedTopic1, String excludedTopic1Pattern, String excludedTopic2, String excludedTopic2Pattern) {
         String topic1 = "topic1";
         String topic2 = "topic2";
 
         ReplicationControlTestContext ctx = new ReplicationControlTestContext.Builder()
             .setStaticConfig("aiven.topic.policy.max.user.topics", 1)
-            .setStaticConfig("aiven.topic.policy.excluded.topics", String.format("%s,%s", excludedTopic1, excludedTopic2))
+            .setStaticConfig("aiven.topic.policy.excluded.topics", String.format("%s,%s", excludedTopic1Pattern, excludedTopic2Pattern))
             .build();
         ctx.registerBrokers(0);
         ctx.unfenceBrokers(0);
@@ -6724,10 +6727,20 @@ public class ReplicationControlManagerTest {
     }
 
     @ParameterizedTest
-    @ValueSource(booleans = {true, false})
-    void testAivenTopicPolicyCreateTopicMaxUserPartitions(boolean autoAssignment) {
-        String excludedTopic1 = "__consumer_offsets";
-        String excludedTopic2 = "__transaction_state";
+    @CsvSource({
+        "__consumer_offsets,__consumer_offsets,__transaction_state,__transaction_state,withAutoAssignment",
+        "__connect_offsets-12345,__connect_offsets-.*,__connect_configs-98765,__connect_configs-.*,withAutoAssignment",
+        "__consumer_offsets,__consumer_offsets,__transaction_state,__transaction_state,withoutAutoAssignment",
+        "__connect_offsets-12345,__connect_offsets-.*,__connect_configs-98765,__connect_configs-.*,withoutAutoAssignment",
+    })
+    void testAivenTopicPolicyCreateTopicMaxUserPartitions(
+        String excludedTopic1,
+        String excludedTopic1Pattern,
+        String excludedTopic2,
+        String excludedTopic2Pattern,
+        String withOrWithoutAutoAssignment
+    ) {
+        boolean autoAssignment = withOrWithoutAutoAssignment.equals("withAutoAssignment");
         String topic1 = "topic1";
         String topic2 = "topic2";
 
@@ -6840,9 +6853,14 @@ public class ReplicationControlManagerTest {
     }
 
     @ParameterizedTest
-    @ValueSource(booleans = {true, false})
-    void testAivenTopicPolicyCreateTopicMaxPartitionsPerUserTopic(boolean autoAssignment) {
-        String excludedTopic1 = "__consumer_offsets";
+    @CsvSource({
+        "__consumer_offsets,__consumer_offsets,withAutoAssignment",
+        "__connect_offsets-12345,__connect_offsets-.*,withAutoAssignment",
+        "__consumer_offsets,__consumer_offsets,withoutAutoAssignment",
+        "__connect_offsets-12345,__connect_offsets-.*,withoutAutoAssignment",
+    })
+    void testAivenTopicPolicyCreateTopicMaxPartitionsPerUserTopic(String excludedTopic1, String excludedTopic1Pattern, String withOrWithoutAutoAssignment) {
+        boolean autoAssignment = withOrWithoutAutoAssignment.equals("withAutoAssignment");
         String topic1 = "topic1";
 
         ReplicationControlTestContext ctx = new ReplicationControlTestContext.Builder()
@@ -6932,9 +6950,12 @@ public class ReplicationControlManagerTest {
         assertEquals(NONE.code(), topicResult.errorCode());
     }
 
-    @Test
-    void testAivenTopicPolicyCreatePartitionMaxUserPartitions() {
-        String excludedTopic1 = "__consumer_offsets";
+    @ParameterizedTest
+    @CsvSource({
+        "__consumer_offsets,__consumer_offsets",
+        "__connect_offsets-12345,__connect_offsets-.*",
+    })
+    void testAivenTopicPolicyCreatePartitionMaxUserPartitions(String excludedTopic1, String excludedTopic1Pattern) {
         String topic1 = "topic1";
 
         ReplicationControlTestContext ctx = new ReplicationControlTestContext.Builder()
@@ -6994,9 +7015,12 @@ public class ReplicationControlManagerTest {
         ctx.replay(result5.records());
     }
 
-    @Test
-    void testAivenTopicPolicyCreatePartitionsMaxPartitionsPerUserTopic() {
-        String excludedTopic1 = "__consumer_offsets";
+    @ParameterizedTest
+    @CsvSource({
+        "__consumer_offsets,__consumer_offsets",
+        "__connect_offsets-12345,__connect_offsets-.*",
+    })
+    void testAivenTopicPolicyCreatePartitionsMaxPartitionsPerUserTopic(String excludedTopic1, String excludedTopic1Pattern) {
         String topic1 = "topic1";
 
         ReplicationControlTestContext ctx = new ReplicationControlTestContext.Builder()
