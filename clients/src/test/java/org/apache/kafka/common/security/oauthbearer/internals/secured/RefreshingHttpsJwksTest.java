@@ -22,6 +22,8 @@ import org.apache.kafka.common.utils.MockTime;
 
 import org.jose4j.http.SimpleResponse;
 import org.jose4j.jwk.HttpsJwks;
+import org.jose4j.jwk.JsonWebKey;
+import org.jose4j.lang.JoseException;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
@@ -145,6 +147,37 @@ public class RefreshingHttpsJwksTest extends OAuthBearerTest {
             time.sleep(REFRESH_MS + 1);
             verify(httpsJwks, times(3)).refresh();
             assertFalse(refreshingHttpsJwks.maybeExpediteRefresh(keyId));
+        }
+    }
+
+    /**
+     * Test that init() completes gracefully when the JWKS endpoint returns non-JSON content
+     * (or any other fetch failure). The broker must not crash; the JWKS cache starts empty
+     * and is populated once the background refresh thread successfully retrieves keys.
+     */
+    @Test
+    public void testInitGracefulDegradationOnJwksFetchFailure() throws Exception {
+        MockTime time = new MockTime();
+
+        JsonWebKey jwk = Mockito.mock(JsonWebKey.class);
+        HttpsJwks httpsJwks = Mockito.mock(HttpsJwks.class);
+        Mockito.when(httpsJwks.getLocation()).thenReturn("https://www.example.com/jwks");
+        Mockito.when(httpsJwks.getJsonWebKeys())
+            .thenThrow(new JoseException("Unexpected character (<) at position 0"))
+            .thenReturn(Collections.singletonList(jwk));
+
+        try (RefreshingHttpsJwks refreshingHttpsJwks = getRefreshingHttpsJwks(time, httpsJwks)) {
+            // init() must complete without throwing even though the JWKS fetch fails
+            refreshingHttpsJwks.init();
+
+            // JWKS cache is empty immediately after the failed init
+            assertTrue(refreshingHttpsJwks.getJsonWebKeys().isEmpty());
+
+            // Advance time to trigger the background refresh, which succeeds this time
+            time.sleep(REFRESH_MS + 1);
+
+            // JWKS cache is now populated
+            assertEquals(1, refreshingHttpsJwks.getJsonWebKeys().size());
         }
     }
 
