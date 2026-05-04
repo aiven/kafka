@@ -32,21 +32,29 @@ import org.apache.kafka.common.message.AssignReplicasToDirsRequestData;
 import org.apache.kafka.common.message.AssignReplicasToDirsResponseData;
 import org.apache.kafka.common.message.BrokerHeartbeatRequestData;
 import org.apache.kafka.common.message.BrokerRegistrationRequestData;
+import org.apache.kafka.common.message.BumpLeaderEpochsResponseData;
 import org.apache.kafka.common.message.ControllerRegistrationRequestData;
 import org.apache.kafka.common.message.CreateDelegationTokenRequestData;
 import org.apache.kafka.common.message.CreateDelegationTokenResponseData;
+import org.apache.kafka.common.message.CreateMirrorResponseData;
 import org.apache.kafka.common.message.CreatePartitionsRequestData.CreatePartitionsTopic;
 import org.apache.kafka.common.message.CreatePartitionsResponseData.CreatePartitionsTopicResult;
 import org.apache.kafka.common.message.CreateTopicsRequestData;
 import org.apache.kafka.common.message.CreateTopicsResponseData;
+import org.apache.kafka.common.message.DeleteMirrorResponseData;
 import org.apache.kafka.common.message.ElectLeadersRequestData;
 import org.apache.kafka.common.message.ElectLeadersResponseData;
 import org.apache.kafka.common.message.ExpireDelegationTokenRequestData;
 import org.apache.kafka.common.message.ExpireDelegationTokenResponseData;
 import org.apache.kafka.common.message.ListPartitionReassignmentsRequestData;
 import org.apache.kafka.common.message.ListPartitionReassignmentsResponseData;
+import org.apache.kafka.common.message.PauseMirrorTopicsResponseData;
 import org.apache.kafka.common.message.RenewDelegationTokenRequestData;
 import org.apache.kafka.common.message.RenewDelegationTokenResponseData;
+import org.apache.kafka.common.message.ResumeMirrorTopicsResponseData;
+import org.apache.kafka.common.message.StartMirrorTopicsRequestData;
+import org.apache.kafka.common.message.StartMirrorTopicsResponseData;
+import org.apache.kafka.common.message.StopMirrorTopicsResponseData;
 import org.apache.kafka.common.message.UpdateFeaturesRequestData;
 import org.apache.kafka.common.message.UpdateFeaturesResponseData;
 import org.apache.kafka.common.quota.ClientQuotaAlteration;
@@ -62,7 +70,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-
 
 public interface Controller extends AclMutator, AutoCloseable {
     /**
@@ -145,6 +152,11 @@ public interface Controller extends AclMutator, AutoCloseable {
         Set<String> describable
     );
 
+    CompletableFuture<CreateMirrorResponseData> createMirror(
+            ControllerRequestContext context,
+            Map<ConfigResource, Map<String, Map.Entry<AlterConfigOp.OpType, String>>> configChanges
+    );
+
     /**
      * Unregister a broker.
      *
@@ -157,6 +169,43 @@ public interface Controller extends AclMutator, AutoCloseable {
     CompletableFuture<Void> unregisterBroker(
         ControllerRequestContext context,
         int brokerId
+    );
+
+    CompletableFuture<StartMirrorTopicsResponseData> startMirrorTopics(
+            ControllerRequestContext context,
+            String mirrorName,
+            List<StartMirrorTopicsRequestData.TopicData> topics,
+            List<String> includePatterns,
+            List<String> excludePatterns
+    );
+
+    CompletableFuture<StopMirrorTopicsResponseData> stopMirrorTopics(
+            ControllerRequestContext context,
+            String mirrorName,
+            Set<String> topics,
+            List<String> patterns
+    );
+
+    CompletableFuture<PauseMirrorTopicsResponseData> pauseMirrorTopics(
+            ControllerRequestContext context,
+            String mirrorName,
+            Set<String> topics
+    );
+
+    CompletableFuture<ResumeMirrorTopicsResponseData> resumeMirrorTopics(
+            ControllerRequestContext context,
+            String mirrorName,
+            Set<String> topics
+    );
+
+    CompletableFuture<BumpLeaderEpochsResponseData> bumpLeaderEpoch(
+            ControllerRequestContext context,
+            Map<Uuid, Map<Integer, Integer>> partitionLeaderEpochs
+    );
+
+    CompletableFuture<DeleteMirrorResponseData> deleteMirror(
+            ControllerRequestContext context,
+            String mirrorName
     );
 
     /**

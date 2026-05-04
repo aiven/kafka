@@ -137,7 +137,15 @@ public enum MetadataVersion {
     // *** STREAMS GROUPS BECOME PRODUCTION-READY IN THE FUTURE. ITS DEFINITION ALLOWS A STREAMS ***
     // *** GROUPS FEATURE TO BE DEFINED IN 4.1 BUT TURNED OFF BY DEFAULT, ABLE TO BE TURNED ON   ***
     // *** DYNAMICALLY TO TRY OUT THE EARLY ACCESS CAPABILITY.                                   ***
-    IBP_4_2_IV1(29, "4.2", "IV1", false);
+    IBP_4_2_IV1(29, "4.2", "IV1", false),
+
+    // Enables Cluster Mirroring (early access).
+    //
+    // *** THIS IS A PLACEHOLDER UNSTABLE VERSION WHICH IS USED TO DEFINE THE POINT AT WHICH   ***
+    // *** CLUSTER MIRRORING BECOMES PRODUCTION-READY IN THE FUTURE. ITS DEFINITION ALLOWS THE ***
+    // *** MIRROR FEATURE TO BE DEFINED IN 4.2 BUT TURNED OFF BY DEFAULT, ABLE TO BE TURNED ON ***
+    // *** DYNAMICALLY TO TRY OUT THE EARLY ACCESS CAPABILITY.                                 ***
+    IBP_4_2_IV2(30, "4.2", "IV2", true);
 
     // NOTES when adding a new version:
     //   Update the default version in @ClusterTest annotation to point to the latest version
@@ -217,6 +225,10 @@ public enum MetadataVersion {
         return this.isAtLeast(IBP_4_0_IV1);
     }
 
+    public boolean isClusterMirrorSupported() {
+        return this.isAtLeast(IBP_4_2_IV2);
+    }
+
     public boolean isMigrationSupported() {
         return this.isAtLeast(MetadataVersion.IBP_3_4_IV0);
     }
@@ -247,7 +259,9 @@ public enum MetadataVersion {
     }
 
     public short partitionChangeRecordVersion() {
-        if (isElrSupported()) {
+        if (isClusterMirrorSupported()) {
+            return (short) 3;
+        } else if (isElrSupported()) {
             return (short) 2;
         } else if (isDirectoryAssignmentSupported()) {
             return (short) 1;
@@ -267,7 +281,9 @@ public enum MetadataVersion {
     }
 
     public short fetchRequestVersion() {
-        if (isAtLeast(IBP_4_1_IV1)) {
+        if (isAtLeast(IBP_4_2_IV2)) {
+            return 19;
+        } else if (isAtLeast(IBP_4_1_IV1)) {
             return 18;
         } else if (isAtLeast(IBP_3_9_IV0)) {
             return 17;

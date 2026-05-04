@@ -25,6 +25,7 @@ import java.util.concurrent.atomic.{AtomicInteger, AtomicReference}
 import kafka.log.LogManager
 import kafka.server.share.SharePartitionManager
 import kafka.server.{BrokerServer, KafkaConfig, ReplicaManager}
+import kafka.server.mirror.{MirrorMetadataManager, MirrorCoordinator}
 import kafka.utils.TestUtils
 import org.apache.kafka.clients.admin.AlterConfigOp.OpType.SET
 import org.apache.kafka.clients.admin.{Admin, AlterConfigOp, ConfigEntry, NewTopic}
@@ -211,7 +212,9 @@ class BrokerMetadataPublisherTest {
       mock(classOf[DelegationTokenPublisher]),
       mock(classOf[AclPublisher]),
       faultHandler,
-      faultHandler
+      faultHandler,
+      mock(classOf[MirrorCoordinator]),
+      mock(classOf[MirrorMetadataManager])
     )
 
     val topicId = Uuid.randomUuid()
@@ -276,6 +279,8 @@ class BrokerMetadataPublisherTest {
       mock(classOf[AclPublisher]),
       faultHandler,
       faultHandler,
+      mock(classOf[MirrorCoordinator]),
+      mock(classOf[MirrorMetadataManager])
     )
 
     val image = MetadataImage.EMPTY
@@ -316,7 +321,9 @@ class BrokerMetadataPublisherTest {
       mock(classOf[DelegationTokenPublisher]),
       mock(classOf[AclPublisher]),
       faultHandler,
-      faultHandler
+      faultHandler,
+      mock(classOf[MirrorCoordinator]),
+      mock(classOf[MirrorMetadataManager])
     )
 
     val featuresImage = new FeaturesImage(

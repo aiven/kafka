@@ -64,6 +64,11 @@ public class ForwardingAdmin implements Admin {
     }
 
     @Override
+    public FindCoordinatorResult findCoordinator(String key) {
+        return null;
+    }
+
+    @Override
     public DeleteTopicsResult deleteTopics(TopicCollection topics, DeleteTopicsOptions options) {
         return delegate.deleteTopics(topics, options);
     }
@@ -271,6 +276,40 @@ public class ForwardingAdmin implements Admin {
     }
 
     @Override
+    public CreateMirrorResult createMirror(String mirrorName, Map<String, String> configs, CreateMirrorOptions options) {
+        return delegate.createMirror(mirrorName, configs, options);
+    }
+
+    @Override
+    public StopMirrorTopicsResult stopMirrorTopics(String mirrorName, Set<String> topics, StopMirrorTopicsOptions options) {
+        return delegate.stopMirrorTopics(mirrorName, topics, options);
+    }
+
+    @Override
+    public PauseMirrorTopicsResult pauseMirrorTopics(String mirrorName, Set<String> topics, PauseMirrorTopicsOptions options) {
+        return delegate.pauseMirrorTopics(mirrorName, topics, options);
+    }
+
+    @Override
+    public ResumeMirrorTopicsResult resumeMirrorTopics(String mirrorName, Set<String> topics, ResumeMirrorTopicsOptions options) {
+        return delegate.resumeMirrorTopics(mirrorName, topics, options);
+    }
+
+    @Override
+    public StartMirrorTopicsResult startMirrorTopics(String mirrorName, Set<String> topics, StartMirrorTopicsOptions options) {
+        return delegate.startMirrorTopics(mirrorName, topics, options);
+    }
+
+    @Override
+    public DeleteMirrorResult deleteMirror(String mirrorName, DeleteMirrorOptions options) {
+        return delegate.deleteMirror(mirrorName, options);
+    }
+
+    public DescribeMirrorsResult describeMirrors(Collection<String> mirrorNames, DescribeMirrorsOptions options) {
+        return delegate.describeMirrors(mirrorNames, options);
+    }
+
+    @Override
     public DescribeProducersResult describeProducers(Collection<TopicPartition> partitions, DescribeProducersOptions options) {
         return delegate.describeProducers(partitions, options);
     }
@@ -359,6 +398,11 @@ public class ForwardingAdmin implements Admin {
     @Override
     public ListGroupsResult listGroups(ListGroupsOptions options) {
         return delegate.listGroups(options);
+    }
+
+    @Override
+    public ListMirrorsResult listMirrors(ListMirrorsOptions options) {
+        return delegate.listMirrors(options);
     }
 
     @Override

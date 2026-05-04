@@ -193,6 +193,7 @@ public final class TopicDelta {
                     TopicPartition tp = new TopicPartition(name(), entry.getKey());
                     LocalReplicaChanges.PartitionInfo partitionInfo = new LocalReplicaChanges.PartitionInfo(id(), entry.getValue());
                     leaders.put(tp, partitionInfo);
+
                     if (prevPartition == null || prevPartition.leaderEpoch != entry.getValue().leaderEpoch) {
                         electedLeaders.put(tp, partitionInfo);
                     }

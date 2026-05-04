@@ -45,7 +45,8 @@ class MockFetcherThread(val mockLeader: MockLeaderEndPoint,
     failedPartitions = failedPartitions,
     fetchTierStateMachine = mockTierStateMachine,
     fetchBackOffMs = fetchBackOffMs,
-    brokerTopicStats = new BrokerTopicStats) {
+    brokerTopicStats = new BrokerTopicStats,
+    mirrorName = "") {
 
   private val replicaPartitionStates = mutable.Map[TopicPartition, PartitionState]()
   private var latestEpochDefault: Optional[Integer] = Optional.of(0)
@@ -154,6 +155,15 @@ class MockFetcherThread(val mockLeader: MockLeaderEndPoint,
   }
 
   override def latestEpoch(topicPartition: TopicPartition): Optional[Integer] = {
+    val state = replicaPartitionState(topicPartition)
+    val partitionLeaderEpoch: Optional[Integer] = state.log.lastOption.toJava.map(_.partitionLeaderEpoch)
+    if (partitionLeaderEpoch.isPresent)
+      partitionLeaderEpoch
+    else
+      latestEpochDefault
+  }
+
+  override def latestEpochFromLog(topicPartition: TopicPartition): Optional[Integer] = {
     val state = replicaPartitionState(topicPartition)
     val partitionLeaderEpoch: Optional[Integer] = state.log.lastOption.toJava.map(_.partitionLeaderEpoch)
     if (partitionLeaderEpoch.isPresent)

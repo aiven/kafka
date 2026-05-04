@@ -32,6 +32,8 @@ import org.apache.kafka.common.errors.RecordTooLargeException;
 import org.apache.kafka.common.internals.Topic;
 import org.apache.kafka.common.message.DescribeProducersResponseData;
 import org.apache.kafka.common.record.CompressionType;
+import org.apache.kafka.common.record.ControlRecordType;
+import org.apache.kafka.common.record.EndTransactionMarker;
 import org.apache.kafka.common.record.FileRecords;
 import org.apache.kafka.common.record.MemoryRecords;
 import org.apache.kafka.common.record.MutableRecordBatch;
@@ -74,11 +76,13 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ScheduledFuture;
@@ -817,6 +821,24 @@ public class UnifiedLog implements AutoCloseable {
         return producerStateManager.producerIdCount();
     }
 
+    public List<MemoryRecords> buildEndTransactionRecords() {
+        Set<ProducerStateEntry> producers = producerStateManager.producersWithOngoingTxns();
+        List<MemoryRecords> records = new LinkedList<>();
+
+        producers.forEach(producerStateEntry -> {
+            // Coordinator epoch is used to validate if the same producerId is committed/aborted by an epoch >= known epoch in ProducerAppendInfo#checkCoordinatorEpoch.
+            // Setting it to 0 if the coordinator epoch in the leader node has no coordinator epoch info (-1).
+            // This could happen when this PID has not committed/aborted yet. Setting it to 0 can pass the validation
+            // and also align with the implementation in TransactionsCommand#buildAbortSpec when we want to force aborting a pending txn record.
+            int coordinatorEpoch = producerStateEntry.coordinatorEpoch() < 0 ? 0 : producerStateEntry.coordinatorEpoch();
+            records.add(MemoryRecords.withEndTransactionMarker(producerStateEntry.producerId(),
+                    producerStateEntry.producerEpoch(),
+                new EndTransactionMarker(ControlRecordType.ABORT, coordinatorEpoch)));
+        });
+
+        return records;
+    }
+
     public List<DescribeProducersResponseData.ProducerState> activeProducers() {
         synchronized (lock) {
             return producerStateManager.activeProducers().entrySet().stream().map(entry -> {
@@ -1042,15 +1064,20 @@ public class UnifiedLog implements AutoCloseable {
                 VerificationGuard.SENTINEL, false, recordVersion.value);
     }
 
+    public LogAppendInfo appendAsFollower(MemoryRecords records, int leaderEpoch) {
+        return appendAsFollower(records, leaderEpoch, false);
+    }
+
     /**
      * Append this message set to the active segment of the local log without assigning offsets or Partition Leader Epochs
      *
      * @param records The records to append
      * @param leaderEpoch the epoch of the replica appending
+     * @param isMirrorLeader true if this is a mirror leader appending from a source cluster
      * @throws KafkaStorageException If the append fails due to an I/O error.
      * @return Information about the appended messages including the first and last offset.
      */
-    public LogAppendInfo appendAsFollower(MemoryRecords records, int leaderEpoch) {
+    public LogAppendInfo appendAsFollower(MemoryRecords records, int leaderEpoch, boolean isMirrorLeader) {
         return append(records,
                       AppendOrigin.REPLICATION,
                       false,
@@ -1058,7 +1085,19 @@ public class UnifiedLog implements AutoCloseable {
                       Optional.empty(),
                       VerificationGuard.SENTINEL,
                       true,
-                      RecordBatch.CURRENT_MAGIC_VALUE);
+                      RecordBatch.CURRENT_MAGIC_VALUE,
+                      isMirrorLeader);
+    }
+
+    private LogAppendInfo append(MemoryRecords records,
+                                 AppendOrigin origin,
+                                 boolean validateAndAssignOffsets,
+                                 int leaderEpoch,
+                                 Optional<RequestLocal> requestLocal,
+                                 VerificationGuard verificationGuard,
+                                 boolean ignoreRecordSize,
+                                 byte toMagic) {
+        return append(records, origin, validateAndAssignOffsets, leaderEpoch, requestLocal, verificationGuard, ignoreRecordSize, toMagic, false);
     }
 
     /**
@@ -1072,7 +1111,9 @@ public class UnifiedLog implements AutoCloseable {
      * @param validateAndAssignOffsets Should the log assign offsets to this message set or blindly apply what it is given
      * @param leaderEpoch The partition's leader epoch which will be applied to messages when offsets are assigned on the leader
      * @param requestLocal The request local instance if validateAndAssignOffsets is true
-     * @param ignoreRecordSize true to skip validation of record size.
+     * @param ignoreRecordSize True to skip validation of record size
+     * @param toMagic Current Magic value
+     * @param isMirrorLeader true if this is a mirror leader appending from a source cluster
      * @throws KafkaStorageException If the append fails due to an I/O error.
      * @throws OffsetsOutOfOrderException If out of order offsets found in 'records'
      * @throws UnexpectedAppendOffsetException If the first or last offset in append is less than next offset
@@ -1085,7 +1126,8 @@ public class UnifiedLog implements AutoCloseable {
                                  Optional<RequestLocal> requestLocal,
                                  VerificationGuard verificationGuard,
                                  boolean ignoreRecordSize,
-                                 byte toMagic) {
+                                 byte toMagic,
+                                 boolean isMirrorLeader) {
         // We want to ensure the partition metadata file is written to the log dir before any log data is written to disk.
         // This will ensure that any log data can be recovered with the correct topic ID in the case of failure.
         maybeFlushMetadataFile();
@@ -1261,6 +1303,14 @@ public class UnifiedLog implements AutoCloseable {
         return leaderEpochCache.latestEpoch();
     }
 
+    public Optional<Integer> latestEpochFromLog() {
+        try {
+            return localLog.segments().activeSegment().readLastLeaderEpoch();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     public Optional<OffsetAndEpoch> endOffsetForEpoch(int leaderEpoch) {
         Map.Entry<Integer, Long> entry = leaderEpochCache.endOffsetFor(leaderEpoch, logEndOffset());
         int foundEpoch = entry.getKey();
@@ -1356,6 +1406,11 @@ public class UnifiedLog implements AutoCloseable {
         int relativePositionInSegment = appendOffsetMetadata.relativePositionInSegment;
 
         for (MutableRecordBatch batch : records.batches()) {
+            if ((origin == AppendOrigin.COORDINATOR || origin == AppendOrigin.REPLICATION)
+                    && ControlRecordType.isMirrorPidResetBatch(batch)) {
+                producerStateManager.expireMirroredProducers();
+            }
+
             if (batch.hasProducerId()) {
                 // if this is a client produce request, there will be up to 5 batches which could have been duplicated.
                 // If we find a duplicate, we return the metadata of the appended batch to the client.
@@ -1464,6 +1519,7 @@ public class UnifiedLog implements AutoCloseable {
              * response and the replica truncating and appending to the log. The replicating replica resolves this issue by only
              * persisting up to the current leader epoch used in the fetch request. See KAFKA-18723 for more details.
              */
+
             skipRemainingBatches = skipRemainingBatches || hasHigherPartitionLeaderEpoch(batch, origin, leaderEpoch);
             if (skipRemainingBatches) {
                 logger.info("Skipping batch {} from an origin of {} because its partition leader epoch {} is higher than the replica's current leader epoch {}",
@@ -2545,6 +2601,10 @@ public class UnifiedLog implements AutoCloseable {
         Map<Long, ProducerAppendInfo> loadedProducers = new HashMap<>();
         final List<CompletedTxn> completedTxns = new ArrayList<>();
         records.batches().forEach(batch -> {
+            if (ControlRecordType.isMirrorPidResetBatch(batch)) {
+                producerStateManager.expireMirroredProducers();
+            }
+
             if (batch.hasProducerId()) {
                 Optional<CompletedTxn> maybeCompletedTxn = updateProducers(
                         producerStateManager,

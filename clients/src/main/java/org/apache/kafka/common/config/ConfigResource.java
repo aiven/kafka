@@ -28,11 +28,11 @@ import java.util.stream.Collectors;
  * A class representing resources that have configs.
  */
 public final class ConfigResource {
-
     /**
      * Type of resource.
      */
     public enum Type {
+        MIRROR((byte) 64),
         GROUP((byte) 32),
         CLIENT_METRICS((byte) 16),
         BROKER_LOGGER((byte) 8),

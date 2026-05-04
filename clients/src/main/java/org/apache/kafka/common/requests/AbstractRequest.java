@@ -356,6 +356,28 @@ public abstract class AbstractRequest implements AbstractRequestResponse {
                 return DeleteShareGroupOffsetsRequest.parse(readable, apiVersion);
             case GET_REPLICA_LOG_INFO:
                 return GetReplicaLogInfoRequest.parse(readable, apiVersion);
+            case CREATE_MIRROR:
+                return CreateMirrorRequest.parse(readable, apiVersion);
+            case START_MIRROR_TOPICS:
+                return StartMirrorTopicsRequest.parse(readable, apiVersion);
+            case STOP_MIRROR_TOPICS:
+                return StopMirrorTopicsRequest.parse(readable, apiVersion);
+            case LIST_MIRRORS:
+                return ListMirrorsRequest.parse(readable, apiVersion);
+            case DESCRIBE_MIRRORS:
+                return DescribeMirrorsRequest.parse(readable, apiVersion);
+            case WRITE_MIRROR_STATES:
+                return WriteMirrorStatesRequest.parse(readable, apiVersion);
+            case READ_MIRROR_STATES:
+                return ReadMirrorStatesRequest.parse(readable, apiVersion);
+            case BUMP_LEADER_EPOCHS:
+                return BumpLeaderEpochsRequest.parse(readable, apiVersion);
+            case PAUSE_MIRROR_TOPICS:
+                return PauseMirrorTopicsRequest.parse(readable, apiVersion);
+            case RESUME_MIRROR_TOPICS:
+                return ResumeMirrorTopicsRequest.parse(readable, apiVersion);
+            case DELETE_MIRROR:
+                return DeleteMirrorRequest.parse(readable, apiVersion);
             default:
                 throw new AssertionError(String.format("ApiKey %s is not currently handled in `parseRequest`, the " +
                         "code should be updated to do so.", apiKey));

@@ -50,6 +50,7 @@ import org.apache.kafka.common.message.AlterPartitionResponseData;
 import org.apache.kafka.common.message.AssignReplicasToDirsRequestData;
 import org.apache.kafka.common.message.AssignReplicasToDirsResponseData;
 import org.apache.kafka.common.message.BrokerHeartbeatRequestData;
+import org.apache.kafka.common.message.BumpLeaderEpochsResponseData;
 import org.apache.kafka.common.message.CreatePartitionsRequestData.CreatePartitionsTopic;
 import org.apache.kafka.common.message.CreatePartitionsResponseData.CreatePartitionsTopicResult;
 import org.apache.kafka.common.message.CreateTopicsRequestData;
@@ -136,6 +137,7 @@ import static org.apache.kafka.common.protocol.Errors.NO_REASSIGNMENT_IN_PROGRES
 import static org.apache.kafka.common.protocol.Errors.TOPIC_AUTHORIZATION_FAILED;
 import static org.apache.kafka.common.protocol.Errors.UNKNOWN_TOPIC_ID;
 import static org.apache.kafka.common.protocol.Errors.UNKNOWN_TOPIC_OR_PARTITION;
+import static org.apache.kafka.common.record.RecordBatch.NO_PARTITION_LEADER_EPOCH;
 import static org.apache.kafka.controller.PartitionReassignmentReplicas.isReassignmentInProgress;
 import static org.apache.kafka.controller.QuorumController.MAX_RECORDS_PER_USER_OP;
 import static org.apache.kafka.metadata.LeaderConstants.NO_LEADER;
@@ -703,6 +705,40 @@ public class ReplicationControlManager {
         }
     }
 
+    public ControllerResult<BumpLeaderEpochsResponseData> bumpLeaderEpochs(Map<Uuid, Map<Integer, Integer>> partitionLeaderEpochs) {
+        List<ApiMessageAndVersion> records = BoundedList.newArrayBacked(MAX_RECORDS_PER_USER_OP);
+        for (Entry<Uuid, Map<Integer, Integer>> partitionLeaderEpoch : partitionLeaderEpochs.entrySet()) {
+            Uuid topicId = partitionLeaderEpoch.getKey();
+            Map<Integer, Integer> leaderEpochs = partitionLeaderEpoch.getValue();
+            TopicControlInfo info = topics.get(topicId);
+            String topicName = info.name;
+            leaderEpochs.forEach((partitionId, leaderEpoch) -> {
+                PartitionRegistration partition = info.parts.get(partitionId);
+                // only bump the leader epoch when local leader epoch is <= required min leader epoch
+                if (partition.leaderEpoch <= leaderEpoch) {
+                    PartitionChangeBuilder builder = new PartitionChangeBuilder(
+                            partition,
+                            info.topicId(),
+                            partitionId,
+                            new LeaderAcceptor(clusterControl, partition),
+                            featureControl.metadataVersionOrThrow(),
+                            getTopicEffectiveMinIsr(topicName)
+                    )
+                            // set the min leader epoch for each partition
+                            .setMinLeaderEpoch(leaderEpochs.getOrDefault(partitionId, NO_PARTITION_LEADER_EPOCH))
+                            .setDefaultDirProvider(clusterDescriber);
+
+                    builder.build().ifPresent(records::add);
+                    log.info("!!! update partition {} for topic {} from {} to {}: {}", partitionId, topicName, partition.leaderEpoch, leaderEpoch, records);
+                } else {
+                    log.info("!!! do not update partition {} for topic {} from {} to {}", partitionId, topicName, partition.leaderEpoch, leaderEpoch);
+                }
+            });
+        }
+
+        return ControllerResult.of(records, new BumpLeaderEpochsResponseData().setErrorCode((short) 0));
+    }
+
     private ApiError createTopic(ControllerRequestContext context,
                                  CreatableTopic topic,
                                  List<ApiMessageAndVersion> records,
@@ -710,6 +746,12 @@ public class ReplicationControlManager {
                                  List<ApiMessageAndVersion> configRecords,
                                  boolean authorizedToReturnConfigs) {
         Map<String, String> creationConfigs = translateCreationConfigs(topic.configs());
+        boolean useMirrorTopicId = false;
+        // should keep source topicId for mirror topics
+        if (topic.mirrorInfo() != null && !topic.mirrorInfo().topicId().equals(Uuid.ZERO_UUID)) {
+            useMirrorTopicId = true;
+        }
+
         Map<Integer, PartitionRegistration> newParts = new HashMap<>();
         if (!topic.assignments().isEmpty()) {
             if (topic.replicationFactor() != -1) {
@@ -739,6 +781,14 @@ public class ReplicationControlManager {
                         "All brokers specified in the manual partition assignment for " +
                         "partition " + assignment.partitionIndex() + " are fenced or in controlled shutdown.");
                 }
+
+                if (useMirrorTopicId && isr.size() < assignment.brokerIds().size()) {
+                    return new ApiError(Errors.INVALID_REPLICA_ASSIGNMENT,
+                        "Some brokers specified in the manual partition assignment for " +
+                        "partition " + assignment.partitionIndex() + " are fenced or in controlled shutdown. " +
+                        "For mirror topic creation, all brokers specified in the manual partition assignment must be active.");
+                }
+
                 newParts.put(
                     assignment.partitionIndex(),
                     buildPartitionRegistration(partitionAssignment, isr)
@@ -786,6 +836,13 @@ public class ReplicationControlManager {
                             "Unable to replicate the partition " + replicationFactor +
                                 " time(s): All brokers are currently fenced or in controlled shutdown.");
                     }
+                    if (useMirrorTopicId && isr.size() < partitionAssignment.replicas().size()) {
+                        return new ApiError(Errors.INVALID_REPLICATION_FACTOR,
+                            "Unable to replicate the partition " + replicationFactor +
+                                " time(s): Some brokers are currently fenced or in controlled shutdown. " +
+                                "For mirror topic creation, all replicas being assigned must be active.");
+                    }
+
                     newParts.put(
                         partitionId,
                         buildPartitionRegistration(partitionAssignment, isr)
@@ -808,7 +865,10 @@ public class ReplicationControlManager {
                 numPartitions, e.throttleTimeMs());
             return ApiError.fromThrowable(e);
         }
-        Uuid topicId = Uuid.randomUuid();
+
+        // Preserve topic ID for mirror topics
+        Uuid topicId = useMirrorTopicId ? topic.mirrorInfo().topicId() : Uuid.randomUuid();
+
         CreatableTopicResult result = new CreatableTopicResult().
             setName(topic.name()).
             setTopicId(topicId).
@@ -846,6 +906,69 @@ public class ReplicationControlManager {
             records.add(info.toRecord(topicId, partitionIndex, new ImageWriterOptions.Builder(featureControl.metadataVersionOrThrow()).
                 setEligibleLeaderReplicasEnabled(featureControl.isElrFeatureEnabled()).
                 build()));
+        }
+        return ApiError.NONE;
+    }
+
+    /**
+     * Creates a mirror topic with the given source TopicId and partition count.
+     * Uses the cluster default replication factor. Called from ConfigurationControlManager
+     * during startMirrorTopics for atomic topic creation + config update.
+     *
+     * @param topicName the topic name
+     * @param topicId the source cluster's TopicId to preserve
+     * @param numPartitions the number of partitions (must match source)
+     * @param records list to accumulate TopicRecord and PartitionRecords into
+     * @return ApiError.NONE on success, or an error
+     */
+    ApiError createMirrorTopic(String topicName, Uuid topicId, int numPartitions,
+                               List<ApiMessageAndVersion> records) {
+        if (topicsByName.containsKey(topicName)) {
+            Uuid existingId = topicsByName.get(topicName);
+            if (!existingId.equals(topicId)) {
+                log.warn("Mirror topic {} exists on destination with TopicId {} but source has TopicId {}",
+                        topicName, existingId, topicId);
+            }
+            // TODO: emit metric for mirror topic creation failure (error=TOPIC_ALREADY_EXISTS, topicIdMismatch=existingId!=topicId)
+            return new ApiError(Errors.TOPIC_ALREADY_EXISTS,
+                    "Topic '" + topicName + "' already exists.");
+        }
+
+        Map<Integer, PartitionRegistration> newParts = new HashMap<>();
+        try {
+            TopicAssignment topicAssignment = clusterControl.replicaPlacer().place(new PlacementSpec(
+                    0, numPartitions, defaultReplicationFactor), clusterDescriber);
+            for (int partitionId = 0; partitionId < topicAssignment.assignments().size(); partitionId++) {
+                PartitionAssignment partitionAssignment = topicAssignment.assignments().get(partitionId);
+                List<Integer> isr = partitionAssignment.replicas().stream()
+                        .filter(clusterControl::isActive).toList();
+                if (isr.isEmpty()) {
+                    return new ApiError(Errors.INVALID_REPLICATION_FACTOR,
+                            "Unable to replicate the partition " + defaultReplicationFactor +
+                                    " time(s): All brokers are currently fenced or in controlled shutdown.");
+                }
+                if (isr.size() < partitionAssignment.replicas().size()) {
+                    return new ApiError(Errors.INVALID_REPLICATION_FACTOR,
+                            "Unable to replicate the partition " + defaultReplicationFactor +
+                                    " time(s): Some brokers are currently fenced or in controlled shutdown. " +
+                                    "For mirror topic creation, all replicas being assigned must be active.");
+                }
+                newParts.put(partitionId, buildPartitionRegistration(partitionAssignment, isr));
+            }
+        } catch (InvalidReplicationFactorException e) {
+            return new ApiError(Errors.INVALID_REPLICATION_FACTOR,
+                    "Unable to replicate the partition " + defaultReplicationFactor +
+                            " time(s): " + e.getMessage());
+        }
+
+        records.add(new ApiMessageAndVersion(new TopicRecord()
+                .setName(topicName)
+                .setTopicId(topicId), (short) 0));
+        for (Entry<Integer, PartitionRegistration> partEntry : newParts.entrySet()) {
+            records.add(partEntry.getValue().toRecord(topicId, partEntry.getKey(),
+                    new ImageWriterOptions.Builder(featureControl.metadataVersionOrThrow())
+                            .setEligibleLeaderReplicasEnabled(featureControl.isElrFeatureEnabled())
+                            .build()));
         }
         return ApiError.NONE;
     }

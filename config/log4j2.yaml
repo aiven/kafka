@@ -105,9 +105,7 @@ Configuration:
       # Kafka request logger
       - name: kafka.request.logger
         level: WARN
-        additivity: false
-        AppenderRef:
-          ref: RequestAppender
+
       # Uncomment the lines below and change log4j.logger.kafka.network.RequestChannel$ to TRACE
       # for additional output related to the handling of requests
 #      - name: kafka.network.Processor
@@ -123,15 +121,13 @@ Configuration:
       # Kafka network RequestChannel$ logger
       - name: kafka.network.RequestChannel$
         level: WARN
-        additivity: false
-        AppenderRef:
-          ref: RequestAppender
+
       # Controller logger
       - name: org.apache.kafka.controller
         level: INFO
-        additivity: false
-        AppenderRef:
-          ref: ControllerAppender
+#        additivity: false
+#        AppenderRef:
+#          ref: ControllerAppender
       # LogCleaner logger
       - name: org.apache.kafka.storage.internals.log.LogCleaner
         level: INFO
@@ -151,9 +147,9 @@ Configuration:
       # State change logger
       - name: state.change.logger
         level: INFO
-        additivity: false
-        AppenderRef:
-          ref: StateChangeAppender
+#        additivity: false
+#        AppenderRef:
+#          ref: StateChangeAppender
       # Authorizer logger
       - name: kafka.authorizer.logger
         level: INFO

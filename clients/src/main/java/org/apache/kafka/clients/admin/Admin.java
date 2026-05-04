@@ -199,6 +199,8 @@ public interface Admin extends AutoCloseable {
      */
     CreateTopicsResult createTopics(Collection<NewTopic> newTopics, CreateTopicsOptions options);
 
+    FindCoordinatorResult findCoordinator(String key);
+
     /**
      * This is a convenience method for {@link #deleteTopics(TopicCollection, DeleteTopicsOptions)}
      * with default options. See the overload for more details.
@@ -1665,6 +1667,132 @@ public interface Admin extends AutoCloseable {
     UnregisterBrokerResult unregisterBroker(int brokerId, UnregisterBrokerOptions options);
 
     /**
+     * Create a new cluster mirror.
+     *
+     * @param mirrorName The name of the cluster mirror
+     * @param configs Configuration for the cluster mirror, including bootstrap servers and security settings
+     * @param options Options for the create mirror operation
+     * @return The CreateMirrorResult
+     */
+    CreateMirrorResult createMirror(String mirrorName, Map<String, String> configs, CreateMirrorOptions options);
+
+    /**
+     * Start mirroring for the specified topics.
+     *
+     * When topics are started in a mirror, they become read-only on the destination cluster and start
+     * replicating data from the source cluster. This operation marks the specified topics with the
+     * mirror name, preventing local writes and enabling the MirrorFetcherThread to begin replication.
+     *
+     * @param mirrorName The cluster mirror name
+     * @param topics Set of topic names to start mirroring
+     * @param options Options for the start mirror topics operation
+     * @return The StartMirrorTopicsResult containing futures for each topic
+     */
+    StartMirrorTopicsResult startMirrorTopics(String mirrorName, Set<String> topics, StartMirrorTopicsOptions options);
+
+    /**
+     * Stop mirroring for the specified topics.
+     *
+     * This operation is typically used during failover scenarios when the destination cluster needs to
+     * be promoted from passive (read-only mirror) to active (accepting writes). Stopping mirror topics
+     * clears the mirrorName field from partition metadata, which allows producers to write
+     * to these partitions.
+     *
+     * @param mirrorName The cluster mirror name
+     * @param topics Set of topic names to stop mirroring
+     * @param options Options for the stop mirror topics operation
+     * @return The StopMirrorTopicsResult containing futures for each topic
+     */
+    StopMirrorTopicsResult stopMirrorTopics(String mirrorName, Set<String> topics, StopMirrorTopicsOptions options);
+
+    /**
+     * Pause mirroring for the specified topics.
+     *
+     * Paused topics remain read-only on the destination cluster but stop fetching new data from the
+     * source cluster. The mirror fetcher threads are removed for these partitions, preserving the
+     * current replicated state. Mirroring can be resumed later with {@link #resumeMirrorTopics}.
+     *
+     * @param mirrorName The cluster mirror name
+     * @param topics Set of topic names to pause mirroring
+     * @param options Options for the pause mirror topics operation
+     * @return The PauseMirrorTopicsResult containing futures for each topic
+     */
+    PauseMirrorTopicsResult pauseMirrorTopics(String mirrorName, Set<String> topics, PauseMirrorTopicsOptions options);
+
+    /**
+     * Resume mirroring for previously paused topics.
+     *
+     * Resumed topics restart fetching data from the source cluster, picking up from where they
+     * left off. New mirror fetcher threads are created and the partitions transition back to the
+     * MIRRORING state.
+     *
+     * @param mirrorName The cluster mirror name
+     * @param topics Set of topic names to resume mirroring
+     * @param options Options for the resume mirror topics operation
+     * @return The ResumeMirrorTopicsResult containing futures for each topic
+     */
+    ResumeMirrorTopicsResult resumeMirrorTopics(String mirrorName, Set<String> topics, ResumeMirrorTopicsOptions options);
+
+    /**
+     * Delete a cluster mirror including its configuration.
+     *
+     * The mirror must be empty (no topics) or all its topics must have been removed (in STOPPED
+     * state). After deletion, all mirror metadata are tombstoned and failback is no longer possible.
+     *
+     * @param mirrorName The cluster mirror name
+     * @param options Options for the delete mirror operation
+     * @return The DeleteMirrorResult
+     */
+    DeleteMirrorResult deleteMirror(String mirrorName, DeleteMirrorOptions options);
+
+    /**
+     * List the cluster mirrors available in the cluster with the default options.
+     *
+     * <p>This is a convenience method for {@link #listMirrors(ListMirrorsOptions)} with default options.
+     * See the overload for more details.
+     *
+     * @return The ListMirrorsResult.
+     */
+    default ListMirrorsResult listMirrors() {
+        return listMirrors(new ListMirrorsOptions());
+    }
+
+    /**
+     * List the cluster mirrors available in the cluster.
+     *
+     * @param options The options to use when listing the mirrors.
+     * @return The ListMirrorsResult.
+     */
+    ListMirrorsResult listMirrors(ListMirrorsOptions options);
+
+    /**
+     * Describe cluster mirrors with the default options.
+     *
+     * <p>This is a convenience method for {@link #describeMirrors(Collection, DescribeMirrorsOptions)}
+     * with default options. See the overload for more details.
+     *
+     * @param mirrorNames The names of the mirrors to describe
+     * @return The DescribeMirrorsResult
+     */
+    default DescribeMirrorsResult describeMirrors(Collection<String> mirrorNames) {
+        return describeMirrors(mirrorNames, new DescribeMirrorsOptions());
+    }
+
+    /**
+     * Describe cluster mirrors.
+     *
+     * This operation retrieves detailed information about cluster mirrors including:
+     * - Topics being mirrored
+     * - Partition-level lag information (source offset vs destination offset)
+     * - Mirroring state for each partition (INITIALIZING, PREPARING, MIRRORING, etc.)
+     *
+     * @param mirrorNames The names of the mirrors to describe
+     * @param options The options to use when describing mirrors
+     * @return The DescribeMirrorsResult
+     */
+    DescribeMirrorsResult describeMirrors(Collection<String> mirrorNames, DescribeMirrorsOptions options);
+
+    /**
      * Describe producer state on a set of topic partitions. See
      * {@link #describeProducers(Collection, DescribeProducersOptions)} for more details.
      *
@@ -2127,6 +2255,6 @@ public interface Admin extends AutoCloseable {
      * @param options               The options to use when terminating the transaction.
      * @return The TerminateTransactionResult.
      */
-    TerminateTransactionResult forceTerminateTransaction(String transactionalId, 
+    TerminateTransactionResult forceTerminateTransaction(String transactionalId,
                                                         TerminateTransactionOptions options);
 }

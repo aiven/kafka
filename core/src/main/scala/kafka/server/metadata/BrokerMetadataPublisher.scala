@@ -22,6 +22,7 @@ import kafka.coordinator.transaction.TransactionCoordinator
 import kafka.log.LogManager
 import kafka.server.share.SharePartitionManager
 import kafka.server.{KafkaConfig, ReplicaManager}
+import kafka.server.mirror.{MirrorMetadataManager, MirrorCoordinator}
 import kafka.utils.Logging
 import org.apache.kafka.common.TopicPartition
 import org.apache.kafka.common.errors.TimeoutException
@@ -35,7 +36,7 @@ import org.apache.kafka.image.publisher.MetadataPublisher
 import org.apache.kafka.image.{MetadataDelta, MetadataImage, TopicDelta}
 import org.apache.kafka.metadata.publisher.AclPublisher
 import org.apache.kafka.server.common.MetadataVersion.MINIMUM_VERSION
-import org.apache.kafka.server.common.{FinalizedFeatures, RequestLocal, ShareVersion}
+import org.apache.kafka.server.common.{FinalizedFeatures, MirrorVersion, RequestLocal, ShareVersion}
 import org.apache.kafka.server.fault.FaultHandler
 import org.apache.kafka.storage.internals.log.{LogManager => JLogManager}
 
@@ -83,7 +84,9 @@ class BrokerMetadataPublisher(
   delegationTokenPublisher: DelegationTokenPublisher,
   aclPublisher: AclPublisher,
   fatalFaultHandler: FaultHandler,
-  metadataPublishingFaultHandler: FaultHandler
+  metadataPublishingFaultHandler: FaultHandler,
+  mirrorCoordinator: MirrorCoordinator,
+  mirrorMetadataManager: MirrorMetadataManager
 ) extends MetadataPublisher with Logging {
   logIdent = s"[BrokerMetadataPublisher id=${config.nodeId}] "
 
@@ -108,6 +111,11 @@ class BrokerMetadataPublisher(
    * The share version being used in the broker metadata.
    */
   private var finalizedShareVersion: Short = FinalizedFeatures.fromKRaftVersion(MINIMUM_VERSION).finalizedFeatures().getOrDefault(ShareVersion.FEATURE_NAME, 0.toShort)
+
+  /**
+   * The mirror version being used in the broker metadata.
+   */
+  private var finalizedMirrorVersion: Short = FinalizedFeatures.fromKRaftVersion(MINIMUM_VERSION).finalizedFeatures().getOrDefault(MirrorVersion.FEATURE_NAME, 0.toShort)
 
   override def name(): String = "BrokerMetadataPublisher"
 
@@ -212,6 +220,20 @@ class BrokerMetadataPublisher(
           case t: Throwable => metadataPublishingFaultHandler.handleFault("Error updating share " +
             s"coordinator with deleted partitions in $deltaName", t)
         }
+        // Only update mirror coordinator if mirror.version is enabled
+        if (finalizedMirrorVersion > 0) {
+          try {
+            // Update the mirror coordinator of topic changes
+            updateCoordinator(newImage,
+              delta,
+              Topic.MIRROR_STATE_TOPIC_NAME,
+              mirrorCoordinator.onElection,
+              (partitionIndex, leaderEpochOpt) => mirrorCoordinator.onResignation(partitionIndex, toOptionalInt(leaderEpochOpt)))
+          } catch {
+            case t: Throwable => metadataPublishingFaultHandler.handleFault("Error updating mirror " +
+              s"coordinator with local changes in $deltaName", t)
+          }
+        }
       }
 
       // Apply configuration deltas.
@@ -231,6 +253,9 @@ class BrokerMetadataPublisher(
 
       // Apply ACL delta.
       aclPublisher.onMetadataUpdate(delta, newImage, manifest)
+
+      // Apply mirror metadata delta
+      mirrorMetadataManager.onMetadataUpdate(delta, newImage, manifest)
 
       try {
         // Propagate the new image to the group coordinator.
@@ -253,8 +278,9 @@ class BrokerMetadataPublisher(
       }
 
       if (delta.featuresDelta != null) {
+        val newFinalizedFeatures = new FinalizedFeatures(newImage.features.metadataVersionOrThrow, newImage.features.finalizedVersions, newImage.provenance.lastContainedOffset)
+
         try {
-          val newFinalizedFeatures = new FinalizedFeatures(newImage.features.metadataVersionOrThrow, newImage.features.finalizedVersions, newImage.provenance.lastContainedOffset)
           val newFinalizedShareVersion = newFinalizedFeatures.finalizedFeatures().getOrDefault(ShareVersion.FEATURE_NAME, 0.toShort)
           // Share version feature has been toggled.
           if (newFinalizedShareVersion != finalizedShareVersion) {
@@ -266,6 +292,26 @@ class BrokerMetadataPublisher(
         } catch {
           case t: Throwable => metadataPublishingFaultHandler.handleFault("Error updating share partition manager " +
             s" with share version feature change in $deltaName", t)
+        }
+
+        try {
+          val newFinalizedMirrorVersion = newFinalizedFeatures.finalizedFeatures().getOrDefault(MirrorVersion.FEATURE_NAME, 0.toShort)
+          // Mirror version feature has been toggled.
+          if (newFinalizedMirrorVersion != finalizedMirrorVersion) {
+            finalizedMirrorVersion = newFinalizedMirrorVersion
+            val mirrorVersion: MirrorVersion = MirrorVersion.fromFeatureLevel(finalizedMirrorVersion)
+            info(s"Feature mirror.version has been updated to version $finalizedMirrorVersion")
+            if (mirrorVersion.isClusterMirroringSupported) {
+              info("Cluster mirroring feature is now enabled")
+              mirrorCoordinator.startup()
+            } else {
+              info("Cluster mirroring feature is now disabled")
+              mirrorCoordinator.shutdown()
+            }
+          }
+        } catch {
+          case t: Throwable => metadataPublishingFaultHandler.handleFault("Error updating mirror coordinator " +
+            s" with mirror version feature change in $deltaName", t)
         }
       }
 
@@ -308,6 +354,7 @@ class BrokerMetadataPublisher(
     election: (Int, Int) => Unit,
     resignation: (Int, Option[Int]) => Unit
   ): Unit = {
+
     // Handle the case where the topic was deleted
     Option(delta.topicsDelta()).foreach { topicsDelta =>
       if (topicsDelta.topicWasDeleted(topicName)) {
@@ -386,6 +433,17 @@ class BrokerMetadataPublisher(
         .orElse(config.shareCoordinatorConfig.shareCoordinatorStateTopicNumPartitions()))
     } catch {
       case t: Throwable => fatalFaultHandler.handleFault("Error starting Share coordinator", t)
+    }
+    try {
+      // Start the mirror coordinator only if mirror.version is enabled.
+      if (finalizedMirrorVersion > 0) {
+        info(s"Starting mirror coordinator with mirror.version=$finalizedMirrorVersion")
+        mirrorCoordinator.startup()
+      } else {
+        info("Mirror coordinator not started: mirror.version is disabled")
+      }
+    } catch {
+      case t: Throwable => fatalFaultHandler.handleFault("Error starting topic link coordinator", t)
     }
   }
 

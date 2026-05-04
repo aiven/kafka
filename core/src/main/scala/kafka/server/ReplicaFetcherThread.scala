@@ -21,10 +21,10 @@ import org.apache.kafka.common.TopicPartition
 import org.apache.kafka.common.requests.FetchResponse
 import org.apache.kafka.server.common.OffsetAndEpoch
 import org.apache.kafka.storage.internals.log.{LogAppendInfo, LogStartOffsetIncrementReason}
-import org.apache.kafka.server.LeaderEndPoint
+import org.apache.kafka.server.{LeaderEndPoint, PartitionFetchState}
 
 import java.util.Optional
-import scala.collection.mutable
+import scala.collection.{Map, mutable, Set}
 
 class ReplicaFetcherThread(name: String,
                            leader: LeaderEndPoint,
@@ -32,7 +32,8 @@ class ReplicaFetcherThread(name: String,
                            failedPartitions: FailedPartitions,
                            replicaMgr: ReplicaManager,
                            quota: ReplicaQuota,
-                           logPrefix: String)
+                           logPrefix: String,
+                           mirrorName: String = "")
   extends AbstractFetcherThread(name = name,
                                 clientId = name,
                                 leader = leader,
@@ -40,8 +41,8 @@ class ReplicaFetcherThread(name: String,
                                 fetchTierStateMachine = new TierStateMachine(leader, replicaMgr, false),
                                 fetchBackOffMs = brokerConfig.replicaFetchBackoffMs,
                                 isInterruptible = false,
-                                replicaMgr.brokerTopicStats) {
-
+                                replicaMgr.brokerTopicStats,
+                                mirrorName) {
   this.logIdent = logPrefix
 
   // Visible for testing
@@ -49,6 +50,10 @@ class ReplicaFetcherThread(name: String,
 
   override protected def latestEpoch(topicPartition: TopicPartition): Optional[Integer] = {
     replicaMgr.localLogOrException(topicPartition).latestEpoch
+  }
+
+  override protected def latestEpochFromLog(topicPartition: TopicPartition): Optional[Integer] = {
+    replicaMgr.localLogOrException(topicPartition).latestEpochFromLog
   }
 
   override protected def logStartOffset(topicPartition: TopicPartition): Long = {
@@ -61,6 +66,18 @@ class ReplicaFetcherThread(name: String,
 
   override protected def endOffsetForEpoch(topicPartition: TopicPartition, epoch: Int): Optional[OffsetAndEpoch] = {
     replicaMgr.localLogOrException(topicPartition).endOffsetForEpoch(epoch)
+  }
+
+  override protected def removeFetcherForPartitions(partitions: Set[TopicPartition]): Map[TopicPartition, PartitionFetchState] = {
+    replicaMgr.replicaFetcherManager.removeFetcherForPartitions(partitions)
+  }
+
+  override protected def addFetcherForPartitions(partitionAndOffsets: Map[TopicPartition, InitialFetchState]) = {
+    replicaMgr.replicaFetcherManager.addFetcherForPartitions(partitionAndOffsets)
+  }
+
+  override protected def shouldUpdateMirrorLeaderEpoch(topicPartition: TopicPartition): Boolean = {
+    replicaMgr.getPartitionOrException(topicPartition).getMirrorName().isPresent
   }
 
   override def initiateShutdown(): Boolean = {
@@ -117,7 +134,11 @@ class ReplicaFetcherThread(name: String,
       trace("Follower has replica log end offset %d for partition %s. Received %d bytes of messages and leader hw %d"
         .format(log.logEndOffset, topicPartition, records.sizeInBytes, partitionData.highWatermark))
 
-    // Append the leader's messages to the log
+    // Append the leader's messages to the log.
+    //
+    // The fetch leader epoch from metadata is used for append validation.
+    // For mirrored partitions, this epoch is updated after each append to match the highest batch
+    // epoch seen, allowing source cluster epochs to be accepted while maintaining epoch validations.
     val logAppendInfo = partition.appendRecordsToFollowerOrFutureReplica(records, isFuture = false, partitionLeaderEpoch)
 
     if (logTrace)

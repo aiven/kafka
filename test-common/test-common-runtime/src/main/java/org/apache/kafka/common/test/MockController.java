@@ -36,23 +36,31 @@ import org.apache.kafka.common.message.AssignReplicasToDirsRequestData;
 import org.apache.kafka.common.message.AssignReplicasToDirsResponseData;
 import org.apache.kafka.common.message.BrokerHeartbeatRequestData;
 import org.apache.kafka.common.message.BrokerRegistrationRequestData;
+import org.apache.kafka.common.message.BumpLeaderEpochsResponseData;
 import org.apache.kafka.common.message.ControllerRegistrationRequestData;
 import org.apache.kafka.common.message.CreateDelegationTokenRequestData;
 import org.apache.kafka.common.message.CreateDelegationTokenResponseData;
+import org.apache.kafka.common.message.CreateMirrorResponseData;
 import org.apache.kafka.common.message.CreatePartitionsRequestData.CreatePartitionsTopic;
 import org.apache.kafka.common.message.CreatePartitionsResponseData.CreatePartitionsTopicResult;
 import org.apache.kafka.common.message.CreateTopicsRequestData;
 import org.apache.kafka.common.message.CreateTopicsRequestData.CreatableTopic;
 import org.apache.kafka.common.message.CreateTopicsResponseData;
 import org.apache.kafka.common.message.CreateTopicsResponseData.CreatableTopicResult;
+import org.apache.kafka.common.message.DeleteMirrorResponseData;
 import org.apache.kafka.common.message.ElectLeadersRequestData;
 import org.apache.kafka.common.message.ElectLeadersResponseData;
 import org.apache.kafka.common.message.ExpireDelegationTokenRequestData;
 import org.apache.kafka.common.message.ExpireDelegationTokenResponseData;
 import org.apache.kafka.common.message.ListPartitionReassignmentsRequestData;
 import org.apache.kafka.common.message.ListPartitionReassignmentsResponseData;
+import org.apache.kafka.common.message.PauseMirrorTopicsResponseData;
 import org.apache.kafka.common.message.RenewDelegationTokenRequestData;
 import org.apache.kafka.common.message.RenewDelegationTokenResponseData;
+import org.apache.kafka.common.message.ResumeMirrorTopicsResponseData;
+import org.apache.kafka.common.message.StartMirrorTopicsRequestData;
+import org.apache.kafka.common.message.StartMirrorTopicsResponseData;
+import org.apache.kafka.common.message.StopMirrorTopicsResponseData;
 import org.apache.kafka.common.message.UpdateFeaturesRequestData;
 import org.apache.kafka.common.message.UpdateFeaturesResponseData;
 import org.apache.kafka.common.protocol.Errors;
@@ -82,7 +90,6 @@ import static org.apache.kafka.clients.admin.AlterConfigOp.OpType.DELETE;
 import static org.apache.kafka.clients.admin.AlterConfigOp.OpType.SET;
 import static org.apache.kafka.common.protocol.Errors.INVALID_REQUEST;
 
-
 public class MockController implements Controller {
     private static final NotControllerException NOT_CONTROLLER_EXCEPTION =
         new NotControllerException("This is not the correct controller for this cluster.");
@@ -98,10 +105,67 @@ public class MockController implements Controller {
     }
 
     @Override
+    public CompletableFuture<CreateMirrorResponseData> createMirror(
+            ControllerRequestContext context,
+            Map<ConfigResource, Map<String, Map.Entry<AlterConfigOp.OpType, String>>> configChanges
+    ) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
     public CompletableFuture<List<AclDeleteResult>> deleteAcls(
         ControllerRequestContext context,
         List<AclBindingFilter> aclBindingFilters
     ) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public CompletableFuture<StopMirrorTopicsResponseData> stopMirrorTopics(
+            ControllerRequestContext context,
+            String mirrorName,
+            Set<String> topics,
+            List<String> patterns) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public CompletableFuture<StartMirrorTopicsResponseData> startMirrorTopics(
+            ControllerRequestContext context,
+            String mirrorName,
+            List<StartMirrorTopicsRequestData.TopicData> topics,
+            List<String> includePatterns,
+            List<String> excludePatterns
+    ) {
+        throw new UnsupportedOperationException();
+    }
+
+    public CompletableFuture<BumpLeaderEpochsResponseData> bumpLeaderEpoch(
+            ControllerRequestContext context,
+            Map<Uuid, Map<Integer, Integer>> partitionLeaderEpochs) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public CompletableFuture<PauseMirrorTopicsResponseData> pauseMirrorTopics(
+            ControllerRequestContext context,
+            String mirrorName,
+            Set<String> topics) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public CompletableFuture<ResumeMirrorTopicsResponseData> resumeMirrorTopics(
+            ControllerRequestContext context,
+            String mirrorName,
+            Set<String> topics) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public CompletableFuture<DeleteMirrorResponseData> deleteMirror(
+            ControllerRequestContext context,
+            String mirrorName) {
         throw new UnsupportedOperationException();
     }
 

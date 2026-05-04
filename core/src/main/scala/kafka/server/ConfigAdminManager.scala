@@ -24,8 +24,9 @@ import kafka.utils._
 import org.apache.kafka.clients.admin.{AlterConfigOp, ConfigEntry}
 import org.apache.kafka.clients.admin.AlterConfigOp.OpType
 import org.apache.kafka.common.config.ConfigDef.ConfigKey
-import org.apache.kafka.common.config.ConfigResource.Type.{BROKER, BROKER_LOGGER, CLIENT_METRICS, GROUP, TOPIC}
-import org.apache.kafka.common.config.{ConfigDef, ConfigResource}
+import org.apache.kafka.server.config.MirrorConfig
+import org.apache.kafka.common.config.ConfigResource.Type.{BROKER, BROKER_LOGGER, CLIENT_METRICS, GROUP, MIRROR, TOPIC}
+import org.apache.kafka.common.config.{ConfigDef, ConfigResource, TopicConfig}
 import org.apache.kafka.common.errors.{ApiException, InvalidConfigurationException, InvalidRequestException}
 import org.apache.kafka.common.message.{AlterConfigsRequestData, AlterConfigsResponseData, IncrementalAlterConfigsRequestData, IncrementalAlterConfigsResponseData}
 import org.apache.kafka.common.message.AlterConfigsRequestData.{AlterConfigsResource => LAlterConfigsResource}
@@ -143,8 +144,23 @@ class ConfigAdminManager(nodeId: Int,
                 validateResourceNameIsCurrentNodeId(resource.resourceName())
               }
               validateBrokerConfigChange(resource, configResource)
-            case TOPIC | CLIENT_METRICS | GROUP =>
+            case TOPIC =>
+                // mirror internal config check
+                if (resource.configs().stream().anyMatch(config => TopicConfig.MIRROR_NAME_CONFIG.equals(config.name()))) {
+                  throw new InvalidRequestException("The 'mirror.name' configuration can only be modified through dedicated mirror management APIs.")
+                }
+            case CLIENT_METRICS | GROUP =>
             // Nothing to do.
+            case MIRROR =>
+              val validKeys = MirrorConfig.CONFIG_DEF.names()
+              resource.configs().forEach { config =>
+                if (!validKeys.contains(config.name())) {
+                  throw new InvalidConfigurationException(s"Unknown mirror configuration: ${config.name()}")
+                }
+              }
+              val mirrorProps = new Properties()
+              resource.configs().forEach(config => mirrorProps.put(config.name(), config.value()))
+              MirrorConfig.CONFIG_DEF.parse(mirrorProps)
             case _ =>
               throw new InvalidRequestException(s"Unknown resource type ${resource.resourceType().toInt}")
           }
@@ -242,7 +258,11 @@ class ConfigAdminManager(nodeId: Int,
                 validateResourceNameIsCurrentNodeId(resource.resourceName())
               }
               validateBrokerConfigChange(resource, configResource)
-            case TOPIC | CLIENT_METRICS | GROUP =>
+            case TOPIC =>
+                if (resource.configs().asScala.exists(config => TopicConfig.MIRROR_NAME_CONFIG.equals(config.name()))) {
+                  throw new InvalidRequestException("The 'mirror.name' configuration can only be modified through dedicated mirror management APIs.")
+                }
+            case CLIENT_METRICS | GROUP =>
             // Nothing to do.
             case _ =>
               // Since legacy AlterConfigs does not support BROKER_LOGGER, any attempt to use it

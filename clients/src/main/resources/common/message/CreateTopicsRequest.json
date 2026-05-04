@@ -31,7 +31,9 @@
   // in the response if the topics creation is throttled (KIP-599).
   //
   // Version 7 is the same as version 6.
-  "validVersions": "2-7",
+  //
+  // Version 8 adds support for creating mirrored partitions.
+  "validVersions": "2-8",
   "flexibleVersions": "5+",
   "fields": [
     { "name": "Topics", "type": "[]CreatableTopic", "versions": "0+",
@@ -55,6 +57,11 @@
           "about": "The configuration name." },
         { "name": "Value", "type": "string", "versions": "0+", "nullableVersions": "0+",
           "about": "The configuration value." }
+      ]},
+      { "name": "MirrorInfo", "type": "MirrorInfo", "versions": "8+", "nullableVersions": "8+", "ignorable": true,
+        "about": "Mirror information for creating a mirror topic from a source cluster.", "fields": [
+        { "name": "TopicId", "type": "uuid", "versions": "8+",
+          "about": "The topic ID from the source cluster." }
       ]}
     ]},
     { "name": "timeoutMs", "type": "int32", "versions": "0+", "default": "60000",

@@ -21,15 +21,17 @@ import kafka.coordinator.transaction.{InitProducerIdResult, TransactionCoordinat
 import kafka.network.RequestChannel
 import kafka.server.QuotaFactory.{QuotaManagers, UNBOUNDED_QUOTA}
 import kafka.server.handlers.DescribeTopicPartitionsRequestHandler
+import kafka.server.mirror.MirrorUtils.PartitionStateInfo
+import kafka.server.mirror.{MirrorCoordinator, MirrorPartitionState, MirrorUtils}
 import kafka.server.share.{ShareFetchUtils, SharePartitionManager}
 import kafka.utils.Logging
 import org.apache.kafka.clients.CommonClientConfigs
 import org.apache.kafka.clients.admin.EndpointType
 import org.apache.kafka.common.acl.AclOperation
 import org.apache.kafka.common.acl.AclOperation._
-import org.apache.kafka.common.config.ConfigResource
+import org.apache.kafka.common.config.{ConfigResource, TopicConfig}
 import org.apache.kafka.common.errors._
-import org.apache.kafka.common.internals.Topic.{GROUP_METADATA_TOPIC_NAME, SHARE_GROUP_STATE_TOPIC_NAME, TRANSACTION_STATE_TOPIC_NAME, isInternal}
+import org.apache.kafka.common.internals.Topic.{GROUP_METADATA_TOPIC_NAME, MIRROR_STATE_TOPIC_NAME, SHARE_GROUP_STATE_TOPIC_NAME, TRANSACTION_STATE_TOPIC_NAME, isInternal}
 import org.apache.kafka.common.internals.{FatalExitError, Plugin, Topic}
 import org.apache.kafka.common.message.AddPartitionsToTxnResponseData.{AddPartitionsToTxnResult, AddPartitionsToTxnResultCollection}
 import org.apache.kafka.common.message.DeleteRecordsResponseData.{DeleteRecordsPartitionResult, DeleteRecordsTopicResult}
@@ -58,6 +60,7 @@ import org.apache.kafka.common.security.token.delegation.{DelegationToken, Token
 import org.apache.kafka.common.utils.{ProducerIdAndEpoch, Time}
 import org.apache.kafka.common.{Node, TopicIdPartition, TopicPartition, Uuid}
 import org.apache.kafka.coordinator.group.{Group, GroupConfig, GroupConfigManager, GroupCoordinator}
+import org.apache.kafka.coordinator.mirror.MirrorRecordKey
 import org.apache.kafka.coordinator.share.ShareCoordinator
 import org.apache.kafka.metadata.{ConfigRepository, MetadataCache}
 import org.apache.kafka.server.{ApiVersionManager, ClientMetricsManager, DelegationTokenManager, ProcessRole}
@@ -94,6 +97,7 @@ class KafkaApis(val requestChannel: RequestChannel,
                 val groupCoordinator: GroupCoordinator,
                 val txnCoordinator: TransactionCoordinator,
                 val shareCoordinator: ShareCoordinator,
+                val mirrorCoordinator: MirrorCoordinator,
                 val autoTopicCreationManager: AutoTopicCreationManager,
                 val brokerId: Int,
                 val config: KafkaConfig,
@@ -136,7 +140,6 @@ class KafkaApis(val requestChannel: RequestChannel,
         case None => handleInvalidVersionsDuringForwarding(request)
       }
     }
-
     forwardingManager.forwardRequest(request, responseCallback)
   }
 
@@ -183,7 +186,7 @@ class KafkaApis(val requestChannel: RequestChannel,
         case ApiKeys.LIST_GROUPS => handleListGroupsRequest(request).exceptionally(handleError)
         case ApiKeys.SASL_HANDSHAKE => handleSaslHandshakeRequest(request)
         case ApiKeys.API_VERSIONS => handleApiVersionsRequest(request)
-        case ApiKeys.CREATE_TOPICS => forwardToController(request)
+        case ApiKeys.CREATE_TOPICS => handleCreateTopics(request)
         case ApiKeys.DELETE_TOPICS => forwardToController(request)
         case ApiKeys.DELETE_RECORDS => handleDeleteRecordsRequest(request)
         case ApiKeys.INIT_PRODUCER_ID => handleInitProducerIdRequest(request, requestLocal)
@@ -248,6 +251,17 @@ class KafkaApis(val requestChannel: RequestChannel,
         case ApiKeys.STREAMS_GROUP_DESCRIBE => handleStreamsGroupDescribe(request).exceptionally(handleError)
         case ApiKeys.STREAMS_GROUP_HEARTBEAT => handleStreamsGroupHeartbeat(request).exceptionally(handleError)
         case ApiKeys.GET_REPLICA_LOG_INFO => handleGetReplicaLogInfo(request)
+        case ApiKeys.CREATE_MIRROR => forwardToController(request)
+        case ApiKeys.START_MIRROR_TOPICS => handleStartMirrorTopics(request)
+        case ApiKeys.STOP_MIRROR_TOPICS => handleStopMirrorTopics(request)
+        case ApiKeys.PAUSE_MIRROR_TOPICS => handlePauseMirrorTopics(request)
+        case ApiKeys.RESUME_MIRROR_TOPICS => handleResumeMirrorTopics(request)
+        case ApiKeys.DELETE_MIRROR => handleDeleteMirror(request)
+        case ApiKeys.LIST_MIRRORS => handleListMirrorsRequest(request)
+        case ApiKeys.DESCRIBE_MIRRORS => handleDescribeMirrorsRequest(request)
+        case ApiKeys.WRITE_MIRROR_STATES => handleWriteMirrorStates(request)
+        case ApiKeys.READ_MIRROR_STATES => handleReadMirrorStates(request)
+        case ApiKeys.BUMP_LEADER_EPOCHS => forwardToController(request)
         case _ => throw new IllegalStateException(s"No handler for request api key ${request.header.apiKey}")
       }
     } catch {
@@ -263,6 +277,216 @@ class KafkaApis(val requestChannel: RequestChannel,
       if (request.apiLocalCompleteTimeNanos < 0)
         request.apiLocalCompleteTimeNanos = time.nanoseconds
     }
+  }
+
+  def handleCreateTopics(request: RequestChannel.Request): Unit = {
+    val createTopicsRequest = request.body[CreateTopicsRequest]
+
+    // mirror.name check
+    createTopicsRequest.data().topics().stream().forEach(creatableTopic => {
+      if (creatableTopic.configs().stream().anyMatch(creatableTopicConfig =>
+        TopicConfig.MIRROR_NAME_CONFIG.equals(creatableTopicConfig.name())))
+        throw new InvalidRequestException("The 'mirror.name' configuration can only be modified through dedicated mirror management APIs.")
+    })
+
+    forwardToController(request)
+  }
+
+  def handleWriteMirrorStates(request: RequestChannel.Request): Unit = {
+    if (MirrorUtils.isClusterMirroringEnabled(apiVersionManager.features.finalizedFeatures)) {
+      if (!authorizeClusterOperation(request, CLUSTER_ACTION)) {
+        requestHelper.sendMaybeThrottle(request, new WriteMirrorStatesResponse(new WriteMirrorStatesResponseData().setErrorCode(Errors.CLUSTER_AUTHORIZATION_FAILED.code)))
+        return
+      }
+      val writeMirrorStatesRequest = request.body[WriteMirrorStatesRequest]
+      val mirrorName = writeMirrorStatesRequest.data().mirrorName()
+      val partitionMetadata = new util.HashMap[String, util.Set[PartitionStateInfo]]()
+      writeMirrorStatesRequest.data().topics().forEach(topic => {
+        val partMetadata = new util.HashSet[PartitionStateInfo]()
+        topic.partitions().forEach(part => {
+          partMetadata.add(new PartitionStateInfo(part.partitionIndex(), MirrorPartitionState.fromValue(part.state()), part.lastMirrorEpoch()))
+        })
+        partitionMetadata.put(topic.name(), partMetadata)
+      })
+      mirrorCoordinator.writePartitionStateInfo(mirrorName, partitionMetadata, res => requestHelper.sendMaybeThrottle(request, res))
+    } else {
+      logger.warn("Cluster Mirroring is disabled (mirror.version=0), ignoring write mirror states request")
+      requestHelper.sendMaybeThrottle(request, new WriteMirrorStatesResponse(new WriteMirrorStatesResponseData().setErrorCode(Errors.UNSUPPORTED_VERSION.code)))
+    }
+  }
+
+  def handleReadMirrorStates(request: RequestChannel.Request): Unit = {
+    if (MirrorUtils.isClusterMirroringEnabled(apiVersionManager.features.finalizedFeatures)) {
+      if (!authorizeClusterOperation(request, CLUSTER_ACTION)) {
+        requestHelper.sendMaybeThrottle(request, new ReadMirrorStatesResponse(new ReadMirrorStatesResponseData().setErrorCode(Errors.CLUSTER_AUTHORIZATION_FAILED.code)))
+        return
+      }
+      val readMirrorStatesRequest = request.body[ReadMirrorStatesRequest]
+      val mirrorName = readMirrorStatesRequest.data().mirrorName()
+      val partitionMetadata = new util.HashMap[String, util.Set[Integer]]()
+      readMirrorStatesRequest.data().topics().forEach(topic => {
+        val parts = new util.HashSet[Integer]()
+        topic.partitions().forEach(part => {
+          parts.add(part.partitionIndex())
+        })
+        partitionMetadata.put(topic.name(), parts)
+      })
+      mirrorCoordinator.getCachedPartitionMetadata(mirrorName, partitionMetadata,
+        res => requestHelper.sendMaybeThrottle(request, res))
+    } else {
+      logger.warn("Cluster Mirroring is disabled (mirror.version=0), ignoring read mirror states request")
+      requestHelper.sendMaybeThrottle(request, new ReadMirrorStatesResponse(new ReadMirrorStatesResponseData().setErrorCode(Errors.UNSUPPORTED_VERSION.code)))
+    }
+  }
+
+  def handleStartMirrorTopics(request: RequestChannel.Request): Unit = {
+    // TODO: do the mirror partition state validation before forwarding to controller
+    if (!MirrorUtils.isClusterMirroringEnabled(apiVersionManager.features.finalizedFeatures)) {
+      logger.warn("Cluster Mirroring is disabled (mirror.version=0), ignoring start mirror topics request")
+      requestHelper.sendMaybeThrottle(request, new StartMirrorTopicsResponse(new StartMirrorTopicsResponseData().setErrorCode(Errors.UNSUPPORTED_VERSION.code)))
+      return
+    }
+    forwardToController(request)
+  }
+
+  def handleStopMirrorTopics(request: RequestChannel.Request): Unit = {
+    if (!MirrorUtils.isClusterMirroringEnabled(apiVersionManager.features.finalizedFeatures)) {
+      logger.warn("Cluster Mirroring is disabled (mirror.version=0), ignoring stop mirror topics request")
+      requestHelper.sendMaybeThrottle(request, new StopMirrorTopicsResponse(new StopMirrorTopicsResponseData().setErrorCode(Errors.UNSUPPORTED_VERSION.code)))
+      return
+    }
+    forwardToController(request)
+  }
+
+  def handlePauseMirrorTopics(request: RequestChannel.Request): Unit = {
+    if (!MirrorUtils.isClusterMirroringEnabled(apiVersionManager.features.finalizedFeatures)) {
+      logger.warn("Cluster Mirroring is disabled (mirror.version=0), ignoring pause mirror topics request")
+      requestHelper.sendMaybeThrottle(request, new PauseMirrorTopicsResponse(new PauseMirrorTopicsResponseData().setErrorCode(Errors.UNSUPPORTED_VERSION.code)))
+      return
+    }
+    forwardToController(request)
+  }
+
+  def handleResumeMirrorTopics(request: RequestChannel.Request): Unit = {
+    if (!MirrorUtils.isClusterMirroringEnabled(apiVersionManager.features.finalizedFeatures)) {
+      logger.warn("Cluster Mirroring is disabled (mirror.version=0), ignoring resume mirror topics request")
+      requestHelper.sendMaybeThrottle(request, new ResumeMirrorTopicsResponse(new ResumeMirrorTopicsResponseData().setErrorCode(Errors.UNSUPPORTED_VERSION.code)))
+      return
+    }
+    forwardToController(request)
+  }
+
+  def handleDeleteMirror(request: RequestChannel.Request): Unit = {
+    if (!MirrorUtils.isClusterMirroringEnabled(apiVersionManager.features.finalizedFeatures)) {
+      logger.warn("Cluster Mirroring is disabled (mirror.version=0), ignoring delete mirror request")
+      requestHelper.sendMaybeThrottle(request, new DeleteMirrorResponse(new DeleteMirrorResponseData().setErrorCode(Errors.UNSUPPORTED_VERSION.code)))
+      return
+    }
+    forwardToController(request)
+  }
+
+  def handleListMirrorsRequest(request: RequestChannel.Request): Unit = {
+    val responseData = new ListMirrorsResponseData()
+
+    if (MirrorUtils.isClusterMirroringEnabled(apiVersionManager.features.finalizedFeatures)) {
+      val mirrors = new util.ArrayList[ListMirrorsResponseData.ListedMirror]()
+      val authorizedMirrors = mirrorCoordinator.getConfiguredMirrors().asScala
+        .filter(mirrorName => authHelper.authorize(request.context, DESCRIBE, CLUSTER_MIRROR, mirrorName, logIfDenied = false))
+      authorizedMirrors.foreach(mirrorName => {
+        val sourceClusterId = mirrorCoordinator.getSourceClusterId(mirrorName)
+        mirrors.add(new ListMirrorsResponseData.ListedMirror()
+          .setMirrorName(mirrorName)
+          .setSourceBootstrap(if (mirrorCoordinator.getSourceBootstrap(mirrorName) != null)
+            mirrorCoordinator.getSourceBootstrap(mirrorName) else "")
+          .setSourceClusterId(if (sourceClusterId != null) sourceClusterId.toString else "")
+          .setTopicCount(mirrorCoordinator.getActiveTopicCount(mirrorName)))
+      })
+      responseData.setMirrors(mirrors)
+      responseData.setErrorCode(Errors.NONE.code)
+    } else {
+      logger.warn("Cluster Mirroring is disabled (mirror.version=0), ignoring list mirrors request")
+      responseData.setErrorCode(Errors.UNSUPPORTED_VERSION.code)
+    }
+
+    requestHelper.sendMaybeThrottle(request, new ListMirrorsResponse(responseData))
+  }
+
+  def handleDescribeMirrorsRequest(request: RequestChannel.Request): Unit = {
+    val describeMirrorsRequest = request.body[DescribeMirrorsRequest]
+    val responseData = new DescribeMirrorsResponseData()
+
+    if (MirrorUtils.isClusterMirroringEnabled(apiVersionManager.features.finalizedFeatures)) {
+      val describeAll = describeMirrorsRequest.data.mirrorNames.isEmpty
+      val requestedMirrors = if (describeAll) {
+        mirrorCoordinator.getConfiguredMirrors().asScala.toSeq
+      } else {
+        describeMirrorsRequest.data.mirrorNames.asScala.toSeq
+      }
+
+      requestedMirrors.foreach { mirrorName =>
+        if (!authHelper.authorize(request.context, DESCRIBE, CLUSTER_MIRROR, mirrorName, logIfDenied = !describeAll)) {
+          if (!describeAll) {
+            responseData.mirrors().add(new DescribeMirrorsResponseData.DescribedMirror()
+              .setMirrorName(mirrorName)
+              .setErrorCode(Errors.MIRROR_AUTHORIZATION_FAILED.code))
+          }
+        } else {
+          val describedMirror = new DescribeMirrorsResponseData.DescribedMirror()
+            .setMirrorName(mirrorName)
+            .setErrorCode(Errors.NONE.code)
+
+          if (describeMirrorsRequest.data.includeAuthorizedOperations) {
+            describedMirror.setAuthorizedOperations(authHelper.authorizedOperations(
+              request, new Resource(ResourceType.CLUSTER_MIRROR, mirrorName)))
+          }
+
+          // Each broker reports partitions it's responsible for to avoid duplicates
+          val lagInfoMap = replicaManager.getMirrorLagInfo(mirrorName)
+          val partitionStates = mirrorCoordinator.getMirrorStates(mirrorName).asScala
+          val lastMirrorEpoch = mirrorCoordinator.getLastMirrorEpochs(mirrorName)
+
+          // Report partition if: (1) we have lag info, OR (2) we're the partition leader and have no lag info
+          val partitionsToReport = (lagInfoMap.keySet ++ partitionStates.keySet.filter { tp =>
+            !lagInfoMap.contains(tp) && replicaManager.onlinePartition(tp).exists(_.isLeader)
+          }).toSeq
+
+          if (partitionsToReport.nonEmpty) {
+            // Group partitions by topic
+            val topicsMap = scala.collection.mutable.Map[String, DescribeMirrorsResponseData.TopicPartitions]()
+
+            partitionsToReport.foreach { topicPartition =>
+              val topicName = topicPartition.topic()
+              val topicPartitions = topicsMap.getOrElseUpdate(topicName, {
+                val tp = new DescribeMirrorsResponseData.TopicPartitions().setTopicName(topicName)
+                tp.setPartitions(new util.ArrayList[DescribeMirrorsResponseData.PartitionDetail]())
+                tp
+              })
+
+              val partitionDetail = new DescribeMirrorsResponseData.PartitionDetail()
+                .setPartitionIndex(topicPartition.partition())
+                .setSourceOffset(lagInfoMap.get(topicPartition).map(_.sourceOffset).getOrElse(-1L))
+                .setDestinationOffset(lagInfoMap.get(topicPartition).map(_.destinationOffset).getOrElse(-1L))
+                .setLag(lagInfoMap.get(topicPartition).map(_.lag).getOrElse(-1L))
+                .setState(partitionStates.getOrElse(topicPartition, MirrorPartitionState.UNKNOWN).name())
+                .setLastMirrorEpoch(lastMirrorEpoch.getOrDefault(topicPartition, -1))
+
+              topicPartitions.partitions().add(partitionDetail)
+            }
+
+            val topicsList = new util.ArrayList[DescribeMirrorsResponseData.TopicPartitions]()
+            topicsMap.values.foreach(tp => topicsList.add(tp))
+            describedMirror.setTopics(topicsList)
+          }
+
+          responseData.mirrors().add(describedMirror)
+        }
+      }
+    } else {
+      logger.warn("Cluster Mirroring is disabled (mirror.version=0), ignoring describe mirrors request")
+      responseData.setErrorCode(Errors.UNSUPPORTED_VERSION.code)
+    }
+
+    requestHelper.sendMaybeThrottle(request, new DescribeMirrorsResponse(responseData))
   }
 
   def handleGetReplicaLogInfo(request: RequestChannel.Request): Unit = {
@@ -632,6 +856,8 @@ class KafkaApis(val requestChannel: RequestChannel,
     val versionId = request.header.apiVersion
     val clientId = request.header.clientId
     val fetchRequest = request.body[FetchRequest]
+    debug("!!! Handling fetch request: " + fetchRequest)
+
     val topicNames =
       if (fetchRequest.version() >= 13)
         metadataCache.topicIdsToNames()
@@ -659,8 +885,9 @@ class KafkaApis(val requestChannel: RequestChannel,
             erroneous += topicIdPartition -> FetchResponse.partitionResponse(topicIdPartition, Errors.UNKNOWN_TOPIC_ID)
           else if (!metadataCache.contains(topicIdPartition.topicPartition))
             erroneous += topicIdPartition -> FetchResponse.partitionResponse(topicIdPartition, Errors.UNKNOWN_TOPIC_OR_PARTITION)
-          else
+          else {
             interesting += topicIdPartition -> data
+          }
         }
       } else {
         fetchContext.foreachPartition { (topicIdPartition, _) =>
@@ -717,6 +944,12 @@ class KafkaApis(val requestChannel: RequestChannel,
           .setAbortedTransactions(abortedTransactions)
           .setRecords(data.records)
           .setPreferredReadReplica(data.preferredReadReplica.orElse(FetchResponse.INVALID_PREFERRED_REPLICA_ID))
+
+        // For mirror follower partitions, set mirrorLeaderEpoch to the log's latest epoch
+        // The currentMirrorLeaderEpoch is set in [[Partition.readFromLog]]
+        if (versionId >= 19 && data.currentMirrorLeaderEpoch.isPresent) {
+          partitionData.setMirrorLeaderEpoch(data.currentMirrorLeaderEpoch.get())
+        }
 
         if (versionId >= 16) {
           data.error match {
@@ -832,6 +1065,7 @@ class KafkaApis(val requestChannel: RequestChannel,
         FetchIsolation.of(fetchRequest),
         clientMetadata
       )
+
 
       // call the replica manager to fetch messages from the local replica
       replicaManager.fetchMessages(
@@ -1131,6 +1365,7 @@ class KafkaApis(val requestChannel: RequestChannel,
       groupFetchRequest,
       requireStable
     ).handle[OffsetFetchResponseData.OffsetFetchResponseGroup] { (groupFetchResponse, exception) =>
+
       if (exception != null) {
         OffsetFetchResponse.groupError(
           groupFetchRequest,
@@ -1280,6 +1515,7 @@ class KafkaApis(val requestChannel: RequestChannel,
                 .setThrottleTimeMs(requestThrottleMs))
       trace("Sending FindCoordinator response %s for correlation id %d to client %s."
               .format(response, request.header.correlationId, request.header.clientId))
+      logger.info("the response of FindCoordinatorRequest is " + response)
       response
     }
     requestHelper.sendResponseMaybeThrottle(request, createResponse)
@@ -1318,7 +1554,11 @@ class KafkaApis(val requestChannel: RequestChannel,
       (Errors.TRANSACTIONAL_ID_AUTHORIZATION_FAILED, Node.noNode)
     else if (keyType == CoordinatorType.SHARE.id && request.context.apiVersion < 6)
       (Errors.INVALID_REQUEST, Node.noNode)
-    else {
+    else if (keyType == CoordinatorType.MIRROR.id && request.context.apiVersion < 7) {
+      logger.warn("Mirror coordinator type is not supported for " +
+        s"FindCoordinatorRequest version ${request.context.apiVersion}")
+      (Errors.INVALID_REQUEST, Node.noNode)
+    } else {
       if (keyType == CoordinatorType.SHARE.id) {
         authHelper.authorizeClusterOperation(request, CLUSTER_ACTION)
         try {
@@ -1326,6 +1566,15 @@ class KafkaApis(val requestChannel: RequestChannel,
         } catch {
           case e: IllegalArgumentException =>
             error(s"Share coordinator key is invalid", e)
+            return (Errors.INVALID_REQUEST, Node.noNode)
+        }
+      } else if (keyType == CoordinatorType.MIRROR.id) {
+        authHelper.authorizeClusterOperation(request, CLUSTER_ACTION)
+        try {
+          MirrorRecordKey.validate(key)
+        } catch {
+          case e: IllegalArgumentException =>
+            error(s"Mirror coordinator key is invalid", e)
             return (Errors.INVALID_REQUEST, Node.noNode)
         }
       }
@@ -1339,11 +1588,16 @@ class KafkaApis(val requestChannel: RequestChannel,
         case CoordinatorType.SHARE =>
           // We know that shareCoordinator is defined at this stage.
           (shareCoordinator.partitionFor(SharePartitionKey.getInstance(key)), SHARE_GROUP_STATE_TOPIC_NAME)
+
+        case CoordinatorType.MIRROR =>
+          (mirrorCoordinator.getCoordinatorPartitionByKey(MirrorRecordKey.getInstance(key)), MIRROR_STATE_TOPIC_NAME)
       }
 
       val topicMetadata = metadataCache.getTopicMetadata(Set(internalTopicName).asJava, request.context.listenerName, false, false).asScala
 
       if (topicMetadata.headOption.isEmpty) {
+        logger.info("!!! The internal topic " + internalTopicName + " does not exist when finding coordinator for key " + key +
+          ". Attempting to create the topic.")
         val controllerMutationQuota = quotas.controllerMutation.newPermissiveQuotaFor(request.session, request.header.clientId)
         autoTopicCreationManager.createTopics(Seq(internalTopicName).toSet, controllerMutationQuota, None)
         (Errors.COORDINATOR_NOT_AVAILABLE, Node.noNode)
@@ -1358,6 +1612,7 @@ class KafkaApis(val requestChannel: RequestChannel,
             .findFirst()
 
           if (coordinatorEndpoint.isPresent) {
+            logger.info("!!! The coordinator for key " + key + " is " + coordinatorEndpoint.get())
             (Errors.NONE, coordinatorEndpoint.get)
           } else {
             (Errors.COORDINATOR_NOT_AVAILABLE, Node.noNode)
@@ -3441,7 +3696,7 @@ class KafkaApis(val requestChannel: RequestChannel,
         fetchMaxBytes,
         FetchIsolation.of(FetchRequest.CONSUMER_REPLICA_ID, groupConfigManager.groupConfig(groupId).map(_.shareIsolationLevel()).orElse(GroupConfig.defaultShareIsolationLevel)),
         clientMetadata,
-        true
+        true, false
       )
 
       // call the share partition manager to fetch messages from the local replica.

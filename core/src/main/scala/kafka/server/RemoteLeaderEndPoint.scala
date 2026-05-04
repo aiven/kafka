@@ -21,7 +21,7 @@ import java.util.{Collections, Optional}
 import kafka.utils.Logging
 import org.apache.kafka.clients.FetchSessionHandler
 import org.apache.kafka.common.errors.KafkaStorageException
-import org.apache.kafka.common.{TopicPartition, Uuid}
+import org.apache.kafka.common.{IsolationLevel, Node, TopicPartition, Uuid}
 import org.apache.kafka.common.message.{FetchResponseData, OffsetForLeaderEpochRequestData}
 import org.apache.kafka.common.message.ListOffsetsRequestData.{ListOffsetsPartition, ListOffsetsTopic}
 import org.apache.kafka.common.message.OffsetForLeaderEpochRequestData.{OffsetForLeaderTopic, OffsetForLeaderTopicCollection}
@@ -33,20 +33,35 @@ import org.apache.kafka.server.network.BrokerEndPoint
 import org.apache.kafka.server.LeaderEndPoint
 import org.apache.kafka.server.{PartitionFetchState, ReplicaFetch, ResultWithPartitions}
 
+import java.util
 import scala.jdk.CollectionConverters._
 import scala.collection.mutable
 
 /**
- * Facilitates fetches from a remote replica leader.
+ * A LeaderEndPoint implementation for fetching data from remote brokers.
  *
- * @param logPrefix The log prefix
- * @param blockingSender The raw leader endpoint used to communicate with the leader
- * @param fetchSessionHandler A FetchSessionHandler to track the partitions in the session
- * @param brokerConfig Broker configuration
- * @param replicaManager A ReplicaManager
- * @param quota The quota, used when building a fetch request
- * @param metadataVersionSupplier A supplier that returns the current MetadataVersion. This can change during
- *                                runtime in KRaft mode.
+ * This class supports two use cases:
+ * 1. Intra-cluster replication: When readOnlyTopics is empty, uses replica fetch requests for
+ *    regular broker-to-broker replication within the same Kafka cluster.
+ * 2. Cross-cluster mirroring: When readOnlyTopics contains entries, uses consumer fetch requests
+ *    for cluster mirroring scenarios where a local broker replicates from a remote Kafka cluster.
+ *
+ * Key Differences from LocalLeaderEndPoint:
+ * - Takes a BlockingSend parameter for network communication (enables testing with mocks)
+ * - Supports both replica fetch (intra-cluster) and consumer fetch (cross-cluster) modes
+ * - Can use cluster-specific credentials via MirrorSourceSender for cross-cluster scenarios
+ *
+ * This is not thread-safe. Each instance is used by a single ReplicaFetcherThread or MirrorFetcherThread.
+ *
+ * @param logPrefix The log prefix for debugging
+ * @param blockingSender Network layer for communicating with the remote broker
+ * @param fetchSessionHandler Manages incremental fetch sessions to reduce bandwidth
+ * @param brokerConfig The local broker's configuration
+ * @param replicaManager The local ReplicaManager, used to query local log state
+ * @param quota Replication quota for throttling fetches
+ * @param metadataVersionSupplier Provides the current metadata version, determines fetch request version
+ * @param brokerEpochSupplier Provides the current broker epoch for fencing
+ * @param isClusterMirror Whether we are doing cross-cluster mirroring
  */
 class RemoteLeaderEndPoint(logPrefix: String,
                            blockingSender: BlockingSend,
@@ -55,7 +70,8 @@ class RemoteLeaderEndPoint(logPrefix: String,
                            replicaManager: ReplicaManager,
                            quota: ReplicaQuota,
                            metadataVersionSupplier: () => MetadataVersion,
-                           brokerEpochSupplier: () => Long) extends LeaderEndPoint with Logging {
+                           brokerEpochSupplier: () => Long,
+                           isClusterMirror: Boolean = false) extends LeaderEndPoint with Logging {
 
   this.logIdent = logPrefix
 
@@ -63,6 +79,7 @@ class RemoteLeaderEndPoint(logPrefix: String,
   private val minBytes = brokerConfig.replicaFetchMinBytes
   private val maxBytes = brokerConfig.replicaFetchResponseMaxBytes
   private val fetchSize = brokerConfig.replicaFetchMaxBytes
+  private val lastSeenEndpointList = new util.HashMap[Integer, Node]()
 
   override def isTruncationOnFetchSupported: Boolean = true
 
@@ -71,6 +88,8 @@ class RemoteLeaderEndPoint(logPrefix: String,
   override def close(): Unit = blockingSender.close()
 
   override def brokerEndPoint(): BrokerEndPoint = blockingSender.brokerEndPoint()
+
+  override def lastSeenEndpoints(): util.HashMap[Integer, Node] = lastSeenEndpointList
 
   override def fetch(fetchRequest: FetchRequest.Builder): java.util.Map[TopicPartition, FetchResponseData.PartitionData] = {
     val clientResponse = try {
@@ -81,6 +100,10 @@ class RemoteLeaderEndPoint(logPrefix: String,
         throw t
     }
     val fetchResponse = clientResponse.responseBody.asInstanceOf[FetchResponse]
+    debug("!!! Got fetch response: " + fetchResponse)
+    lastSeenEndpointList.clear()
+    fetchResponse.data().nodeEndpoints().forEach(
+      node => lastSeenEndpointList.put(node.nodeId(), new Node(node.nodeId(), node.host(), node.port(), node.rack())))
     if (!fetchSessionHandler.handleResponse(fetchResponse, clientResponse.requestHeader().apiVersion())) {
       // If we had a session topic ID related error, throw it, otherwise return an empty fetch data map.
       if (fetchResponse.error == Errors.FETCH_SESSION_TOPIC_ID_ERROR) {
@@ -174,7 +197,11 @@ class RemoteLeaderEndPoint(logPrefix: String,
   override def buildFetch(partitions: java.util.Map[TopicPartition, PartitionFetchState]): ResultWithPartitions[java.util.Optional[ReplicaFetch]] = {
     val partitionsWithError = mutable.Set[TopicPartition]()
     val builder = fetchSessionHandler.newBuilder(partitions.size, false)
+    val readOnlyTopics = new mutable.HashSet[Uuid]()
     partitions.forEach { (topicPartition, fetchState) =>
+      if (shouldFollowerThrottle(quota, fetchState, topicPartition)) {
+        info(s"Skipping fetch for partition $topicPartition since it is throttled")
+      }
       // We will not include a replica in the fetch request if it should be throttled.
       if (fetchState.isReadyForFetch && !shouldFollowerThrottle(quota, fetchState, topicPartition)) {
         try {
@@ -189,7 +216,11 @@ class RemoteLeaderEndPoint(logPrefix: String,
             logStartOffset,
             fetchSize,
             Optional.of(fetchState.currentLeaderEpoch()),
-            lastFetchedEpoch))
+            lastFetchedEpoch,
+            fetchState.mirrorLeaderEpoch()))
+          if (fetchState.isMirrorFetch() && fetchState.topicId().isPresent) {
+            readOnlyTopics += fetchState.topicId().get()
+          }
         } catch {
           case _: KafkaStorageException =>
             // The replica has already been marked offline due to log directory failure and the original failure should have already been logged.
@@ -209,8 +240,15 @@ class RemoteLeaderEndPoint(logPrefix: String,
       } else {
         metadataVersion.fetchRequestVersion
       }
-      val requestBuilder = FetchRequest.Builder
-        .forReplica(version, brokerConfig.brokerId, brokerEpochSupplier(), maxWait, minBytes, fetchData.toSend)
+      // Use different fetch request types based on whether we're doing cross-cluster mirroring.
+      val requestBuilder = if (isClusterMirror) {
+        // Cross-cluster mirroring (MirrorFetcherThread): Use consumer fetch to skip ISR logic on source cluster.
+        FetchRequest.Builder.forConsumer(version, maxWait, minBytes, fetchData.toSend).isolationLevel(IsolationLevel.READ_UNCOMMITTED)
+      } else {
+        // Intra-cluster replication (ReplicaFetcherThread): Use replica fetch even when fetching to enable proper epoch validation.
+        FetchRequest.Builder.forReplica(version, brokerConfig.brokerId, brokerEpochSupplier(), maxWait, minBytes, fetchData.toSend)
+      }
+      requestBuilder
         .setMaxBytes(maxBytes)
         .removed(fetchData.toForget)
         .replaced(fetchData.toReplace)
@@ -224,9 +262,16 @@ class RemoteLeaderEndPoint(logPrefix: String,
   /**
    *  To avoid ISR thrashing, we only throttle a replica on the follower if it's in the throttled replica list,
    *  the quota is exceeded and the replica is not in sync.
+   *
+   *  In async mirroring, because the source cluster doesn't include the target cluster node into ISR,
+   *  we always throttle it if quota exceeded.
    */
   private def shouldFollowerThrottle(quota: ReplicaQuota, fetchState: PartitionFetchState, topicPartition: TopicPartition): Boolean = {
-    !fetchState.isReplicaInSync && quota.isThrottled(topicPartition) && quota.isQuotaExceeded
+    if (fetchState.isMirrorFetch()) {
+      quota.isThrottled(topicPartition) && quota.isQuotaExceeded
+    } else {
+      !fetchState.isReplicaInSync && quota.isThrottled(topicPartition) && quota.isQuotaExceeded
+    }
   }
 
   override def toString: String = s"RemoteLeaderEndPoint(blockingSender=$blockingSender)"

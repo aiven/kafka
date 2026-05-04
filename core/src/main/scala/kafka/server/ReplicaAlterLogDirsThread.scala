@@ -47,7 +47,8 @@ class ReplicaAlterLogDirsThread(name: String,
                                 fetchTierStateMachine = new TierStateMachine(leader, replicaMgr, true),
                                 fetchBackOffMs = fetchBackOffMs,
                                 isInterruptible = false,
-                                brokerTopicStats) {
+                                brokerTopicStats,
+                                mirrorName = "") {
 
   // Visible for testing
   private[server] val promotionStates: ConcurrentHashMap[TopicPartition, PromotionState] = new ConcurrentHashMap()
@@ -66,6 +67,14 @@ class ReplicaAlterLogDirsThread(name: String,
 
   override protected def endOffsetForEpoch(topicPartition: TopicPartition, epoch: Int): Optional[OffsetAndEpoch] = {
     replicaMgr.futureLocalLogOrException(topicPartition).endOffsetForEpoch(epoch)
+  }
+
+  override protected def removeFetcherForPartitions(partitions: Set[TopicPartition]): Map[TopicPartition, PartitionFetchState] = {
+    replicaMgr.replicaFetcherManager.removeFetcherForPartitions(partitions)
+  }
+
+  override protected def addFetcherForPartitions(partitionAndOffsets: Map[TopicPartition, InitialFetchState]) = {
+    replicaMgr.replicaFetcherManager.addFetcherForPartitions(partitionAndOffsets)
   }
 
   // process fetched data
@@ -197,6 +206,10 @@ class ReplicaAlterLogDirsThread(name: String,
   override protected def truncateFullyAndStartAt(topicPartition: TopicPartition, offset: Long): Unit = {
     val partition = replicaMgr.getPartitionOrException(topicPartition)
     partition.truncateFullyAndStartAt(offset, isFuture = true)
+  }
+
+  override protected def latestEpochFromLog(topicPartition: TopicPartition): Optional[Integer] = {
+    replicaMgr.localLogOrException(topicPartition).latestEpochFromLog
   }
 }
 object ReplicaAlterLogDirsThread {

@@ -148,6 +148,8 @@ import org.apache.kafka.common.message.DescribeConfigsResponseData;
 import org.apache.kafka.common.message.DescribeLogDirsRequestData;
 import org.apache.kafka.common.message.DescribeLogDirsRequestData.DescribableLogDirTopic;
 import org.apache.kafka.common.message.DescribeLogDirsResponseData;
+import org.apache.kafka.common.message.DescribeMirrorsRequestData;
+import org.apache.kafka.common.message.DescribeMirrorsResponseData;
 import org.apache.kafka.common.message.DescribeQuorumResponseData;
 import org.apache.kafka.common.message.DescribeTopicPartitionsRequestData;
 import org.apache.kafka.common.message.DescribeTopicPartitionsRequestData.TopicRequest;
@@ -158,14 +160,20 @@ import org.apache.kafka.common.message.DescribeUserScramCredentialsRequestData;
 import org.apache.kafka.common.message.DescribeUserScramCredentialsRequestData.UserName;
 import org.apache.kafka.common.message.DescribeUserScramCredentialsResponseData;
 import org.apache.kafka.common.message.ExpireDelegationTokenRequestData;
+import org.apache.kafka.common.message.FindCoordinatorRequestData;
+import org.apache.kafka.common.message.FindCoordinatorResponseData;
 import org.apache.kafka.common.message.LeaveGroupRequestData.MemberIdentity;
 import org.apache.kafka.common.message.ListConfigResourcesRequestData;
 import org.apache.kafka.common.message.ListGroupsRequestData;
 import org.apache.kafka.common.message.ListGroupsResponseData;
+import org.apache.kafka.common.message.ListMirrorsRequestData;
+import org.apache.kafka.common.message.ListMirrorsResponseData;
 import org.apache.kafka.common.message.ListPartitionReassignmentsRequestData;
 import org.apache.kafka.common.message.MetadataRequestData;
 import org.apache.kafka.common.message.RemoveRaftVoterRequestData;
 import org.apache.kafka.common.message.RenewDelegationTokenRequestData;
+import org.apache.kafka.common.message.StartMirrorTopicsRequestData;
+import org.apache.kafka.common.message.StopMirrorTopicsRequestData;
 import org.apache.kafka.common.message.UnregisterBrokerRequestData;
 import org.apache.kafka.common.message.UpdateFeaturesRequestData;
 import org.apache.kafka.common.message.UpdateFeaturesResponseData.UpdatableFeatureResult;
@@ -199,12 +207,16 @@ import org.apache.kafka.common.requests.CreateAclsRequest;
 import org.apache.kafka.common.requests.CreateAclsResponse;
 import org.apache.kafka.common.requests.CreateDelegationTokenRequest;
 import org.apache.kafka.common.requests.CreateDelegationTokenResponse;
+import org.apache.kafka.common.requests.CreateMirrorRequest;
+import org.apache.kafka.common.requests.CreateMirrorResponse;
 import org.apache.kafka.common.requests.CreatePartitionsRequest;
 import org.apache.kafka.common.requests.CreatePartitionsResponse;
 import org.apache.kafka.common.requests.CreateTopicsRequest;
 import org.apache.kafka.common.requests.CreateTopicsResponse;
 import org.apache.kafka.common.requests.DeleteAclsRequest;
 import org.apache.kafka.common.requests.DeleteAclsResponse;
+import org.apache.kafka.common.requests.DeleteMirrorRequest;
+import org.apache.kafka.common.requests.DeleteMirrorResponse;
 import org.apache.kafka.common.requests.DeleteTopicsRequest;
 import org.apache.kafka.common.requests.DeleteTopicsResponse;
 import org.apache.kafka.common.requests.DescribeAclsRequest;
@@ -219,6 +231,8 @@ import org.apache.kafka.common.requests.DescribeDelegationTokenRequest;
 import org.apache.kafka.common.requests.DescribeDelegationTokenResponse;
 import org.apache.kafka.common.requests.DescribeLogDirsRequest;
 import org.apache.kafka.common.requests.DescribeLogDirsResponse;
+import org.apache.kafka.common.requests.DescribeMirrorsRequest;
+import org.apache.kafka.common.requests.DescribeMirrorsResponse;
 import org.apache.kafka.common.requests.DescribeQuorumRequest;
 import org.apache.kafka.common.requests.DescribeQuorumRequest.Builder;
 import org.apache.kafka.common.requests.DescribeQuorumResponse;
@@ -230,6 +244,8 @@ import org.apache.kafka.common.requests.ElectLeadersRequest;
 import org.apache.kafka.common.requests.ElectLeadersResponse;
 import org.apache.kafka.common.requests.ExpireDelegationTokenRequest;
 import org.apache.kafka.common.requests.ExpireDelegationTokenResponse;
+import org.apache.kafka.common.requests.FindCoordinatorRequest;
+import org.apache.kafka.common.requests.FindCoordinatorResponse;
 import org.apache.kafka.common.requests.IncrementalAlterConfigsRequest;
 import org.apache.kafka.common.requests.IncrementalAlterConfigsResponse;
 import org.apache.kafka.common.requests.JoinGroupRequest;
@@ -237,15 +253,25 @@ import org.apache.kafka.common.requests.ListConfigResourcesRequest;
 import org.apache.kafka.common.requests.ListConfigResourcesResponse;
 import org.apache.kafka.common.requests.ListGroupsRequest;
 import org.apache.kafka.common.requests.ListGroupsResponse;
+import org.apache.kafka.common.requests.ListMirrorsRequest;
+import org.apache.kafka.common.requests.ListMirrorsResponse;
 import org.apache.kafka.common.requests.ListOffsetsRequest;
 import org.apache.kafka.common.requests.ListPartitionReassignmentsRequest;
 import org.apache.kafka.common.requests.ListPartitionReassignmentsResponse;
 import org.apache.kafka.common.requests.MetadataRequest;
 import org.apache.kafka.common.requests.MetadataResponse;
+import org.apache.kafka.common.requests.PauseMirrorTopicsRequest;
+import org.apache.kafka.common.requests.PauseMirrorTopicsResponse;
 import org.apache.kafka.common.requests.RemoveRaftVoterRequest;
 import org.apache.kafka.common.requests.RemoveRaftVoterResponse;
 import org.apache.kafka.common.requests.RenewDelegationTokenRequest;
 import org.apache.kafka.common.requests.RenewDelegationTokenResponse;
+import org.apache.kafka.common.requests.ResumeMirrorTopicsRequest;
+import org.apache.kafka.common.requests.ResumeMirrorTopicsResponse;
+import org.apache.kafka.common.requests.StartMirrorTopicsRequest;
+import org.apache.kafka.common.requests.StartMirrorTopicsResponse;
+import org.apache.kafka.common.requests.StopMirrorTopicsRequest;
+import org.apache.kafka.common.requests.StopMirrorTopicsResponse;
 import org.apache.kafka.common.requests.UnregisterBrokerRequest;
 import org.apache.kafka.common.requests.UnregisterBrokerResponse;
 import org.apache.kafka.common.requests.UpdateFeaturesRequest;
@@ -291,6 +317,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
 import java.util.function.Predicate;
+import java.util.regex.Pattern;
+import java.util.regex.PatternSyntaxException;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -1789,6 +1817,57 @@ public class KafkaAdminClient extends AdminClient {
             runnable.call(call, now);
         }
         return new CreateTopicsResult(new HashMap<>(topicFutures));
+    }
+
+    @Override
+    public FindCoordinatorResult findCoordinator(String key) {
+        KafkaFutureImpl<FindCoordinatorResult.CoordinatorInfo> future = new KafkaFutureImpl<>();
+        if (key == null) {
+            future.completeExceptionally(new IllegalArgumentException("The given key cannot be null."));
+        } else {
+            final long now = time.milliseconds();
+            final Call call = getFindCoordinatorCall(future, key);
+            runnable.call(call, now);
+        }
+        return new FindCoordinatorResult(future);
+    }
+
+    private Call getFindCoordinatorCall(KafkaFutureImpl<FindCoordinatorResult.CoordinatorInfo> future, String key) {
+        final long now = time.milliseconds();
+        final long deadline = calcDeadlineMs(now, 10000);
+
+        return new Call("findCoordinator", deadline, new LeastLoadedNodeProvider()) {
+            @Override
+            AbstractRequest.Builder<?> createRequest(int timeoutMs) {
+                return new FindCoordinatorRequest.Builder(
+                    new FindCoordinatorRequestData()
+                        .setKeyType(FindCoordinatorRequest.CoordinatorType.MIRROR.id())
+                        .setKey(key)
+                        .setCoordinatorKeys(List.of())
+                );
+            }
+
+            @Override
+            void handleResponse(AbstractResponse abstractResponse) {
+                final FindCoordinatorResponse response = (FindCoordinatorResponse) abstractResponse;
+                ApiError error = new ApiError(response.data().errorCode(), response.data().errorMessage());
+                if (error.isFailure()) {
+                    future.completeExceptionally(error.exception());
+                } else {
+                    FindCoordinatorResponseData.Coordinator coordinator = response.coordinators()
+                            .stream().findFirst().orElseThrow();
+                    Node node = new Node(coordinator.nodeId(), coordinator.host(),
+                            coordinator.port());
+                    future.complete(new FindCoordinatorResult.CoordinatorInfo(node, key));
+                }
+            }
+
+            @Override
+            void handleFailure(Throwable throwable) {
+                // Fail all the other remaining futures
+                completeAllExceptionally(List.of(future), throwable);
+            }
+        };
     }
 
     private Call getCreateTopicsCall(final CreateTopicsOptions options,
@@ -3464,6 +3543,7 @@ public class KafkaAdminClient extends AdminClient {
         }
     }
 
+
     @Override
     public ListGroupsResult listGroups(ListGroupsOptions options) {
         final KafkaFutureImpl<Collection<Object>> all = new KafkaFutureImpl<>();
@@ -4761,6 +4841,526 @@ public class KafkaAdminClient extends AdminClient {
 
         runnable.call(call, now);
         return new DescribeMetadataQuorumResult(future);
+    }
+
+    @Override
+    public CreateMirrorResult createMirror(String mirrorName, Map<String, String> configs, CreateMirrorOptions options) {
+        final KafkaFutureImpl<Void> future = new KafkaFutureImpl<>();
+        final long now = time.milliseconds();
+        final Call call = new Call("createMirror", calcDeadlineMs(now, options.timeoutMs()),
+                new LeastLoadedBrokerOrActiveKController()) {
+
+            @Override
+            CreateMirrorRequest.Builder createRequest(int timeoutMs) {
+                return new CreateMirrorRequest.Builder(mirrorName, configs);
+            }
+
+            @Override
+            void handleResponse(AbstractResponse abstractResponse) {
+                final CreateMirrorResponse response =
+                        (CreateMirrorResponse) abstractResponse;
+                Errors error = Errors.forCode(response.data().errorCode());
+                switch (error) {
+                    case NONE:
+                        future.complete(null);
+                        break;
+                    case REQUEST_TIMED_OUT:
+                        throw error.exception(response.data().errorMessage());
+                    default:
+                        log.error("Create mirror {} failed: {}", mirrorName, response.data().errorMessage());
+                        future.completeExceptionally(error.exception(response.data().errorMessage()));
+                        break;
+                }
+            }
+
+            @Override
+            void handleFailure(Throwable throwable) {
+                future.completeExceptionally(throwable);
+            }
+        };
+        runnable.call(call, now);
+        return new CreateMirrorResult(future);
+    }
+
+    @Override
+    public DeleteMirrorResult deleteMirror(String mirrorName, DeleteMirrorOptions options) {
+        final KafkaFutureImpl<Void> future = new KafkaFutureImpl<>();
+        final long now = time.milliseconds();
+        final Call call = new Call("deleteMirror", calcDeadlineMs(now, options.timeoutMs()),
+                new LeastLoadedBrokerOrActiveKController()) {
+
+            @Override
+            DeleteMirrorRequest.Builder createRequest(int timeoutMs) {
+                return new DeleteMirrorRequest.Builder(mirrorName);
+            }
+
+            @Override
+            void handleResponse(AbstractResponse abstractResponse) {
+                final DeleteMirrorResponse response =
+                        (DeleteMirrorResponse) abstractResponse;
+                Errors error = Errors.forCode(response.data().errorCode());
+                switch (error) {
+                    case NONE:
+                        future.complete(null);
+                        break;
+                    case REQUEST_TIMED_OUT:
+                        throw error.exception(response.data().errorMessage());
+                    default:
+                        log.error("Delete mirror {} failed: {}", mirrorName, response.data().errorMessage());
+                        future.completeExceptionally(error.exception(response.data().errorMessage()));
+                        break;
+                }
+            }
+
+            @Override
+            void handleFailure(Throwable throwable) {
+                future.completeExceptionally(throwable);
+            }
+        };
+        runnable.call(call, now);
+        return new DeleteMirrorResult(future);
+    }
+
+    @Override
+    public StartMirrorTopicsResult startMirrorTopics(String mirrorName, Set<String> topics, StartMirrorTopicsOptions options) {
+        final KafkaFutureImpl<Void> future = new KafkaFutureImpl<>();
+
+        validateRegexPatterns(options.includePatterns());
+        validateRegexPatterns(options.excludePatterns());
+
+        final long now = time.milliseconds();
+        final Call call = new Call("startMirrorTopics", calcDeadlineMs(now, options.timeoutMs()),
+                new LeastLoadedBrokerOrActiveKController()) {
+
+            @Override
+            StartMirrorTopicsRequest.Builder createRequest(int timeoutMs) {
+                Map<String, StartMirrorTopicsRequestData.TopicData> metadata = options.topicMetadata();
+                StartMirrorTopicsRequestData data = new StartMirrorTopicsRequestData();
+                data.setMirrorName(mirrorName);
+                topics.forEach(t -> {
+                    StartMirrorTopicsRequestData.TopicData existing = metadata.get(t);
+                    data.topics().add(existing != null ? existing
+                            : new StartMirrorTopicsRequestData.TopicData().setTopicName(t));
+                });
+                data.setIncludePatterns(options.includePatterns());
+                data.setExcludePatterns(options.excludePatterns());
+                return new StartMirrorTopicsRequest.Builder(data);
+            }
+
+            @Override
+            void handleResponse(AbstractResponse abstractResponse) {
+                final StartMirrorTopicsResponse response =
+                        (StartMirrorTopicsResponse) abstractResponse;
+                Errors error = Errors.forCode(response.data().errorCode());
+                switch (error) {
+                    case NONE:
+                        future.complete(null);
+                        break;
+                    case REQUEST_TIMED_OUT:
+                        throw error.exception();
+                    default:
+                        log.error("Mirror topics addition failed: {}", topics);
+                        future.completeExceptionally(error.exception());
+                        break;
+                }
+            }
+
+            @Override
+            void handleFailure(Throwable throwable) {
+                future.completeExceptionally(throwable);
+            }
+        };
+        runnable.call(call, now);
+        return new StartMirrorTopicsResult(future);
+    }
+
+    @Override
+    public StopMirrorTopicsResult stopMirrorTopics(String mirrorName, Set<String> topics, StopMirrorTopicsOptions options) {
+        final KafkaFutureImpl<Void> future = new KafkaFutureImpl<>();
+
+        validateRegexPatterns(options.patterns());
+
+        final long now = time.milliseconds();
+        final Call call = new Call("stopMirrorTopics", calcDeadlineMs(now, options.timeoutMs()),
+                new LeastLoadedBrokerOrActiveKController()) {
+
+            @Override
+            StopMirrorTopicsRequest.Builder createRequest(int timeoutMs) {
+                StopMirrorTopicsRequestData data = new StopMirrorTopicsRequestData();
+                data.setMirrorName(mirrorName);
+                topics.forEach(t -> data.topics().add(new StopMirrorTopicsRequestData.TopicData().setTopicName(t)));
+                data.setPatterns(options.patterns());
+                return new StopMirrorTopicsRequest.Builder(data);
+            }
+
+            @Override
+            void handleResponse(AbstractResponse abstractResponse) {
+                final StopMirrorTopicsResponse response =
+                        (StopMirrorTopicsResponse) abstractResponse;
+                Errors error = Errors.forCode(response.data().errorCode());
+                switch (error) {
+                    case NONE:
+                        future.complete(null);
+                        break;
+                    case REQUEST_TIMED_OUT:
+                        throw error.exception();
+                    default:
+                        log.error("Mirror topics removal failed: {}", topics);
+                        future.completeExceptionally(error.exception());
+                        break;
+                }
+            }
+
+            @Override
+            void handleFailure(Throwable throwable) {
+                future.completeExceptionally(throwable);
+            }
+        };
+        runnable.call(call, now);
+        return new StopMirrorTopicsResult(future);
+    }
+
+    private static void validateRegexPatterns(List<String> patterns) {
+        for (String pattern : patterns) {
+            try {
+                Pattern.compile(pattern);
+            } catch (PatternSyntaxException e) {
+                throw new IllegalArgumentException("Invalid regex pattern: " + pattern, e);
+            }
+        }
+    }
+
+    @Override
+    public PauseMirrorTopicsResult pauseMirrorTopics(String mirrorName, Set<String> topics, PauseMirrorTopicsOptions options) {
+        final KafkaFutureImpl<Void> future = new KafkaFutureImpl<>();
+        final long now = time.milliseconds();
+        final Call call = new Call("pauseMirrorTopics", calcDeadlineMs(now, options.timeoutMs()),
+                new LeastLoadedBrokerOrActiveKController()) {
+
+            @Override
+            PauseMirrorTopicsRequest.Builder createRequest(int timeoutMs) {
+                return new PauseMirrorTopicsRequest.Builder(mirrorName, topics);
+            }
+
+            @Override
+            void handleResponse(AbstractResponse abstractResponse) {
+                final PauseMirrorTopicsResponse response =
+                        (PauseMirrorTopicsResponse) abstractResponse;
+                Errors error = Errors.forCode(response.data().errorCode());
+                switch (error) {
+                    case NONE:
+                        future.complete(null);
+                        break;
+                    case REQUEST_TIMED_OUT:
+                        throw error.exception();
+                    default:
+                        log.error("Mirror topics pause failed: {}", topics);
+                        future.completeExceptionally(error.exception());
+                        break;
+                }
+            }
+
+            @Override
+            void handleFailure(Throwable throwable) {
+                future.completeExceptionally(throwable);
+            }
+        };
+        runnable.call(call, now);
+        return new PauseMirrorTopicsResult(future);
+    }
+
+    @Override
+    public ResumeMirrorTopicsResult resumeMirrorTopics(String mirrorName, Set<String> topics, ResumeMirrorTopicsOptions options) {
+        final KafkaFutureImpl<Void> future = new KafkaFutureImpl<>();
+        final long now = time.milliseconds();
+        final Call call = new Call("resumeMirrorTopics", calcDeadlineMs(now, options.timeoutMs()),
+                new LeastLoadedBrokerOrActiveKController()) {
+
+            @Override
+            ResumeMirrorTopicsRequest.Builder createRequest(int timeoutMs) {
+                return new ResumeMirrorTopicsRequest.Builder(mirrorName, topics);
+            }
+
+            @Override
+            void handleResponse(AbstractResponse abstractResponse) {
+                final ResumeMirrorTopicsResponse response =
+                        (ResumeMirrorTopicsResponse) abstractResponse;
+                Errors error = Errors.forCode(response.data().errorCode());
+                switch (error) {
+                    case NONE:
+                        future.complete(null);
+                        break;
+                    case REQUEST_TIMED_OUT:
+                        throw error.exception();
+                    default:
+                        log.error("Mirror topics resume failed: {}", topics);
+                        future.completeExceptionally(error.exception());
+                        break;
+                }
+            }
+
+            @Override
+            void handleFailure(Throwable throwable) {
+                future.completeExceptionally(throwable);
+            }
+        };
+        runnable.call(call, now);
+        return new ResumeMirrorTopicsResult(future);
+    }
+
+    @Override
+    public ListMirrorsResult listMirrors(ListMirrorsOptions options) {
+        final KafkaFutureImpl<Collection<Object>> all = new KafkaFutureImpl<>();
+        final long now = time.milliseconds();
+        final long deadline = calcDeadlineMs(now, options.timeoutMs());
+
+        // We query one broker for static metadata (mirror names, topic counts, bootstrap servers)
+        // Data comes from metadata cache
+        runnable.call(new Call("listMirrors", deadline, new LeastLoadedNodeProvider()) {
+            @Override
+            ListMirrorsRequest.Builder createRequest(int timeoutMs) {
+                return new ListMirrorsRequest.Builder(new ListMirrorsRequestData());
+            }
+
+            @Override
+            void handleResponse(AbstractResponse abstractResponse) {
+                final ListMirrorsResponse response = (ListMirrorsResponse) abstractResponse;
+                Errors error = Errors.forCode(response.data().errorCode());
+                if (error == Errors.COORDINATOR_LOAD_IN_PROGRESS || error == Errors.COORDINATOR_NOT_AVAILABLE) {
+                    throw error.exception();
+                } else if (error != Errors.NONE) {
+                    all.complete(Collections.singletonList(error.exception()));
+                } else {
+                    List<Object> listings = new ArrayList<>();
+                    for (ListMirrorsResponseData.ListedMirror mirror : response.data().mirrors()) {
+                        listings.add(new MirrorListing(
+                                mirror.mirrorName(),
+                                mirror.sourceBootstrap(),
+                                mirror.sourceClusterId(),
+                                mirror.topicCount()
+                        ));
+                    }
+                    all.complete(listings);
+                }
+            }
+
+            @Override
+            void handleFailure(Throwable throwable) {
+                all.complete(Collections.singletonList(throwable));
+            }
+        }, now);
+
+        return new ListMirrorsResult(all);
+    }
+
+    @Override
+    public DescribeMirrorsResult describeMirrors(Collection<String> mirrorNames, DescribeMirrorsOptions options) {
+        final KafkaFutureImpl<Map<String, MirrorDescription>> all = new KafkaFutureImpl<>();
+        final long nowMetadata = time.milliseconds();
+        final long deadline = calcDeadlineMs(nowMetadata, options.timeoutMs());
+        // We query all brokers to get up-to-date lag AND state
+        // Each broker that's actively fetching partitions already has state in its local cache
+        runnable.call(new Call("findAllBrokers", deadline, new LeastLoadedNodeProvider()) {
+            @Override
+            MetadataRequest.Builder createRequest(int timeoutMs) {
+                return new MetadataRequest.Builder(new MetadataRequestData()
+                    .setTopics(Collections.emptyList())
+                    .setAllowAutoTopicCreation(true));
+            }
+
+            @Override
+            void handleResponse(AbstractResponse abstractResponse) {
+                MetadataResponse metadataResponse = (MetadataResponse) abstractResponse;
+                Collection<Node> nodes = metadataResponse.brokers();
+                if (nodes.isEmpty())
+                    throw new StaleMetadataException("Metadata fetch failed due to missing broker list");
+
+                HashSet<Node> allNodes = new HashSet<>(nodes);
+                final DescribeMirrorsResults results = new DescribeMirrorsResults(allNodes, mirrorNames, all);
+
+                for (final Node node : allNodes) {
+                    final long nowDescribe = time.milliseconds();
+                    runnable.call(new Call("describeMirrors", deadline, new ConstantNodeIdProvider(node.id())) {
+                        @Override
+                        DescribeMirrorsRequest.Builder createRequest(int timeoutMs) {
+                            DescribeMirrorsRequestData data = new DescribeMirrorsRequestData()
+                                .setMirrorNames(new ArrayList<>(mirrorNames))
+                                .setIncludeAuthorizedOperations(options.includeAuthorizedOperations());
+                            return new DescribeMirrorsRequest.Builder(data);
+                        }
+
+                        @Override
+                        void handleResponse(AbstractResponse abstractResponse) {
+                            final DescribeMirrorsResponse response = (DescribeMirrorsResponse) abstractResponse;
+                            synchronized (results) {
+                                for (DescribeMirrorsResponseData.DescribedMirror mirror : response.data().mirrors()) {
+                                    results.handleMirror(mirror);
+                                }
+                                results.tryComplete(node);
+                            }
+                        }
+
+                        @Override
+                        void handleFailure(Throwable throwable) {
+                            synchronized (results) {
+                                results.completeAllExceptionally(throwable);
+                                results.tryComplete(node);
+                            }
+                        }
+                    }, nowDescribe);
+                }
+            }
+
+            @Override
+            void handleFailure(Throwable throwable) {
+                KafkaException exception = new KafkaException("Failed to find brokers to send DescribeMirrors", throwable);
+                all.completeExceptionally(exception);
+            }
+        }, nowMetadata);
+
+        return new DescribeMirrorsResult(all);
+    }
+
+    private static final class DescribeMirrorsResults {
+        private final Map<String, PartialMirrorDescription> partialDescriptions;
+        private final Set<String> requestedMirrors;
+        private final boolean describeAll;
+        private final HashSet<Node> remaining;
+        private final KafkaFutureImpl<Map<String, MirrorDescription>> allFuture;
+
+        DescribeMirrorsResults(Collection<Node> brokers,
+                               Collection<String> mirrorNames,
+                               KafkaFutureImpl<Map<String, MirrorDescription>> allFuture) {
+            this.partialDescriptions = new HashMap<>();
+            this.requestedMirrors = new HashSet<>(mirrorNames);
+            this.describeAll = mirrorNames.isEmpty();
+            this.remaining = new HashSet<>(brokers);
+            this.allFuture = allFuture;
+
+            // Pre-populate partial descriptions only if specific mirrors are requested
+            if (!describeAll) {
+                for (String mirrorName : mirrorNames) {
+                    partialDescriptions.put(mirrorName, new PartialMirrorDescription(mirrorName));
+                }
+            }
+            tryComplete();
+        }
+
+        synchronized void handleMirror(DescribeMirrorsResponseData.DescribedMirror mirror) {
+            // Skip if not requested (only in non-describeAll mode)
+            if (!describeAll && !requestedMirrors.contains(mirror.mirrorName())) {
+                return;
+            }
+
+            // Get or create partial description
+            PartialMirrorDescription partial = partialDescriptions.get(mirror.mirrorName());
+            if (partial == null) {
+                partial = new PartialMirrorDescription(mirror.mirrorName());
+                partialDescriptions.put(mirror.mirrorName(), partial);
+            }
+
+            // Merge this broker's data
+            partial.merge(mirror);
+        }
+
+        synchronized void tryComplete(Node broker) {
+            remaining.remove(broker);
+            tryComplete();
+        }
+
+        private synchronized void tryComplete() {
+            if (remaining.isEmpty()) {
+                Map<String, MirrorDescription> descriptions = new HashMap<>(partialDescriptions.size());
+                Throwable firstError = null;
+                for (Map.Entry<String, PartialMirrorDescription> entry : partialDescriptions.entrySet()) {
+                    PartialMirrorDescription partial = entry.getValue();
+                    if (partial.error != null) {
+                        if (firstError == null) {
+                            firstError = partial.error;
+                        }
+                        continue;
+                    }
+                    descriptions.put(entry.getKey(), partial.toMirrorDescription());
+                }
+                if (descriptions.isEmpty() && firstError != null) {
+                    allFuture.completeExceptionally(firstError);
+                } else {
+                    allFuture.complete(descriptions);
+                }
+            }
+        }
+
+        synchronized void completeAllExceptionally(Throwable throwable) {
+            if (!allFuture.isDone()) {
+                allFuture.completeExceptionally(throwable);
+            }
+        }
+
+        // Accumulated MirrorDescription data from all brokers
+        private static class PartialMirrorDescription {
+            final String mirrorName;
+            final Map<String, Set<MirrorDescription.LeaderState>> topicPartitions;
+            int authorizedOperations;
+            boolean hasSuccess;
+            Throwable error;
+
+            PartialMirrorDescription(String mirrorName) {
+                this.mirrorName = mirrorName;
+                this.topicPartitions = new HashMap<>();
+                this.authorizedOperations = MetadataResponse.AUTHORIZED_OPERATIONS_OMITTED;
+                this.hasSuccess = false;
+                this.error = null;
+            }
+
+            // DescribeMirrors fans out to all brokers. During ACL propagation, some brokers
+            // may deny while others allow. A success from any broker is authoritative, so we
+            // only retain the error if no broker has returned a successful response.
+            void merge(DescribeMirrorsResponseData.DescribedMirror mirror) {
+                Errors errorCode = Errors.forCode(mirror.errorCode());
+                if (errorCode != Errors.NONE) {
+                    if (!this.hasSuccess && this.error == null) {
+                        this.error = errorCode.exception();
+                    }
+                    return;
+                }
+
+                this.hasSuccess = true;
+                this.error = null;
+
+                if (mirror.authorizedOperations() != MetadataResponse.AUTHORIZED_OPERATIONS_OMITTED) {
+                    this.authorizedOperations = mirror.authorizedOperations();
+                }
+
+                // Merge topic partitions
+                for (DescribeMirrorsResponseData.TopicPartitions topic : mirror.topics()) {
+                    Set<MirrorDescription.LeaderState> partitions =
+                            topicPartitions.computeIfAbsent(topic.topicName(), k -> new HashSet<>());
+
+                    for (DescribeMirrorsResponseData.PartitionDetail partition : topic.partitions()) {
+                        TopicPartition tp = new TopicPartition(topic.topicName(), partition.partitionIndex());
+                        MirrorDescription.LeaderState leaderState =
+                                new MirrorDescription.LeaderState(
+                                        tp,
+                                        partition.sourceOffset(),
+                                        partition.destinationOffset(),
+                                        partition.lag(),
+                                        partition.state(),
+                                        partition.lastMirrorEpoch()
+                                );
+                        partitions.add(leaderState);
+                    }
+                }
+
+            }
+
+            MirrorDescription toMirrorDescription() {
+                return new MirrorDescription(
+                        mirrorName,
+                        topicPartitions,
+                        validAclOperations(authorizedOperations)
+                );
+            }
+        }
     }
 
     @Override

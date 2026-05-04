@@ -46,6 +46,7 @@ import static org.apache.kafka.metadata.LeaderConstants.NO_LEADER_CHANGE;
 
 /**
  * PartitionChangeBuilder handles changing partition registrations.
+ *
  */
 public class PartitionChangeBuilder {
     private static final Logger log = LoggerFactory.getLogger(PartitionChangeBuilder.class);
@@ -59,6 +60,7 @@ public class PartitionChangeBuilder {
         if (record.removingReplicas() != null) return false;
         if (record.addingReplicas() != null) return false;
         if (record.leaderRecoveryState() != LeaderRecoveryState.NO_CHANGE) return false;
+        if (record.minLeaderEpoch() != -1) return false;
         return record.directories() == null;
     }
 
@@ -98,6 +100,7 @@ public class PartitionChangeBuilder {
     private LeaderRecoveryState targetLeaderRecoveryState;
     private boolean eligibleLeaderReplicasEnabled;
     private DefaultDirProvider defaultDirProvider;
+    private int minLeaderEpoch = -1;
 
     // Whether allow electing last known leader in a Balanced recovery. Note, the last known leader will be stored in the
     // lastKnownElr field if enabled.
@@ -193,6 +196,11 @@ public class PartitionChangeBuilder {
 
     public PartitionChangeBuilder setDefaultDirProvider(DefaultDirProvider defaultDirProvider) {
         this.defaultDirProvider = defaultDirProvider;
+        return this;
+    }
+
+    public PartitionChangeBuilder setMinLeaderEpoch(int leaderEpoch) {
+        this.minLeaderEpoch = leaderEpoch;
         return this;
     }
 
@@ -430,8 +438,8 @@ public class PartitionChangeBuilder {
     public Optional<ApiMessageAndVersion> build() {
         PartitionChangeRecord record = new PartitionChangeRecord().
             setTopicId(topicId).
-            setPartitionId(partitionId);
-
+            setPartitionId(partitionId).
+            setMinLeaderEpoch(minLeaderEpoch);
         completeReassignmentIfNeeded();
 
         maybePopulateTargetElr();

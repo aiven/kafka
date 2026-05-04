@@ -47,8 +47,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalLong;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
@@ -289,6 +291,12 @@ public class ProducerStateManager {
         return Collections.unmodifiableMap(producers);
     }
 
+    public Set<ProducerStateEntry> producersWithOngoingTxns() {
+        return ongoingTxns.values().stream()
+                .map(txn -> producers.get(txn.producerId))
+                .collect(Collectors.toSet());
+    }
+
     public boolean isEmpty() {
         return producers.isEmpty() && unreplicatedTxns.isEmpty();
     }
@@ -408,6 +416,15 @@ public class ProducerStateManager {
             TxnMetadata oldestTxnMetadata = firstEntry.getValue();
             ProducerStateEntry entry = producers.get(oldestTxnMetadata.producerId);
             oldestTxnLastTimestamp = entry != null ? entry.lastTimestamp() : -1L;
+        }
+    }
+
+    public void expireMirroredProducers() {
+        int count = producers.size();
+        if (count > 0) {
+            producers.clear();
+            producerIdCount = 0;
+            log.info("Expired {} mirrored producer(s) from {}", count, topicPartition);
         }
     }
 

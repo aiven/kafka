@@ -22,6 +22,7 @@ import kafka.coordinator.transaction.TransactionCoordinator
 import kafka.log.LogManager
 import kafka.network.SocketServer
 import kafka.raft.KafkaRaftManager
+import kafka.server.mirror.{MirrorCoordinator, MirrorMetadataManager}
 import kafka.server.metadata._
 import kafka.server.share.{ShareCoordinatorMetadataCacheHelperImpl, SharePartitionManager}
 import kafka.utils.CoreUtils
@@ -123,6 +124,10 @@ class BrokerServer(
   var groupConfigManager: GroupConfigManager = _
 
   var transactionCoordinator: TransactionCoordinator = _
+
+  var mirrorCoordinator: MirrorCoordinator = _
+
+  var mirrorMetadataManager: MirrorMetadataManager = _
 
   var shareCoordinator: ShareCoordinator = _
 
@@ -336,6 +341,16 @@ class BrokerServer(
        */
       val defaultActionQueue = new DelayedActionQueue
 
+      mirrorMetadataManager = new MirrorMetadataManager(
+        config,
+        metrics,
+        time,
+        metadataCache,
+        clientToControllerChannelManager,
+        () => groupCoordinator,
+        () => _replicaManager.mirrorFetcherManager
+      )
+
       this._replicaManager = new ReplicaManager(
         config = config,
         metrics = metrics,
@@ -352,7 +367,8 @@ class BrokerServer(
         brokerEpochSupplier = () => lifecycleManager.brokerEpoch,
         addPartitionsToTxnManager = Some(addPartitionsToTxnManager),
         directoryEventHandler = directoryEventHandler,
-        defaultActionQueue = defaultActionQueue
+        defaultActionQueue = defaultActionQueue,
+        mirrorMetadataManager = Some(mirrorMetadataManager)
       )
 
       /* start token manager */
@@ -384,6 +400,9 @@ class BrokerServer(
       transactionCoordinator = TransactionCoordinator(config, replicaManager,
         new KafkaScheduler(1, true, "transaction-log-manager-"),
         producerIdManagerSupplier, metrics, metadataCache, Time.SYSTEM)
+
+      mirrorCoordinator = new MirrorCoordinator(config, replicaManager,
+        new KafkaScheduler(1, true, "cluster-mirror-coordinator-"), metrics, metadataCache, Time.SYSTEM, mirrorMetadataManager)
 
       autoTopicCreationManager = new DefaultAutoTopicCreationManager(
         config, clientToControllerChannelManager, groupCoordinator,
@@ -447,6 +466,7 @@ class BrokerServer(
         groupCoordinator = groupCoordinator,
         txnCoordinator = transactionCoordinator,
         shareCoordinator = shareCoordinator,
+        mirrorCoordinator = mirrorCoordinator,
         autoTopicCreationManager = autoTopicCreationManager,
         brokerId = config.nodeId,
         config = config,
@@ -483,7 +503,7 @@ class BrokerServer(
           config,
           sharedServer.metadataPublishingFaultHandler,
           dynamicConfigHandlers.toMap,
-        "broker"),
+          "broker"),
         new DynamicClientQuotaPublisher(
           config,
           sharedServer.metadataPublishingFaultHandler,
@@ -514,7 +534,9 @@ class BrokerServer(
           authorizerPlugin.toJava
         ),
         sharedServer.initialBrokerMetadataLoadFaultHandler,
-        sharedServer.metadataPublishingFaultHandler
+        sharedServer.metadataPublishingFaultHandler,
+        mirrorCoordinator,
+        mirrorMetadataManager
       )
       // If the BrokerLifecycleManager's initial catch-up future fails, it means we timed out
       // or are shutting down before we could catch up. Therefore, also fail the firstPublishFuture.
@@ -780,6 +802,12 @@ class BrokerServer(
         CoreUtils.swallow(groupCoordinator.shutdown(), this)
       if (shareCoordinator != null)
         CoreUtils.swallow(shareCoordinator.shutdown(), this)
+
+      if (mirrorCoordinator != null)
+        CoreUtils.swallow(mirrorCoordinator.shutdown(), this)
+
+      if (mirrorMetadataManager != null)
+        CoreUtils.swallow(mirrorMetadataManager.close(), this)
 
       if (assignmentsManager != null)
         CoreUtils.swallow(assignmentsManager.close(), this)

@@ -333,7 +333,8 @@ class AbstractFetcherManagerTest {
       failedPartitions,
       fetchTierStateMachine,
       fetchBackOffMs = 0,
-      brokerTopicStats = new BrokerTopicStats) {
+      brokerTopicStats = new BrokerTopicStats,
+      mirrorName = "") {
 
     override protected def processPartitionData(
       topicPartition: TopicPartition,
@@ -348,11 +349,12 @@ class AbstractFetcherManagerTest {
 
     override protected def latestEpoch(topicPartition: TopicPartition): Optional[Integer] = Optional.of(0)
 
+    override protected def latestEpochFromLog(topicPartition: TopicPartition): Optional[Integer] = Optional.of(0)
+
     override protected def logStartOffset(topicPartition: TopicPartition): Long = 1
 
     override protected def logEndOffset(topicPartition: TopicPartition): Long = 1
 
     override protected def endOffsetForEpoch(topicPartition: TopicPartition, epoch: Int): Optional[OffsetAndEpoch] = Optional.of(new OffsetAndEpoch(1, 0))
   }
-
 }

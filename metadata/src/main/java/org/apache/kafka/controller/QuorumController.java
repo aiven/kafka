@@ -17,6 +17,7 @@
 
 package org.apache.kafka.controller;
 
+import org.apache.kafka.clients.admin.AlterConfigOp;
 import org.apache.kafka.clients.admin.AlterConfigOp.OpType;
 import org.apache.kafka.clients.admin.FeatureUpdate;
 import org.apache.kafka.common.Uuid;
@@ -40,21 +41,29 @@ import org.apache.kafka.common.message.AssignReplicasToDirsRequestData;
 import org.apache.kafka.common.message.AssignReplicasToDirsResponseData;
 import org.apache.kafka.common.message.BrokerHeartbeatRequestData;
 import org.apache.kafka.common.message.BrokerRegistrationRequestData;
+import org.apache.kafka.common.message.BumpLeaderEpochsResponseData;
 import org.apache.kafka.common.message.ControllerRegistrationRequestData;
 import org.apache.kafka.common.message.CreateDelegationTokenRequestData;
 import org.apache.kafka.common.message.CreateDelegationTokenResponseData;
+import org.apache.kafka.common.message.CreateMirrorResponseData;
 import org.apache.kafka.common.message.CreatePartitionsRequestData.CreatePartitionsTopic;
 import org.apache.kafka.common.message.CreatePartitionsResponseData.CreatePartitionsTopicResult;
 import org.apache.kafka.common.message.CreateTopicsRequestData;
 import org.apache.kafka.common.message.CreateTopicsResponseData;
+import org.apache.kafka.common.message.DeleteMirrorResponseData;
 import org.apache.kafka.common.message.ElectLeadersRequestData;
 import org.apache.kafka.common.message.ElectLeadersResponseData;
 import org.apache.kafka.common.message.ExpireDelegationTokenRequestData;
 import org.apache.kafka.common.message.ExpireDelegationTokenResponseData;
 import org.apache.kafka.common.message.ListPartitionReassignmentsRequestData;
 import org.apache.kafka.common.message.ListPartitionReassignmentsResponseData;
+import org.apache.kafka.common.message.PauseMirrorTopicsResponseData;
 import org.apache.kafka.common.message.RenewDelegationTokenRequestData;
 import org.apache.kafka.common.message.RenewDelegationTokenResponseData;
+import org.apache.kafka.common.message.ResumeMirrorTopicsResponseData;
+import org.apache.kafka.common.message.StartMirrorTopicsRequestData;
+import org.apache.kafka.common.message.StartMirrorTopicsResponseData;
+import org.apache.kafka.common.message.StopMirrorTopicsResponseData;
 import org.apache.kafka.common.message.UpdateFeaturesRequestData;
 import org.apache.kafka.common.message.UpdateFeaturesResponseData;
 import org.apache.kafka.common.metadata.AbortTransactionRecord;
@@ -149,7 +158,6 @@ import static java.util.concurrent.TimeUnit.MICROSECONDS;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.NANOSECONDS;
 import static org.apache.kafka.controller.QuorumController.ControllerOperationFlag.DOES_NOT_UPDATE_QUEUE_TIME;
-
 
 /**
  * QuorumController implements the main logic of the KRaft (Kafka Raft Metadata) mode controller.
@@ -1762,6 +1770,80 @@ public final class QuorumController implements Controller {
         }
         return appendWriteEvent("createTopics", context.deadlineNs(),
             () -> replicationControl.createTopics(context, request, describable));
+    }
+
+    @Override
+    public CompletableFuture<CreateMirrorResponseData> createMirror(
+            ControllerRequestContext context,
+            Map<ConfigResource, Map<String, Map.Entry<AlterConfigOp.OpType, String>>> configChanges
+    ) {
+        return appendWriteEvent("createMirror", context.deadlineNs(), () -> {
+            ControllerResult<CreateMirrorResponseData> result =
+                    configurationControl.addMirrorConfig(configChanges, false);
+            return result;
+        });
+    }
+
+    @Override
+    public CompletableFuture<BumpLeaderEpochsResponseData> bumpLeaderEpoch(
+            ControllerRequestContext context,
+            Map<Uuid, Map<Integer, Integer>> partitionLeaderEpochs
+    ) {
+        return appendWriteEvent("bumpLeaderEpochs", context.deadlineNs(),
+                () -> replicationControl.bumpLeaderEpochs(partitionLeaderEpochs));
+    }
+
+    @Override
+    public CompletableFuture<StartMirrorTopicsResponseData> startMirrorTopics(
+            ControllerRequestContext context,
+            String mirrorName,
+            List<StartMirrorTopicsRequestData.TopicData> topics,
+            List<String> includePatterns,
+            List<String> excludePatterns
+    ) {
+        return appendWriteEvent("startMirrorTopics", context.deadlineNs(),
+                () -> configurationControl.startMirrorTopics(mirrorName, topics,
+                        includePatterns, excludePatterns, replicationControl));
+    }
+
+    @Override
+    public CompletableFuture<StopMirrorTopicsResponseData> stopMirrorTopics(
+            ControllerRequestContext context,
+            String mirrorName,
+            Set<String> topics,
+            List<String> patterns
+    ) {
+        return appendWriteEvent("stopMirrorTopics", context.deadlineNs(),
+                () -> configurationControl.stopMirrorTopics(mirrorName, topics, patterns));
+    }
+
+    @Override
+    public CompletableFuture<PauseMirrorTopicsResponseData> pauseMirrorTopics(
+            ControllerRequestContext context,
+            String mirrorName,
+            Set<String> topics
+    ) {
+        return appendWriteEvent("pauseMirrorTopics", context.deadlineNs(),
+                () -> configurationControl.pauseMirrorTopics(mirrorName, topics));
+    }
+
+    @Override
+    public CompletableFuture<ResumeMirrorTopicsResponseData> resumeMirrorTopics(
+            ControllerRequestContext context,
+            String mirrorName,
+            Set<String> topics
+    ) {
+        return appendWriteEvent("resumeMirrorTopics", context.deadlineNs(),
+                () -> configurationControl.resumeMirrorTopics(mirrorName, topics));
+    }
+
+    @Override
+    public CompletableFuture<DeleteMirrorResponseData> deleteMirror(
+            ControllerRequestContext context,
+            String mirrorName
+    ) {
+        return appendWriteEvent("deleteMirror", context.deadlineNs(),
+                () -> configurationControl.deleteMirror(mirrorName));
     }
 
     @Override

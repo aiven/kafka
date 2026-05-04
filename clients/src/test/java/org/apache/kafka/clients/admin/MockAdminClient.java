@@ -423,6 +423,11 @@ public class MockAdminClient extends AdminClient {
         return new CreateTopicsResult(createTopicResult);
     }
 
+    @Override
+    public FindCoordinatorResult findCoordinator(String key) {
+        return null;
+    }
+
     private static Config config(NewTopic newTopic) {
         Collection<ConfigEntry> configEntries = new ArrayList<>();
         if (newTopic.configs() != null) {
@@ -729,6 +734,13 @@ public class MockAdminClient extends AdminClient {
         KafkaFutureImpl<Collection<Object>> future = new KafkaFutureImpl<>();
         future.complete(groupConfigs.keySet().stream().map(g -> new GroupListing(g, Optional.of(GroupType.CONSUMER), ConsumerProtocol.PROTOCOL_TYPE, Optional.of(GroupState.STABLE))).collect(Collectors.toList()));
         return new ListGroupsResult(future);
+    }
+
+    @Override
+    public synchronized ListMirrorsResult listMirrors(ListMirrorsOptions options) {
+        KafkaFutureImpl<Collection<Object>> future = new KafkaFutureImpl<>();
+        future.complete(Collections.emptyList());
+        return new ListMirrorsResult(future);
     }
 
     @Override
@@ -1366,6 +1378,53 @@ public class MockAdminClient extends AdminClient {
     }
 
     @Override
+    public CreateMirrorResult createMirror(String mirrorName, Map<String, String> configs, CreateMirrorOptions options) {
+        throw new UnsupportedOperationException("Not implemented yet");
+    }
+
+    @Override
+    public StartMirrorTopicsResult startMirrorTopics(String mirrorName, Set<String> topics, StartMirrorTopicsOptions options) {
+        throw new UnsupportedOperationException("Not implemented yet");
+    }
+
+    @Override
+    public StopMirrorTopicsResult stopMirrorTopics(String mirrorName, Set<String> topics, StopMirrorTopicsOptions options) {
+        throw new UnsupportedOperationException("Not implemented yet");
+    }
+
+    @Override
+    public PauseMirrorTopicsResult pauseMirrorTopics(String mirrorName, Set<String> topics, PauseMirrorTopicsOptions options) {
+        throw new UnsupportedOperationException("Not implemented yet");
+    }
+
+    @Override
+    public ResumeMirrorTopicsResult resumeMirrorTopics(String mirrorName, Set<String> topics, ResumeMirrorTopicsOptions options) {
+        throw new UnsupportedOperationException("Not implemented yet");
+    }
+
+    @Override
+    public DeleteMirrorResult deleteMirror(String mirrorName, DeleteMirrorOptions options) {
+        throw new UnsupportedOperationException("Not implemented yet");
+    }
+
+    @Override
+    public synchronized DescribeMirrorsResult describeMirrors(Collection<String> mirrorNames, DescribeMirrorsOptions options) {
+        Map<String, MirrorDescription> descriptions = new HashMap<>();
+        for (String mirrorName : mirrorNames) {
+            // Return empty description for mock
+            MirrorDescription description = new MirrorDescription(
+                mirrorName,
+                Collections.emptyMap(),
+                null
+            );
+            descriptions.put(mirrorName, description);
+        }
+        KafkaFutureImpl<Map<String, MirrorDescription>> future = new KafkaFutureImpl<>();
+        future.complete(descriptions);
+        return new DescribeMirrorsResult(future);
+    }
+
+    @Override
     public DescribeProducersResult describeProducers(Collection<TopicPartition> partitions, DescribeProducersOptions options) {
         throw new UnsupportedOperationException("Not implemented yet");
     }
@@ -1473,7 +1532,7 @@ public class MockAdminClient extends AdminClient {
     public synchronized DescribeStreamsGroupsResult describeStreamsGroups(Collection<String> groupIds, DescribeStreamsGroupsOptions options) {
         throw new UnsupportedOperationException("Not implemented yet");
     }
-    
+
     @Override
     public synchronized DescribeClassicGroupsResult describeClassicGroups(Collection<String> groupIds, DescribeClassicGroupsOptions options) {
         throw new UnsupportedOperationException("Not implemented yet");

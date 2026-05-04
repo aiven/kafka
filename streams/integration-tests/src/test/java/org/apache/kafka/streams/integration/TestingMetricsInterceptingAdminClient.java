@@ -45,6 +45,8 @@ import org.apache.kafka.clients.admin.CreateAclsOptions;
 import org.apache.kafka.clients.admin.CreateAclsResult;
 import org.apache.kafka.clients.admin.CreateDelegationTokenOptions;
 import org.apache.kafka.clients.admin.CreateDelegationTokenResult;
+import org.apache.kafka.clients.admin.CreateMirrorOptions;
+import org.apache.kafka.clients.admin.CreateMirrorResult;
 import org.apache.kafka.clients.admin.CreatePartitionsOptions;
 import org.apache.kafka.clients.admin.CreatePartitionsResult;
 import org.apache.kafka.clients.admin.CreateTopicsOptions;
@@ -55,6 +57,8 @@ import org.apache.kafka.clients.admin.DeleteConsumerGroupOffsetsOptions;
 import org.apache.kafka.clients.admin.DeleteConsumerGroupOffsetsResult;
 import org.apache.kafka.clients.admin.DeleteConsumerGroupsOptions;
 import org.apache.kafka.clients.admin.DeleteConsumerGroupsResult;
+import org.apache.kafka.clients.admin.DeleteMirrorOptions;
+import org.apache.kafka.clients.admin.DeleteMirrorResult;
 import org.apache.kafka.clients.admin.DeleteRecordsOptions;
 import org.apache.kafka.clients.admin.DeleteRecordsResult;
 import org.apache.kafka.clients.admin.DeleteShareGroupOffsetsOptions;
@@ -87,6 +91,8 @@ import org.apache.kafka.clients.admin.DescribeLogDirsOptions;
 import org.apache.kafka.clients.admin.DescribeLogDirsResult;
 import org.apache.kafka.clients.admin.DescribeMetadataQuorumOptions;
 import org.apache.kafka.clients.admin.DescribeMetadataQuorumResult;
+import org.apache.kafka.clients.admin.DescribeMirrorsOptions;
+import org.apache.kafka.clients.admin.DescribeMirrorsResult;
 import org.apache.kafka.clients.admin.DescribeProducersOptions;
 import org.apache.kafka.clients.admin.DescribeProducersResult;
 import org.apache.kafka.clients.admin.DescribeReplicaLogDirsOptions;
@@ -108,6 +114,7 @@ import org.apache.kafka.clients.admin.ExpireDelegationTokenResult;
 import org.apache.kafka.clients.admin.FeatureUpdate;
 import org.apache.kafka.clients.admin.FenceProducersOptions;
 import org.apache.kafka.clients.admin.FenceProducersResult;
+import org.apache.kafka.clients.admin.FindCoordinatorResult;
 import org.apache.kafka.clients.admin.ListClientMetricsResourcesOptions;
 import org.apache.kafka.clients.admin.ListClientMetricsResourcesResult;
 import org.apache.kafka.clients.admin.ListConfigResourcesOptions;
@@ -119,6 +126,8 @@ import org.apache.kafka.clients.admin.ListConsumerGroupsOptions;
 import org.apache.kafka.clients.admin.ListConsumerGroupsResult;
 import org.apache.kafka.clients.admin.ListGroupsOptions;
 import org.apache.kafka.clients.admin.ListGroupsResult;
+import org.apache.kafka.clients.admin.ListMirrorsOptions;
+import org.apache.kafka.clients.admin.ListMirrorsResult;
 import org.apache.kafka.clients.admin.ListOffsetsOptions;
 import org.apache.kafka.clients.admin.ListOffsetsResult;
 import org.apache.kafka.clients.admin.ListPartitionReassignmentsOptions;
@@ -137,6 +146,8 @@ import org.apache.kafka.clients.admin.NewPartitionReassignment;
 import org.apache.kafka.clients.admin.NewPartitions;
 import org.apache.kafka.clients.admin.NewTopic;
 import org.apache.kafka.clients.admin.OffsetSpec;
+import org.apache.kafka.clients.admin.PauseMirrorTopicsOptions;
+import org.apache.kafka.clients.admin.PauseMirrorTopicsResult;
 import org.apache.kafka.clients.admin.RaftVoterEndpoint;
 import org.apache.kafka.clients.admin.RecordsToDelete;
 import org.apache.kafka.clients.admin.RemoveMembersFromConsumerGroupOptions;
@@ -145,6 +156,12 @@ import org.apache.kafka.clients.admin.RemoveRaftVoterOptions;
 import org.apache.kafka.clients.admin.RemoveRaftVoterResult;
 import org.apache.kafka.clients.admin.RenewDelegationTokenOptions;
 import org.apache.kafka.clients.admin.RenewDelegationTokenResult;
+import org.apache.kafka.clients.admin.ResumeMirrorTopicsOptions;
+import org.apache.kafka.clients.admin.ResumeMirrorTopicsResult;
+import org.apache.kafka.clients.admin.StartMirrorTopicsOptions;
+import org.apache.kafka.clients.admin.StartMirrorTopicsResult;
+import org.apache.kafka.clients.admin.StopMirrorTopicsOptions;
+import org.apache.kafka.clients.admin.StopMirrorTopicsResult;
 import org.apache.kafka.clients.admin.TerminateTransactionOptions;
 import org.apache.kafka.clients.admin.TerminateTransactionResult;
 import org.apache.kafka.clients.admin.UnregisterBrokerOptions;
@@ -179,7 +196,6 @@ import java.util.Set;
  * Wrapper for Admin client for use in Kafka Streams integration test
  */
 public class TestingMetricsInterceptingAdminClient extends AdminClient {
-
     public final List<KafkaMetric> passedMetrics = new ArrayList<>();
     private final Admin adminDelegate;
 
@@ -195,6 +211,11 @@ public class TestingMetricsInterceptingAdminClient extends AdminClient {
     @Override
     public CreateTopicsResult createTopics(final Collection<NewTopic> newTopics, final CreateTopicsOptions options) {
         return adminDelegate.createTopics(newTopics, options);
+    }
+
+    @Override
+    public FindCoordinatorResult findCoordinator(final String key) {
+        return null;
     }
 
     @Override
@@ -290,6 +311,11 @@ public class TestingMetricsInterceptingAdminClient extends AdminClient {
     @Override
     public ListGroupsResult listGroups(final ListGroupsOptions options) {
         return adminDelegate.listGroups(options);
+    }
+
+    @Override
+    public ListMirrorsResult listMirrors(final ListMirrorsOptions options) {
+        return adminDelegate.listMirrors(options);
     }
 
     @Override
@@ -409,6 +435,41 @@ public class TestingMetricsInterceptingAdminClient extends AdminClient {
     }
 
     @Override
+    public CreateMirrorResult createMirror(final String mirrorName, final Map<String, String> configs, final CreateMirrorOptions options) {
+        return adminDelegate.createMirror(mirrorName, configs, options);
+    }
+
+    @Override
+    public StartMirrorTopicsResult startMirrorTopics(final String mirrorName, final Set<String> topics, final StartMirrorTopicsOptions options) {
+        return adminDelegate.startMirrorTopics(mirrorName, topics, options);
+    }
+
+    @Override
+    public StopMirrorTopicsResult stopMirrorTopics(final String mirrorName, final Set<String> topics, final StopMirrorTopicsOptions options) {
+        return adminDelegate.stopMirrorTopics(mirrorName, topics, options);
+    }
+
+    @Override
+    public PauseMirrorTopicsResult pauseMirrorTopics(final String mirrorName, final Set<String> topics, final PauseMirrorTopicsOptions options) {
+        return adminDelegate.pauseMirrorTopics(mirrorName, topics, options);
+    }
+
+    @Override
+    public ResumeMirrorTopicsResult resumeMirrorTopics(final String mirrorName, final Set<String> topics, final ResumeMirrorTopicsOptions options) {
+        return adminDelegate.resumeMirrorTopics(mirrorName, topics, options);
+    }
+
+    @Override
+    public DeleteMirrorResult deleteMirror(final String mirrorName, final DeleteMirrorOptions options) {
+        return adminDelegate.deleteMirror(mirrorName, options);
+    }
+
+    @Override
+    public DescribeMirrorsResult describeMirrors(final Collection<String> mirrorNames, final DescribeMirrorsOptions options) {
+        return adminDelegate.describeMirrors(mirrorNames, options);
+    }
+
+    @Override
     public DescribeProducersResult describeProducers(final Collection<TopicPartition> partitions, final DescribeProducersOptions options) {
         return adminDelegate.describeProducers(partitions, options);
     }
@@ -468,7 +529,7 @@ public class TestingMetricsInterceptingAdminClient extends AdminClient {
     public DescribeShareGroupsResult describeShareGroups(final Collection<String> groupIds, final DescribeShareGroupsOptions options) {
         return adminDelegate.describeShareGroups(groupIds, options);
     }
-    
+
     @Override
     public DescribeStreamsGroupsResult describeStreamsGroups(final Collection<String> groupIds, final DescribeStreamsGroupsOptions options) {
         return adminDelegate.describeStreamsGroups(groupIds, options);

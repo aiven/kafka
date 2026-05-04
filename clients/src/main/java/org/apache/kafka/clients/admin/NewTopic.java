@@ -17,9 +17,11 @@
 
 package org.apache.kafka.clients.admin;
 
+import org.apache.kafka.common.Uuid;
 import org.apache.kafka.common.message.CreateTopicsRequestData.CreatableReplicaAssignment;
 import org.apache.kafka.common.message.CreateTopicsRequestData.CreatableTopic;
 import org.apache.kafka.common.message.CreateTopicsRequestData.CreatableTopicConfig;
+import org.apache.kafka.common.message.CreateTopicsRequestData.MirrorInfo;
 import org.apache.kafka.common.requests.CreateTopicsRequest;
 
 import java.util.Collection;
@@ -34,12 +36,12 @@ import java.util.Optional;
  * A new topic to be created via {@link Admin#createTopics(Collection)}.
  */
 public class NewTopic {
-
     private final String name;
     private final Optional<Integer> numPartitions;
     private final Optional<Short> replicationFactor;
     private final Map<Integer, List<Integer>> replicasAssignments;
     private Map<String, String> configs = null;
+    private Optional<String> topicId = Optional.empty();
 
     /**
      * A new topic with the specified replication factor and number of partitions.
@@ -58,6 +60,14 @@ public class NewTopic {
         this.numPartitions = numPartitions;
         this.replicationFactor = replicationFactor;
         this.replicasAssignments = null;
+    }
+
+    public NewTopic(String name, Optional<Integer> numPartitions, Optional<Short> replicationFactor, Optional<String> topicId) {
+        this.name = name;
+        this.numPartitions = numPartitions;
+        this.replicationFactor = replicationFactor;
+        this.replicasAssignments = null;
+        this.topicId = topicId;
     }
 
     /**
@@ -127,6 +137,13 @@ public class NewTopic {
             setName(name).
             setNumPartitions(numPartitions.orElse(CreateTopicsRequest.NO_NUM_PARTITIONS)).
             setReplicationFactor(replicationFactor.orElse(CreateTopicsRequest.NO_REPLICATION_FACTOR));
+
+        if (topicId.isPresent()) {
+            creatableTopic.setMirrorInfo(
+                new MirrorInfo()
+                    .setTopicId(Uuid.fromString(topicId.get()))
+            );
+        }
         if (replicasAssignments != null) {
             for (Entry<Integer, List<Integer>> entry : replicasAssignments.entrySet()) {
                 creatableTopic.assignments().add(
