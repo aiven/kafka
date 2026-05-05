@@ -24,6 +24,7 @@ import org.apache.kafka.common.TopicIdPartition;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.Uuid;
 import org.apache.kafka.common.compress.Compression;
+import org.apache.kafka.common.errors.UnsupportedVersionException;
 import org.apache.kafka.common.internals.Topic;
 import org.apache.kafka.common.message.MirrorPidResetRecord;
 import org.apache.kafka.common.message.WriteMirrorStatesResponseData;
@@ -470,12 +471,22 @@ public class MirrorCoordinator {
                 try {
                     metadataManager.truncateToLastMirrorEpochs(mirrorName, topicPartitions)
                         .whenComplete((descriptions, error) -> {
+                            MirrorDescription description;
                             if (error != null) {
-                                log.warn("Failed to truncate to last mirrored offsets for mirror {}, retrying in {} ms", mirrorName, retryDelayMs, error);
-                                scheduleTruncation(mirrorName, topicPartitions, retryDelayMs);
+                                if (error instanceof UnsupportedVersionException) {
+                                    description = null;
+                                } else {
+                                    log.warn("Failed to truncate to last mirrored offsets for mirror {}, retrying in {} ms", mirrorName, retryDelayMs, error);
+                                    scheduleTruncation(mirrorName, topicPartitions, retryDelayMs);
+                                    return;
+                                }
+                            } else {
+                                description = descriptions.get(mirrorName);
+                            }
+                            if (description == null) {
+                                description = new MirrorDescription(mirrorName, Map.of(), Set.of());
                             }
                             Map<TopicPartition, Integer> epochs = new HashMap<>();
-                            MirrorDescription description = descriptions.get(mirrorName);
                             description.topics().forEach((topicName, leaderState) -> {
                                 leaderState.forEach(leaderStateEntry -> {
                                     epochs.put(leaderStateEntry.topicPartition(), leaderStateEntry.lastMirrorEpoch());
