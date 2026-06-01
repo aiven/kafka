@@ -11,7 +11,7 @@ When writing to Diskless topics, the following stages are involved when a Produc
 
 - Appending and Rotating the Write Ahead Log Segment
 - Upload Files to Remote Storage
-- Commiting Batches to Batch Coordinator
+- Committing Batches to Batch Coordinator
 - Returning Produce Response
 
 Rotating the WAL segment is bound by the `inkless.produce.commit.interval.ms` configuration (default 250ms),
@@ -33,7 +33,7 @@ and a single request size is limited to the number of partitions: # partitions *
 > and it will depend on how many partitions are available to the producer to get to that size
 > based on the batch.size: batch.size * partitions = request size.
 > 
-> Considering the latencies of the Inkless pipeline, the throuhgput will be bound to 4 request per second
+> Considering the latencies of the Inkless pipeline, the throughput will be bound to 4 request per second
 > as the WAL buffer is not saturated and will rotate every 250ms (default `inkless.produce.commit.interval.ms`).
 
 To cope with this at the producer side, batching has to be tuned to align with the Inkless pipeline latencies.
