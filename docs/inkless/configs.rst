@@ -39,6 +39,13 @@ Under ``inkless.``
   * Default: io.aiven.inkless.storage_backend.in_memory.InMemoryStorage
   * Importance: high
 
+``client.az.listener.map``
+  Cluster-wide mapping from AZ-specific listener aliases to physical availability zone (rack) IDs, used for listener-based AZ routing of diskless topic metadata. Format is a comma-separated list of LISTENER=az pairs, for example SASL_SSL_US_EAST_1_AZ_1=use1-az1,SASL_SSL_US_EAST_1_AZ_2=use1-az2. Every broker should use the same mapping. Listener names are matched case-insensitively (normalized to upper case). Defaults to empty (feature disabled).
+
+  * Type: list
+  * Default: ""
+  * Importance: medium
+
 ``fetch.lagging.consumer.request.rate.limit``
   Maximum requests per second for lagging consumer data fetches. Set to 0 to disable rate limiting. The upper bound of 10000 req/s is a safety limit to prevent misconfiguration. For high-throughput systems, consider the relationship between this rate limit, thread pool size, and storage backend capacity. At the default rate of 200 req/s with ~50ms per request latency, this allows ~10 concurrent requests. Note: hedge requests triggered by slow fetches are exempt from this limit. In the worst case, effective storage GET rate can reach up to 2x this value.
 
