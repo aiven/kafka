@@ -60,6 +60,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -812,6 +813,11 @@ public final class LocalLogManager implements RaftClient<ApiMessageAndVersion>, 
     @Override
     public OptionalInt nodeId() {
         return OptionalInt.of(nodeId);
+    }
+
+    @Override
+    public synchronized Set<Integer> voterIds() {
+        return Set.copyOf(shared.logManagers.keySet());
     }
 
     public List<RaftClient.Listener<ApiMessageAndVersion>> listeners() {
