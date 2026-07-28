@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 public interface RaftClient<T> extends AutoCloseable {
@@ -126,6 +127,17 @@ public interface RaftClient<T> extends AutoCloseable {
      * @return optional node id
      */
     OptionalInt nodeId();
+
+    /**
+     * Returns the current voter IDs known to this client.
+     *
+     * Implementations may return an empty set before initialization completes.
+     *
+     * This method is thread-safe and may be called from threads other than the KRaft IO thread.
+     *
+     * @return the current voter IDs
+     */
+    Set<Integer> voterIds();
 
     /**
      * Prepare a list of records to be appended to the log.

@@ -22,9 +22,17 @@ import org.apache.kafka.metadata.VersionRange;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Set;
 
 
 public interface ClusterFeatureSupportDescriber {
     Iterator<Entry<Integer, Map<String, VersionRange>>> brokerSupported();
     Iterator<Entry<Integer, Map<String, VersionRange>>> controllerSupported();
+
+    /**
+     * The IDs of the controllers in the current KRaft voter set. Controllers that are registered in
+     * the metadata image but are not voters, including observers and controllers that were removed
+     * from the quorum, are not included. May be empty if the voter set is not known yet.
+     */
+    Set<Integer> quorumControllerIds();
 }
