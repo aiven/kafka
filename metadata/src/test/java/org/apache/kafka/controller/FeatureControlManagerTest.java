@@ -48,6 +48,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import static java.util.Collections.emptyList;
 import static java.util.Collections.singletonMap;
@@ -178,7 +179,8 @@ public class FeatureControlManagerTest {
 
     static ClusterFeatureSupportDescriber createFakeClusterFeatureSupportDescriber(
         List<Map.Entry<Integer, Map<String, VersionRange>>> brokerRanges,
-        List<Map.Entry<Integer, Map<String, VersionRange>>> controllerRanges
+        List<Map.Entry<Integer, Map<String, VersionRange>>> controllerRanges,
+        Set<Integer> quorumControllerIds
     ) {
         return new ClusterFeatureSupportDescriber() {
             @Override
@@ -189,6 +191,11 @@ public class FeatureControlManagerTest {
             @Override
             public Iterator<Map.Entry<Integer, Map<String, VersionRange>>> controllerSupported() {
                 return controllerRanges.iterator();
+            }
+
+            @Override
+            public Set<Integer> quorumControllerIds() {
+                return quorumControllerIds;
             }
         };
     }
@@ -203,7 +210,8 @@ public class FeatureControlManagerTest {
             setSnapshotRegistry(snapshotRegistry).
             setClusterFeatureSupportDescriber(createFakeClusterFeatureSupportDescriber(
                 Collections.singletonList(new SimpleImmutableEntry<>(5, Collections.singletonMap(TransactionVersion.FEATURE_NAME, VersionRange.of(0, 2)))),
-                emptyList())).
+                emptyList(),
+                Set.of())).
             build();
 
         assertEquals(ControllerResult.of(emptyList(), new ApiError(Errors.INVALID_UPDATE_VERSION,
@@ -330,6 +338,55 @@ public class FeatureControlManagerTest {
     }
 
     @Test
+    public void testMetadataVersionUpgradeIgnoresStaleControllerRegistrations() {
+        FeatureControlManager manager = new FeatureControlManager.Builder().
+            setQuorumFeatures(features(MetadataVersion.FEATURE_NAME,
+                MetadataVersion.MINIMUM_VERSION.featureLevel(), MetadataVersion.IBP_4_0_IV3.featureLevel())).
+            setClusterFeatureSupportDescriber(createFakeClusterFeatureSupportDescriber(
+                Collections.emptyList(),
+                Arrays.asList(
+                    new SimpleImmutableEntry<>(1, Collections.singletonMap(MetadataVersion.FEATURE_NAME,
+                        VersionRange.of(MetadataVersion.MINIMUM_VERSION.featureLevel(), MetadataVersion.IBP_4_0_IV3.featureLevel()))),
+                    new SimpleImmutableEntry<>(2, Collections.singletonMap(MetadataVersion.FEATURE_NAME,
+                        VersionRange.of(MetadataVersion.MINIMUM_VERSION.featureLevel(), MetadataVersion.IBP_4_0_IV2.featureLevel())))
+                ),
+                Set.of(0, 1))).
+            setMetadataVersion(MetadataVersion.IBP_4_0_IV2).
+            build();
+
+        assertEquals(ControllerResult.of(Collections.emptyList(), ApiError.NONE),
+            manager.updateFeatures(
+                singletonMap(MetadataVersion.FEATURE_NAME, MetadataVersion.IBP_4_0_IV3.featureLevel()),
+                singletonMap(MetadataVersion.FEATURE_NAME, FeatureUpdate.UpgradeType.UPGRADE),
+                true));
+    }
+
+    @Test
+    public void testMetadataVersionUpgradeStillChecksLiveControllers() {
+        FeatureControlManager manager = new FeatureControlManager.Builder().
+            setQuorumFeatures(features(MetadataVersion.FEATURE_NAME,
+                MetadataVersion.MINIMUM_VERSION.featureLevel(), MetadataVersion.IBP_4_0_IV3.featureLevel())).
+            setClusterFeatureSupportDescriber(createFakeClusterFeatureSupportDescriber(
+                Collections.emptyList(),
+                Arrays.asList(
+                    new SimpleImmutableEntry<>(1, Collections.singletonMap(MetadataVersion.FEATURE_NAME,
+                        VersionRange.of(MetadataVersion.MINIMUM_VERSION.featureLevel(), MetadataVersion.IBP_4_0_IV2.featureLevel()))),
+                    new SimpleImmutableEntry<>(2, Collections.singletonMap(MetadataVersion.FEATURE_NAME,
+                        VersionRange.of(MetadataVersion.MINIMUM_VERSION.featureLevel(), MetadataVersion.IBP_4_0_IV3.featureLevel())))
+                ),
+                Set.of(0, 1))).
+            setMetadataVersion(MetadataVersion.IBP_4_0_IV2).
+            build();
+
+        assertEquals(ControllerResult.of(Collections.emptyList(), new ApiError(Errors.INVALID_UPDATE_VERSION,
+            "Invalid update version 25 for feature metadata.version. Controller 1 only supports versions 7-24")),
+            manager.updateFeatures(
+                singletonMap(MetadataVersion.FEATURE_NAME, MetadataVersion.IBP_4_0_IV3.featureLevel()),
+                singletonMap(MetadataVersion.FEATURE_NAME, FeatureUpdate.UpgradeType.UPGRADE),
+                true));
+    }
+
+    @Test
     public void testCannotUseSafeDowngradeIfMetadataChanged() {
         FeatureControlManager manager = TEST_MANAGER_BUILDER1.build();
         assertEquals(ControllerResult.of(Collections.emptyList(), new ApiError(Errors.INVALID_UPDATE_VERSION,
@@ -402,7 +459,8 @@ public class FeatureControlManagerTest {
             setQuorumFeatures(new QuorumFeatures(0, localSupportedFeatures, emptyList())).
             setClusterFeatureSupportDescriber(createFakeClusterFeatureSupportDescriber(
                 Collections.singletonList(new SimpleImmutableEntry<>(1, Collections.singletonMap(Feature.TEST_VERSION.featureName(), VersionRange.of(0, 3)))),
-                emptyList())).
+                emptyList(),
+                Set.of())).
                 build();
         ControllerResult<ApiError> result  = manager.updateFeatures(
                 Collections.singletonMap(Feature.TEST_VERSION.featureName(), (short) 1),
@@ -435,7 +493,8 @@ public class FeatureControlManagerTest {
             setQuorumFeatures(new QuorumFeatures(0, localSupportedFeatures, emptyList())).
             setClusterFeatureSupportDescriber(createFakeClusterFeatureSupportDescriber(
                 Collections.singletonList(new SimpleImmutableEntry<>(1, Collections.singletonMap(Feature.ELIGIBLE_LEADER_REPLICAS_VERSION.featureName(), VersionRange.of(0, 1)))),
-                emptyList())).
+                emptyList(),
+                Set.of())).
             setMetadataVersion(MetadataVersion.IBP_4_0_IV1).
             build();
         ControllerResult<ApiError> result = manager.updateFeatures(
