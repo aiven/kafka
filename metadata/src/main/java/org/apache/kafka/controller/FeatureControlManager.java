@@ -44,6 +44,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Consumer;
 
 import static org.apache.kafka.common.metadata.MetadataRecordType.FEATURE_LEVEL_RECORD;
@@ -65,6 +66,11 @@ public class FeatureControlManager {
             @Override
             public Iterator<Entry<Integer, Map<String, VersionRange>>> controllerSupported() {
                 return Collections.emptyIterator();
+            }
+
+            @Override
+            public Set<Integer> quorumControllerIds() {
+                return Collections.emptySet();
             }
         };
 
@@ -262,12 +268,16 @@ public class FeatureControlManager {
         }
         String registrationSuffix = "";
         HashSet<Integer> foundControllers = new HashSet<>();
+        Set<Integer> quorumControllerIds = clusterSupportDescriber.quorumControllerIds();
         foundControllers.add(quorumFeatures.nodeId());
         if (metadataVersion.get().isControllerRegistrationSupported()) {
             for (Iterator<Entry<Integer, Map<String, VersionRange>>> iter =
                  clusterSupportDescriber.controllerSupported();
                  iter.hasNext(); ) {
                 Entry<Integer, Map<String, VersionRange>> entry = iter.next();
+                if (!quorumControllerIds.contains(entry.getKey())) {
+                    continue;
+                }
                 if (entry.getKey() == quorumFeatures.nodeId()) {
                     // No need to re-check the features supported by this controller, since we
                     // already checked that above.
@@ -280,7 +290,7 @@ public class FeatureControlManager {
                 foundControllers.add(entry.getKey());
                 numControllersChecked++;
             }
-            for (int id : quorumFeatures.quorumNodeIds()) {
+            for (int id : quorumControllerIds) {
                 if (!foundControllers.contains(id)) {
                     return Optional.of("controller " + id + " has not registered, and may not " +
                         "support this feature");

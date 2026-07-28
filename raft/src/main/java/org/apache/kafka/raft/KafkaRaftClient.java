@@ -627,6 +627,15 @@ public final class KafkaRaftClient<T> implements RaftClient<T> {
         return nodeId;
     }
 
+    @Override
+    public Set<Integer> voterIds() {
+        KRaftControlRecordStateMachine partitionState = this.partitionState;
+        if (partitionState == null) {
+            return Set.of();
+        }
+        return Set.copyOf(partitionState.lastVoterSet().voterIds());
+    }
+
     private OffsetAndEpoch endOffset() {
         return new OffsetAndEpoch(log.endOffset().offset(), log.lastFetchedEpoch());
     }
