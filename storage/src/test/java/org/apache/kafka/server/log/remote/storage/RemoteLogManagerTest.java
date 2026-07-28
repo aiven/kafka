@@ -107,6 +107,7 @@ import java.util.NavigableMap;
 import java.util.NoSuchElementException;
 import java.util.Optional;
 import java.util.OptionalInt;
+import java.util.OptionalLong;
 import java.util.Properties;
 import java.util.Set;
 import java.util.TreeMap;
@@ -2551,6 +2552,643 @@ public class RemoteLogManagerTest {
         // Verify aggregate metrics
         assertEquals(2, brokerTopicStats.allTopicsStats().remoteDeleteRequestRate().count());
         assertEquals(0, brokerTopicStats.allTopicsStats().failedRemoteDeleteRequestRate().count());
+    }
+
+    @Test
+    public void testConsolidatingLogStartOffsetOverrideDrivesRemoteReclaimFloor()
+            throws RemoteStorageException, ExecutionException, InterruptedException, IOException {
+        // Inkless: for a consolidating diskless partition the remote-retention reclaim floor must come
+        // from the control-plane cross-tier earliest (here 100), NOT the broker-local log start (200,
+        // which on a freshly-rebuilt leader is pinned at the classic-to-diskless seal). With retention
+        // disabled only a log-start-offset breach can delete, so the segment [0,99] (endOffset 99 < 100)
+        // is reclaimed while [100,199] survives -- even though the local seal (200) would breach it too.
+        Map<String, Long> logProps = new HashMap<>();
+        logProps.put("retention.bytes", -1L);
+        logProps.put("retention.ms", -1L);
+        LogConfig mockLogConfig = new LogConfig(logProps);
+        when(mockLog.config()).thenReturn(mockLogConfig);
+
+        List<EpochEntry> epochEntries = List.of(epochEntry0);
+        checkpoint.write(epochEntries);
+        LeaderEpochFileCache cache = new LeaderEpochFileCache(tp, checkpoint, scheduler);
+        when(mockLog.leaderEpochCache()).thenReturn(cache);
+        when(mockLog.topicPartition()).thenReturn(leaderTopicIdPartition.topicPartition());
+        when(mockLog.logEndOffset()).thenReturn(200L);
+        // Broker-local log start pinned at the seal; would delete BOTH segments if used as the floor.
+        when(mockLog.logStartOffset()).thenReturn(200L);
+
+        List<RemoteLogSegmentMetadata> metadataList =
+                listRemoteLogSegmentMetadata(leaderTopicIdPartition, 2, 100, 1024, epochEntries, RemoteLogSegmentState.COPY_SEGMENT_FINISHED);
+        when(remoteLogMetadataManager.listRemoteLogSegments(leaderTopicIdPartition))
+                .thenReturn(metadataList.iterator());
+        when(remoteLogMetadataManager.listRemoteLogSegments(leaderTopicIdPartition, 0))
+                .thenAnswer(ans -> metadataList.iterator());
+        when(remoteLogMetadataManager.updateRemoteLogSegmentMetadata(any(RemoteLogSegmentMetadataUpdate.class)))
+                .thenReturn(CompletableFuture.runAsync(() -> { }));
+        doNothing().when(remoteStorageManager).deleteLogSegmentData(any(RemoteLogSegmentMetadata.class));
+
+        try (RemoteLogManager rlmWithOverride = new RemoteLogManager(config, brokerId, logDir, clusterId, time,
+                tp -> Optional.of(mockLog),
+                (topicPartition, offset) -> currentLogStartOffset.set(offset),
+                brokerTopicStats, metrics, endPoint,
+                topicPartition -> OptionalLong.of(100L),
+                topicPartition -> true) {
+            @Override
+            public RemoteStorageManager createRemoteStorageManager() {
+                return remoteStorageManager;
+            }
+            @Override
+            public RemoteLogMetadataManager createRemoteLogMetadataManager() {
+                return remoteLogMetadataManager;
+            }
+            @Override
+            long findLogStartOffset(TopicIdPartition topicIdPartition, UnifiedLog log) {
+                return 0L;
+            }
+        }) {
+            doReturn(true).when(remoteLogMetadataManager).isReady(any(TopicIdPartition.class));
+            RemoteLogManager.RLMExpirationTask task = rlmWithOverride.new RLMExpirationTask(leaderTopicIdPartition);
+            task.cleanupExpiredRemoteLogSegments();
+        }
+
+        // Only the segment entirely below the cross-tier earliest (100) is reclaimed; the survivor stays.
+        verify(remoteStorageManager).deleteLogSegmentData(metadataList.get(0));
+        verify(remoteStorageManager, never()).deleteLogSegmentData(metadataList.get(1));
+    }
+
+    @Test
+    public void testConsolidatingReclaimFailsSafeWhenOverrideAbsent()
+            throws RemoteStorageException, ExecutionException, InterruptedException, IOException {
+        // Fail-safe against over-reclaim: when the log-start override is empty for a CONSOLIDATING
+        // partition (control-plane outage, or metadata not yet propagated to the RLM leader) the reclaim
+        // floor must not fall back to the broker-local log start. On a freshly-rebuilt consolidating leader
+        // that start is the seal (200), which would irreversibly delete the whole remote classic prefix. It
+        // uses findLogStartOffset (-> 0) instead: the true cross-tier earliest, read back from the
+        // cumulative remote epoch cache. No segment breaches that floor, so nothing is over-reclaimed.
+        // Retention is off here, so both segments [0,99] and [100,199] survive; the floor advances to the
+        // override once it resolves.
+        Map<String, Long> logProps = new HashMap<>();
+        logProps.put("retention.bytes", -1L);
+        logProps.put("retention.ms", -1L);
+        LogConfig mockLogConfig = new LogConfig(logProps);
+        when(mockLog.config()).thenReturn(mockLogConfig);
+
+        List<EpochEntry> epochEntries = List.of(epochEntry0);
+        checkpoint.write(epochEntries);
+        LeaderEpochFileCache cache = new LeaderEpochFileCache(tp, checkpoint, scheduler);
+        when(mockLog.leaderEpochCache()).thenReturn(cache);
+        when(mockLog.topicPartition()).thenReturn(leaderTopicIdPartition.topicPartition());
+        when(mockLog.logEndOffset()).thenReturn(200L);
+        when(mockLog.logStartOffset()).thenReturn(200L); // local log start pinned at the seal (the trap)
+
+        List<RemoteLogSegmentMetadata> metadataList =
+                listRemoteLogSegmentMetadata(leaderTopicIdPartition, 2, 100, 1024, epochEntries, RemoteLogSegmentState.COPY_SEGMENT_FINISHED);
+        when(remoteLogMetadataManager.listRemoteLogSegments(leaderTopicIdPartition))
+                .thenReturn(metadataList.iterator());
+        when(remoteLogMetadataManager.listRemoteLogSegments(leaderTopicIdPartition, 0))
+                .thenAnswer(ans -> metadataList.iterator());
+        when(remoteLogMetadataManager.updateRemoteLogSegmentMetadata(any(RemoteLogSegmentMetadataUpdate.class)))
+                .thenReturn(CompletableFuture.runAsync(() -> { }));
+        doNothing().when(remoteStorageManager).deleteLogSegmentData(any(RemoteLogSegmentMetadata.class));
+
+        try (RemoteLogManager rlmWithEmptyOverride = new RemoteLogManager(config, brokerId, logDir, clusterId, time,
+                tp -> Optional.of(mockLog),
+                (topicPartition, offset) -> currentLogStartOffset.set(offset),
+                brokerTopicStats, metrics, endPoint,
+                topicPartition -> OptionalLong.empty(),
+                topicPartition -> true) { // consolidating -> fail safe, do not use the local seal
+            @Override
+            public RemoteStorageManager createRemoteStorageManager() {
+                return remoteStorageManager;
+            }
+            @Override
+            public RemoteLogMetadataManager createRemoteLogMetadataManager() {
+                return remoteLogMetadataManager;
+            }
+            @Override
+            long findLogStartOffset(TopicIdPartition topicIdPartition, UnifiedLog log) {
+                return 0L; // remote earliest
+            }
+        }) {
+            doReturn(true).when(remoteLogMetadataManager).isReady(any(TopicIdPartition.class));
+            RemoteLogManager.RLMExpirationTask task = rlmWithEmptyOverride.new RLMExpirationTask(leaderTopicIdPartition);
+            task.cleanupExpiredRemoteLogSegments();
+        }
+
+        // Neither segment is reclaimed: the fail-safe floor (remote earliest 0) breaches nothing, so the
+        // remote classic prefix is preserved rather than over-reclaimed to the seal.
+        verify(remoteStorageManager, never()).deleteLogSegmentData(metadataList.get(0));
+        verify(remoteStorageManager, never()).deleteLogSegmentData(metadataList.get(1));
+    }
+
+    @Test
+    public void testNonConsolidatingReclaimUsesLocalLogStartWhenOverrideAbsent()
+            throws RemoteStorageException, ExecutionException, InterruptedException, IOException {
+        // Regression guard: for a CLASSIC (non-consolidating) remote topic the fail-safe must NOT engage.
+        // With an empty override the reclaim floor keeps the upstream behavior of the broker-local log
+        // start (here 200, e.g. advanced by a user DeleteRecords), so both segments [0,99] and [100,199]
+        // breach the log-start-offset and are reclaimed as normal.
+        Map<String, Long> logProps = new HashMap<>();
+        logProps.put("retention.bytes", -1L);
+        logProps.put("retention.ms", -1L);
+        LogConfig mockLogConfig = new LogConfig(logProps);
+        when(mockLog.config()).thenReturn(mockLogConfig);
+
+        List<EpochEntry> epochEntries = List.of(epochEntry0);
+        checkpoint.write(epochEntries);
+        LeaderEpochFileCache cache = new LeaderEpochFileCache(tp, checkpoint, scheduler);
+        when(mockLog.leaderEpochCache()).thenReturn(cache);
+        when(mockLog.topicPartition()).thenReturn(leaderTopicIdPartition.topicPartition());
+        when(mockLog.logEndOffset()).thenReturn(200L);
+        when(mockLog.logStartOffset()).thenReturn(200L); // authoritative floor for a classic topic
+
+        List<RemoteLogSegmentMetadata> metadataList =
+                listRemoteLogSegmentMetadata(leaderTopicIdPartition, 2, 100, 1024, epochEntries, RemoteLogSegmentState.COPY_SEGMENT_FINISHED);
+        when(remoteLogMetadataManager.listRemoteLogSegments(leaderTopicIdPartition))
+                .thenReturn(metadataList.iterator());
+        when(remoteLogMetadataManager.listRemoteLogSegments(leaderTopicIdPartition, 0))
+                .thenAnswer(ans -> metadataList.iterator());
+        when(remoteLogMetadataManager.updateRemoteLogSegmentMetadata(any(RemoteLogSegmentMetadataUpdate.class)))
+                .thenReturn(CompletableFuture.runAsync(() -> { }));
+        doNothing().when(remoteStorageManager).deleteLogSegmentData(any(RemoteLogSegmentMetadata.class));
+
+        try (RemoteLogManager rlmClassic = new RemoteLogManager(config, brokerId, logDir, clusterId, time,
+                tp -> Optional.of(mockLog),
+                (topicPartition, offset) -> currentLogStartOffset.set(offset),
+                brokerTopicStats, metrics, endPoint,
+                topicPartition -> OptionalLong.empty(),
+                topicPartition -> false) { // not consolidating -> keep upstream local-log-start floor
+            @Override
+            public RemoteStorageManager createRemoteStorageManager() {
+                return remoteStorageManager;
+            }
+            @Override
+            public RemoteLogMetadataManager createRemoteLogMetadataManager() {
+                return remoteLogMetadataManager;
+            }
+            @Override
+            long findLogStartOffset(TopicIdPartition topicIdPartition, UnifiedLog log) {
+                return 0L; // must be ignored on the non-consolidating path
+            }
+        }) {
+            doReturn(true).when(remoteLogMetadataManager).isReady(any(TopicIdPartition.class));
+            RemoteLogManager.RLMExpirationTask task = rlmClassic.new RLMExpirationTask(leaderTopicIdPartition);
+            task.cleanupExpiredRemoteLogSegments();
+        }
+
+        // Both segments breach the local log start (200) and are reclaimed -- upstream behavior preserved.
+        verify(remoteStorageManager).deleteLogSegmentData(metadataList.get(0));
+        verify(remoteStorageManager).deleteLogSegmentData(metadataList.get(1));
+    }
+
+    @Test
+    public void testConsolidatingBecomeLeaderReportsRemoteEarliestWhenOverrideAbsent()
+            throws RemoteStorageException, IOException, InterruptedException {
+        // Become-leader report, over-reclaim + bootstrap hardening: when the cross-tier remote start
+        // override is empty for a CONSOLIDATING partition (reporter has not landed a value yet, control
+        // plane unreachable, or metadata not propagated), the report must resolve to the remote earliest
+        // (findLogStartOffset -> 0), never the broker-local seal (200) and never be skipped. Skipping it
+        // would leave remote_log_start_offset unset, so ListOffsets(EARLIEST) COALESCEs to the pruned WAL
+        // frontier and hides the still-live remote prefix; reporting the seal would push the broker-agnostic
+        // earliest up to the seal.
+        when(mockLog.topicPartition()).thenReturn(leaderTopicIdPartition.topicPartition());
+        // A rebuilt leader reassigns its leader-epoch cache from the cumulative remote checkpoint, so the
+        // cache carries the full history from offset 0 and findLogStartOffset can resolve the true earliest.
+        checkpoint.write(List.of(epochEntry0));
+        LeaderEpochFileCache cache = new LeaderEpochFileCache(leaderTopicIdPartition.topicPartition(), checkpoint, scheduler);
+        when(mockLog.leaderEpochCache()).thenReturn(cache);
+        when(mockLog.localLogStartOffset()).thenReturn(200L); // seal: the value that must NOT be reported
+
+        List<RemoteLogSegmentMetadata> metadataList =
+                listRemoteLogSegmentMetadata(leaderTopicIdPartition, 1, 100, 1024, List.of(epochEntry0), RemoteLogSegmentState.COPY_SEGMENT_FINISHED);
+        when(remoteLogMetadataManager.listRemoteLogSegments(eq(leaderTopicIdPartition), anyInt()))
+                .thenAnswer(inv -> {
+                    int epoch = inv.getArgument(1);
+                    return epoch == 0 ? metadataList.iterator() : Collections.emptyIterator();
+                });
+
+        AtomicLong reported = new AtomicLong(-1L);
+        try (RemoteLogManager rlm = new RemoteLogManager(config, brokerId, logDir, clusterId, time,
+                tp -> Optional.of(mockLog),
+                (topicPartition, offset) -> reported.set(offset),
+                brokerTopicStats, metrics, endPoint,
+                topicPartition -> OptionalLong.empty(),
+                topicPartition -> true) {
+            @Override
+            public RemoteLogMetadataManager createRemoteLogMetadataManager() {
+                return remoteLogMetadataManager;
+            }
+        }) {
+            RemoteLogManager.RLMCopyTask task = rlm.new RLMCopyTask(leaderTopicIdPartition, 128);
+            task.copyLogSegmentsToRemote(mockLog);
+        }
+
+        // The bootstrap report is the true remote earliest, not the seal.
+        assertEquals(0L, reported.get());
+    }
+
+    @Test
+    public void testConsolidatingBecomeLeaderReportsOverrideAndNeverSeal()
+            throws RemoteStorageException, IOException, InterruptedException {
+        // When the cross-tier remote start override IS present it is authoritative: the become-leader report
+        // uses it verbatim (100), never the broker-local seal (200) and never findLogStartOffset. The stubbed
+        // findLogStartOffset returns a trap value that must never surface.
+        when(mockLog.topicPartition()).thenReturn(leaderTopicIdPartition.topicPartition());
+        checkpoint.write(List.of(epochEntry0));
+        LeaderEpochFileCache cache = new LeaderEpochFileCache(leaderTopicIdPartition.topicPartition(), checkpoint, scheduler);
+        when(mockLog.leaderEpochCache()).thenReturn(cache);
+        when(mockLog.localLogStartOffset()).thenReturn(200L); // seal trap
+
+        AtomicLong reported = new AtomicLong(-1L);
+        try (RemoteLogManager rlm = new RemoteLogManager(config, brokerId, logDir, clusterId, time,
+                tp -> Optional.of(mockLog),
+                (topicPartition, offset) -> reported.set(offset),
+                brokerTopicStats, metrics, endPoint,
+                topicPartition -> OptionalLong.of(100L),
+                topicPartition -> true) {
+            @Override
+            public RemoteLogMetadataManager createRemoteLogMetadataManager() {
+                return remoteLogMetadataManager;
+            }
+            @Override
+            long findLogStartOffset(TopicIdPartition topicIdPartition, UnifiedLog log) {
+                return 500L; // trap: a present override must win, so this is never consulted
+            }
+        }) {
+            RemoteLogManager.RLMCopyTask task = rlm.new RLMCopyTask(leaderTopicIdPartition, 128);
+            task.copyLogSegmentsToRemote(mockLog);
+        }
+
+        assertEquals(100L, reported.get());
+    }
+
+    @Test
+    public void testFindLogStartOffsetReturnsRemoteEarliestDespiteSealPinnedLocalStart()
+            throws RemoteStorageException, IOException {
+        // On a rebuilt consolidating leader the local start is pinned at the classic-to-diskless seal (200),
+        // but the leader-epoch cache is reassigned from the cumulative remote checkpoint and so carries the
+        // full epoch history from offset 0. findLogStartOffset must walk that history and return the true
+        // remote earliest (0), NOT the seal-pinned localLogStartOffset. This is the invariant the reclaim
+        // floor and the become-leader report rely on when the override is empty; it is also why a
+        // defer-to-0 fail-safe was unnecessary.
+        checkpoint.write(List.of(epochEntry0));
+        LeaderEpochFileCache cache = new LeaderEpochFileCache(leaderTopicIdPartition.topicPartition(), checkpoint, scheduler);
+        when(mockLog.leaderEpochCache()).thenReturn(cache);
+        when(mockLog.localLogStartOffset()).thenReturn(200L); // seal: ignored while remote segments exist
+
+        List<RemoteLogSegmentMetadata> metadataList =
+                listRemoteLogSegmentMetadata(leaderTopicIdPartition, 2, 100, 1024, List.of(epochEntry0), RemoteLogSegmentState.COPY_SEGMENT_FINISHED);
+        when(remoteLogMetadataManager.listRemoteLogSegments(eq(leaderTopicIdPartition), anyInt()))
+                .thenAnswer(inv -> {
+                    int epoch = inv.getArgument(1);
+                    return epoch == 0 ? metadataList.iterator() : Collections.emptyIterator();
+                });
+
+        try (RemoteLogManager rlm = new RemoteLogManager(config, brokerId, logDir, clusterId, time,
+                tp -> Optional.of(mockLog),
+                (topicPartition, offset) -> { },
+                brokerTopicStats, metrics, endPoint) {
+            @Override
+            public RemoteLogMetadataManager createRemoteLogMetadataManager() {
+                return remoteLogMetadataManager;
+            }
+        }) {
+            assertEquals(0L, rlm.findLogStartOffset(leaderTopicIdPartition, mockLog));
+        }
+    }
+
+    @Test
+    public void testConsolidatingBootstrapReportsRemoteEarliestAndDoesNotOverReclaimWhenOverrideAbsent()
+            throws RemoteStorageException, ExecutionException, InterruptedException, IOException {
+        // End-to-end unit guard for a consolidating partition whose cross-tier remote start override is
+        // empty (reporter stuck or not yet propagated) and whose local start is pinned at the seal (200).
+        // On the same leader both halves must hold together:
+        //   1) become-leader reports the remote earliest (0), never the seal and never nothing, so
+        //      remote_log_start_offset heals to 0 instead of leaving EARLIEST to COALESCE to the WAL frontier;
+        //   2) with retention disabled the reclaim floor is that same remote earliest (0), so no remote
+        //      segment is deleted and the classic prefix survives.
+        Map<String, Long> logProps = new HashMap<>();
+        logProps.put("retention.bytes", -1L);
+        logProps.put("retention.ms", -1L);
+        LogConfig mockLogConfig = new LogConfig(logProps);
+        when(mockLog.config()).thenReturn(mockLogConfig);
+
+        checkpoint.write(List.of(epochEntry0));
+        LeaderEpochFileCache cache = new LeaderEpochFileCache(leaderTopicIdPartition.topicPartition(), checkpoint, scheduler);
+        when(mockLog.leaderEpochCache()).thenReturn(cache);
+        when(mockLog.topicPartition()).thenReturn(leaderTopicIdPartition.topicPartition());
+        when(mockLog.logEndOffset()).thenReturn(200L);
+        when(mockLog.logStartOffset()).thenReturn(200L);      // seal: reclaim-floor trap
+        when(mockLog.localLogStartOffset()).thenReturn(200L); // seal: findLogStartOffset fallback trap
+
+        List<RemoteLogSegmentMetadata> metadataList =
+                listRemoteLogSegmentMetadata(leaderTopicIdPartition, 2, 100, 1024, List.of(epochEntry0), RemoteLogSegmentState.COPY_SEGMENT_FINISHED);
+        when(remoteLogMetadataManager.listRemoteLogSegments(leaderTopicIdPartition))
+                .thenAnswer(ans -> metadataList.iterator());
+        when(remoteLogMetadataManager.listRemoteLogSegments(eq(leaderTopicIdPartition), anyInt()))
+                .thenAnswer(inv -> {
+                    int epoch = inv.getArgument(1);
+                    return epoch == 0 ? metadataList.iterator() : Collections.emptyIterator();
+                });
+        when(remoteLogMetadataManager.updateRemoteLogSegmentMetadata(any(RemoteLogSegmentMetadataUpdate.class)))
+                .thenReturn(CompletableFuture.runAsync(() -> { }));
+        doNothing().when(remoteStorageManager).deleteLogSegmentData(any(RemoteLogSegmentMetadata.class));
+
+        AtomicLong reported = new AtomicLong(-1L);
+        try (RemoteLogManager rlm = new RemoteLogManager(config, brokerId, logDir, clusterId, time,
+                tp -> Optional.of(mockLog),
+                (topicPartition, offset) -> reported.set(offset),
+                brokerTopicStats, metrics, endPoint,
+                topicPartition -> OptionalLong.empty(),
+                topicPartition -> true) {
+            @Override
+            public RemoteStorageManager createRemoteStorageManager() {
+                return remoteStorageManager;
+            }
+            @Override
+            public RemoteLogMetadataManager createRemoteLogMetadataManager() {
+                return remoteLogMetadataManager;
+            }
+        }) {
+            doReturn(true).when(remoteLogMetadataManager).isReady(any(TopicIdPartition.class));
+
+            RemoteLogManager.RLMCopyTask copyTask = rlm.new RLMCopyTask(leaderTopicIdPartition, 128);
+            copyTask.copyLogSegmentsToRemote(mockLog);
+            // The born-consolidated bootstrap reports the true remote earliest, not the seal and not nothing.
+            assertEquals(0L, reported.get());
+
+            RemoteLogManager.RLMExpirationTask expirationTask = rlm.new RLMExpirationTask(leaderTopicIdPartition);
+            expirationTask.cleanupExpiredRemoteLogSegments();
+        }
+
+        // Reclaim floor is the remote earliest (0), so the classic prefix is preserved, not over-reclaimed.
+        verify(remoteStorageManager, never()).deleteLogSegmentData(metadataList.get(0));
+        verify(remoteStorageManager, never()).deleteLogSegmentData(metadataList.get(1));
+    }
+
+    @Test
+    public void testConsolidatingOverrideFloorHonoredWithActiveSizeRetention()
+            throws RemoteStorageException, ExecutionException, InterruptedException, IOException {
+        // Inkless (retention x DeleteRecords composition, size): an active retention.bytes breach in the
+        // SAME cleanup cycle must not drag the log-start reclaim floor to the broker-local seal. Three 1 KiB
+        // remote segments [0,99],[100,199],[200,299] plus 512 B local (total 3584). The consolidating
+        // override sets the log-start floor at X = 100 (NOT the seal at 300). retention.bytes = 2560 leaves
+        // one segment's worth (1024 B) of size budget, so:
+        //   - [0,99]   is reclaimed by the log-start floor (endOffset 99 < 100),
+        //   - [100,199] is reclaimed by the ACTIVE size breach (legitimate: over the byte budget), and
+        //   - [200,299] SURVIVES -- retention is satisfied and it is at/above the override floor.
+        // The seal (300) would additionally reclaim [200,299]; asserting it survives proves the override
+        // floor, not the seal, governs the log-start reclaim even with retention actively deleting.
+        int segmentSize = 1024;
+        long localLogSegmentsSize = 512L;
+        // total = 3*1024 + 512 = 3584; leave ~1 segment (1024) of size budget so exactly [100,199] breaches.
+        long retentionSize = 2560L;
+        Map<String, Long> logProps = new HashMap<>();
+        logProps.put("retention.bytes", retentionSize);
+        logProps.put("retention.ms", -1L);
+        LogConfig mockLogConfig = new LogConfig(logProps);
+        when(mockLog.config()).thenReturn(mockLogConfig);
+
+        List<EpochEntry> epochEntries = List.of(epochEntry0);
+        checkpoint.write(epochEntries);
+        LeaderEpochFileCache cache = new LeaderEpochFileCache(tp, checkpoint, scheduler);
+        when(mockLog.leaderEpochCache()).thenReturn(cache);
+        when(mockLog.topicPartition()).thenReturn(leaderTopicIdPartition.topicPartition());
+        when(mockLog.logEndOffset()).thenReturn(300L);
+        when(mockLog.logStartOffset()).thenReturn(300L);        // seal trap: would delete ALL if used
+        when(mockLog.localLogStartOffset()).thenReturn(300L);
+        when(mockLog.onlyLocalLogSegmentsSize()).thenReturn(localLogSegmentsSize);
+
+        List<RemoteLogSegmentMetadata> metadataList =
+                listRemoteLogSegmentMetadata(leaderTopicIdPartition, 3, 100, segmentSize, epochEntries, RemoteLogSegmentState.COPY_SEGMENT_FINISHED);
+        when(remoteLogMetadataManager.listRemoteLogSegments(leaderTopicIdPartition))
+                .thenAnswer(ans -> metadataList.iterator());
+        when(remoteLogMetadataManager.listRemoteLogSegments(leaderTopicIdPartition, 0))
+                .thenAnswer(ans -> metadataList.iterator());
+        when(remoteLogMetadataManager.updateRemoteLogSegmentMetadata(any(RemoteLogSegmentMetadataUpdate.class)))
+                .thenReturn(CompletableFuture.runAsync(() -> { }));
+        doNothing().when(remoteStorageManager).deleteLogSegmentData(any(RemoteLogSegmentMetadata.class));
+
+        try (RemoteLogManager rlmWithOverride = new RemoteLogManager(config, brokerId, logDir, clusterId, time,
+                tp -> Optional.of(mockLog),
+                (topicPartition, offset) -> currentLogStartOffset.set(offset),
+                brokerTopicStats, metrics, endPoint,
+                topicPartition -> OptionalLong.of(100L),
+                topicPartition -> true) {
+            @Override
+            public RemoteStorageManager createRemoteStorageManager() {
+                return remoteStorageManager;
+            }
+            @Override
+            public RemoteLogMetadataManager createRemoteLogMetadataManager() {
+                return remoteLogMetadataManager;
+            }
+            @Override
+            long findLogStartOffset(TopicIdPartition topicIdPartition, UnifiedLog log) {
+                return 0L;
+            }
+        }) {
+            doReturn(true).when(remoteLogMetadataManager).isReady(any(TopicIdPartition.class));
+            RemoteLogManager.RLMExpirationTask task = rlmWithOverride.new RLMExpirationTask(leaderTopicIdPartition);
+            task.cleanupExpiredRemoteLogSegments();
+        }
+
+        // Log-start floor (100) reclaimed [0,99]; the active size breach reclaimed [100,199]; the override
+        // floor (not the seal at 300) kept [200,299].
+        verify(remoteStorageManager).deleteLogSegmentData(metadataList.get(0));
+        verify(remoteStorageManager).deleteLogSegmentData(metadataList.get(1));
+        verify(remoteStorageManager, never()).deleteLogSegmentData(metadataList.get(2));
+    }
+
+    @Test
+    public void testConsolidatingOverrideFloorHonoredWithActiveTimeRetention()
+            throws RemoteStorageException, ExecutionException, InterruptedException, IOException {
+        // Inkless (retention x DeleteRecords composition, time): same guarantee as the size variant but the
+        // active breach is retention.ms. Only the oldest of the two segments is aged past retention.ms=1;
+        // the override X = 100 governs the log-start floor (not the seal at 200). [0,99] is deleted (time-
+        // and log-start-breached) and [100,199] survives -- the active time breach does not revert the
+        // floor to the seal.
+        int segmentSize = 1024;
+        long localLogSegmentsSize = 512L;
+        Map<String, Long> logProps = new HashMap<>();
+        logProps.put("retention.bytes", -1L);
+        logProps.put("retention.ms", 1L);
+        LogConfig mockLogConfig = new LogConfig(logProps);
+        when(mockLog.config()).thenReturn(mockLogConfig);
+
+        List<EpochEntry> epochEntries = List.of(epochEntry0);
+        checkpoint.write(epochEntries);
+        LeaderEpochFileCache cache = new LeaderEpochFileCache(tp, checkpoint, scheduler);
+        when(mockLog.leaderEpochCache()).thenReturn(cache);
+        when(mockLog.topicPartition()).thenReturn(leaderTopicIdPartition.topicPartition());
+        when(mockLog.logEndOffset()).thenReturn(200L);
+        when(mockLog.logStartOffset()).thenReturn(200L);        // seal trap
+        when(mockLog.localLogStartOffset()).thenReturn(200L);
+        when(mockLog.onlyLocalLogSegmentsSize()).thenReturn(localLogSegmentsSize);
+
+        // deletableSegmentCount=1 ages only the oldest segment past retention.ms.
+        List<RemoteLogSegmentMetadata> metadataList = listRemoteLogSegmentMetadataByTime(
+                leaderTopicIdPartition, 2, 1, 100, segmentSize, epochEntries, RemoteLogSegmentState.COPY_SEGMENT_FINISHED);
+        when(remoteLogMetadataManager.listRemoteLogSegments(leaderTopicIdPartition))
+                .thenAnswer(ans -> metadataList.iterator());
+        when(remoteLogMetadataManager.listRemoteLogSegments(leaderTopicIdPartition, 0))
+                .thenAnswer(ans -> metadataList.iterator());
+        when(remoteLogMetadataManager.updateRemoteLogSegmentMetadata(any(RemoteLogSegmentMetadataUpdate.class)))
+                .thenReturn(CompletableFuture.runAsync(() -> { }));
+        doNothing().when(remoteStorageManager).deleteLogSegmentData(any(RemoteLogSegmentMetadata.class));
+
+        try (RemoteLogManager rlmWithOverride = new RemoteLogManager(config, brokerId, logDir, clusterId, time,
+                tp -> Optional.of(mockLog),
+                (topicPartition, offset) -> currentLogStartOffset.set(offset),
+                brokerTopicStats, metrics, endPoint,
+                topicPartition -> OptionalLong.of(100L),
+                topicPartition -> true) {
+            @Override
+            public RemoteStorageManager createRemoteStorageManager() {
+                return remoteStorageManager;
+            }
+            @Override
+            public RemoteLogMetadataManager createRemoteLogMetadataManager() {
+                return remoteLogMetadataManager;
+            }
+            @Override
+            long findLogStartOffset(TopicIdPartition topicIdPartition, UnifiedLog log) {
+                return 0L;
+            }
+        }) {
+            doReturn(true).when(remoteLogMetadataManager).isReady(any(TopicIdPartition.class));
+            RemoteLogManager.RLMExpirationTask task = rlmWithOverride.new RLMExpirationTask(leaderTopicIdPartition);
+            task.cleanupExpiredRemoteLogSegments();
+        }
+
+        verify(remoteStorageManager).deleteLogSegmentData(metadataList.get(0));
+        verify(remoteStorageManager, never()).deleteLogSegmentData(metadataList.get(1));
+    }
+
+    @Test
+    public void testConsolidatingMidSegmentOverrideKeepsStraddlingSegment()
+            throws RemoteStorageException, ExecutionException, InterruptedException, IOException {
+        // Inkless (mid-segment delete_before): when the cross-tier earliest X lands INSIDE a segment, only
+        // whole segments strictly below X are physically reclaimed; the segment that straddles X is kept
+        // because its tail [X, segEnd] is still live. X = 150 with segments [0,99] and [100,199]: [0,99]
+        // (endOffset 99 < 150) is reclaimed, but [100,199] (which contains 150) is NOT over-reclaimed.
+        // The advertised earliest still advances to 150 -- served correctness is a broker/log concern
+        // exercised elsewhere; here we pin that the boundary segment is not physically deleted.
+        Map<String, Long> logProps = new HashMap<>();
+        logProps.put("retention.bytes", -1L);
+        logProps.put("retention.ms", -1L);
+        LogConfig mockLogConfig = new LogConfig(logProps);
+        when(mockLog.config()).thenReturn(mockLogConfig);
+
+        List<EpochEntry> epochEntries = List.of(epochEntry0);
+        checkpoint.write(epochEntries);
+        LeaderEpochFileCache cache = new LeaderEpochFileCache(tp, checkpoint, scheduler);
+        when(mockLog.leaderEpochCache()).thenReturn(cache);
+        when(mockLog.topicPartition()).thenReturn(leaderTopicIdPartition.topicPartition());
+        when(mockLog.logEndOffset()).thenReturn(200L);
+        when(mockLog.logStartOffset()).thenReturn(200L);
+
+        List<RemoteLogSegmentMetadata> metadataList =
+                listRemoteLogSegmentMetadata(leaderTopicIdPartition, 2, 100, 1024, epochEntries, RemoteLogSegmentState.COPY_SEGMENT_FINISHED);
+        when(remoteLogMetadataManager.listRemoteLogSegments(leaderTopicIdPartition))
+                .thenAnswer(ans -> metadataList.iterator());
+        when(remoteLogMetadataManager.listRemoteLogSegments(leaderTopicIdPartition, 0))
+                .thenAnswer(ans -> metadataList.iterator());
+        when(remoteLogMetadataManager.updateRemoteLogSegmentMetadata(any(RemoteLogSegmentMetadataUpdate.class)))
+                .thenReturn(CompletableFuture.runAsync(() -> { }));
+        doNothing().when(remoteStorageManager).deleteLogSegmentData(any(RemoteLogSegmentMetadata.class));
+
+        try (RemoteLogManager rlmWithOverride = new RemoteLogManager(config, brokerId, logDir, clusterId, time,
+                tp -> Optional.of(mockLog),
+                (topicPartition, offset) -> currentLogStartOffset.set(offset),
+                brokerTopicStats, metrics, endPoint,
+                topicPartition -> OptionalLong.of(150L),   // lands inside the second segment [100,199]
+                topicPartition -> true) {
+            @Override
+            public RemoteStorageManager createRemoteStorageManager() {
+                return remoteStorageManager;
+            }
+            @Override
+            public RemoteLogMetadataManager createRemoteLogMetadataManager() {
+                return remoteLogMetadataManager;
+            }
+            @Override
+            long findLogStartOffset(TopicIdPartition topicIdPartition, UnifiedLog log) {
+                return 0L;
+            }
+        }) {
+            doReturn(true).when(remoteLogMetadataManager).isReady(any(TopicIdPartition.class));
+            RemoteLogManager.RLMExpirationTask task = rlmWithOverride.new RLMExpirationTask(leaderTopicIdPartition);
+            task.cleanupExpiredRemoteLogSegments();
+        }
+
+        // Only the whole segment strictly below X is reclaimed; the segment straddling X survives.
+        verify(remoteStorageManager).deleteLogSegmentData(metadataList.get(0));
+        verify(remoteStorageManager, never()).deleteLogSegmentData(metadataList.get(1));
+    }
+
+    @Test
+    public void testConsolidatingReclaimFloorStableAcrossRepeatedLeaderCycles()
+            throws RemoteStorageException, ExecutionException, InterruptedException, IOException {
+        // Inkless (rapid/repeated failover): a consolidating partition can be rebuilt-as-leader and run the
+        // RLM expiration task repeatedly. Each cycle must recompute the floor from the override X (=100),
+        // never accumulating toward the seal (200), so the survivor [100,199] is not over-reclaimed no
+        // matter how many cleanup cycles run. Runs the task twice (two "become leader" cycles) and asserts
+        // the survivor is never touched across both.
+        Map<String, Long> logProps = new HashMap<>();
+        logProps.put("retention.bytes", -1L);
+        logProps.put("retention.ms", -1L);
+        LogConfig mockLogConfig = new LogConfig(logProps);
+        when(mockLog.config()).thenReturn(mockLogConfig);
+
+        List<EpochEntry> epochEntries = List.of(epochEntry0);
+        checkpoint.write(epochEntries);
+        LeaderEpochFileCache cache = new LeaderEpochFileCache(tp, checkpoint, scheduler);
+        when(mockLog.leaderEpochCache()).thenReturn(cache);
+        when(mockLog.topicPartition()).thenReturn(leaderTopicIdPartition.topicPartition());
+        when(mockLog.logEndOffset()).thenReturn(200L);
+        when(mockLog.logStartOffset()).thenReturn(200L); // seal trap on every rebuilt-leader cycle
+
+        List<RemoteLogSegmentMetadata> metadataList =
+                listRemoteLogSegmentMetadata(leaderTopicIdPartition, 2, 100, 1024, epochEntries, RemoteLogSegmentState.COPY_SEGMENT_FINISHED);
+        when(remoteLogMetadataManager.listRemoteLogSegments(leaderTopicIdPartition))
+                .thenAnswer(ans -> metadataList.iterator());
+        when(remoteLogMetadataManager.listRemoteLogSegments(leaderTopicIdPartition, 0))
+                .thenAnswer(ans -> metadataList.iterator());
+        when(remoteLogMetadataManager.updateRemoteLogSegmentMetadata(any(RemoteLogSegmentMetadataUpdate.class)))
+                .thenReturn(CompletableFuture.runAsync(() -> { }));
+        doNothing().when(remoteStorageManager).deleteLogSegmentData(any(RemoteLogSegmentMetadata.class));
+
+        try (RemoteLogManager rlmWithOverride = new RemoteLogManager(config, brokerId, logDir, clusterId, time,
+                tp -> Optional.of(mockLog),
+                (topicPartition, offset) -> currentLogStartOffset.set(offset),
+                brokerTopicStats, metrics, endPoint,
+                topicPartition -> OptionalLong.of(100L),
+                topicPartition -> true) {
+            @Override
+            public RemoteStorageManager createRemoteStorageManager() {
+                return remoteStorageManager;
+            }
+            @Override
+            public RemoteLogMetadataManager createRemoteLogMetadataManager() {
+                return remoteLogMetadataManager;
+            }
+            @Override
+            long findLogStartOffset(TopicIdPartition topicIdPartition, UnifiedLog log) {
+                return 0L;
+            }
+        }) {
+            doReturn(true).when(remoteLogMetadataManager).isReady(any(TopicIdPartition.class));
+            // Two consecutive become-leader / cleanup cycles.
+            rlmWithOverride.new RLMExpirationTask(leaderTopicIdPartition).cleanupExpiredRemoteLogSegments();
+            rlmWithOverride.new RLMExpirationTask(leaderTopicIdPartition).cleanupExpiredRemoteLogSegments();
+        }
+
+        // The survivor above the override floor is never reclaimed, no matter how many cycles run.
+        verify(remoteStorageManager, never()).deleteLogSegmentData(metadataList.get(1));
+        // The below-floor segment is reclaimed on each cycle (a mock artifact: in reality it is marked
+        // deleted after the first pass); the point is that it IS reclaimed and the survivor is not.
+        verify(remoteStorageManager, atLeastOnce()).deleteLogSegmentData(metadataList.get(0));
     }
 
     @ParameterizedTest(name = "testRemoteDeleteLagsOnRetentionBreachedSegments retentionSize={0} retentionMs={1}")
