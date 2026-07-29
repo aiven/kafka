@@ -150,6 +150,9 @@ public class FeatureCommand {
         upgradeParser.addArgument("--dry-run")
                 .help("Validate this upgrade, but do not perform it.")
                 .action(storeTrue());
+        upgradeParser.addArgument("--ignore-stale-controller-registrations")
+                .help("Ignore controller registrations that are no longer part of the live voter set when validating feature support.")
+                .action(storeTrue());
 
     }
 
@@ -247,7 +250,12 @@ public class FeatureCommand {
     }
 
     static void handleUpgrade(Namespace namespace, Admin adminClient) throws TerseException {
-        handleUpgradeOrDowngrade("upgrade", namespace, adminClient, FeatureUpdate.UpgradeType.UPGRADE);
+        handleUpgradeOrDowngrade(
+            "upgrade",
+            namespace,
+            adminClient,
+            FeatureUpdate.UpgradeType.UPGRADE,
+            Boolean.TRUE.equals(namespace.getBoolean("ignore_stale_controller_registrations")));
     }
 
     static FeatureUpdate.UpgradeType downgradeType(Namespace namespace) {
@@ -260,7 +268,7 @@ public class FeatureCommand {
     }
 
     static void handleDowngrade(Namespace namespace, Admin adminClient) throws TerseException {
-        handleUpgradeOrDowngrade("downgrade", namespace, adminClient, downgradeType(namespace));
+        handleUpgradeOrDowngrade("downgrade", namespace, adminClient, downgradeType(namespace), false);
     }
 
     static String[] parseNameAndLevel(String input) {
@@ -279,7 +287,13 @@ public class FeatureCommand {
         return new String[]{name, levelString};
     }
 
-    private static void handleUpgradeOrDowngrade(String op, Namespace namespace, Admin admin, FeatureUpdate.UpgradeType upgradeType) throws TerseException {
+    private static void handleUpgradeOrDowngrade(
+        String op,
+        Namespace namespace,
+        Admin admin,
+        FeatureUpdate.UpgradeType upgradeType,
+        boolean ignoreStaleControllerRegistrations
+    ) throws TerseException {
         String metadata = namespace.getString("metadata");
         List<String> features = namespace.getList("feature");
         String releaseVersion = namespace.getString("release_version");
@@ -337,7 +351,7 @@ public class FeatureCommand {
             }
         }
 
-        update(op, admin, updates, namespace.getBoolean("dry_run"));
+        update(op, admin, updates, namespace.getBoolean("dry_run"), ignoreStaleControllerRegistrations);
     }
 
     static void handleDisable(Namespace namespace, Admin adminClient) throws TerseException {
@@ -353,7 +367,7 @@ public class FeatureCommand {
             });
         }
 
-        update("disable", adminClient, updates, namespace.getBoolean("dry_run"));
+        update("disable", adminClient, updates, namespace.getBoolean("dry_run"), false);
     }
 
     static void handleVersionMapping(Namespace namespace, List<Feature> validFeatures) throws TerseException {
@@ -426,12 +440,22 @@ public class FeatureCommand {
         }
     }
 
-    private static void update(String op, Admin admin, Map<String, FeatureUpdate> updates, Boolean dryRun) throws TerseException {
+    private static void update(
+        String op,
+        Admin admin,
+        Map<String, FeatureUpdate> updates,
+        Boolean dryRun,
+        boolean ignoreStaleControllerRegistrations
+    ) throws TerseException {
         if (updates.isEmpty()) {
             throw new TerseException("You must specify at least one feature to " + op);
         }
 
-        UpdateFeaturesResult result = admin.updateFeatures(updates, new UpdateFeaturesOptions().validateOnly(dryRun));
+        UpdateFeaturesResult result = admin.updateFeatures(
+            updates,
+            new UpdateFeaturesOptions()
+                .validateOnly(dryRun)
+                .ignoreStaleControllerRegistrations(ignoreStaleControllerRegistrations));
         Map<String, Optional<Throwable>> errors = new TreeMap<>();
         result.values().forEach((feature, future) -> {
             try {

@@ -21,7 +21,9 @@
   // Version 1 adds validate only field.
   //
   // Version 2 changes the response to not return feature level results.
-  "validVersions": "0-2",
+  //
+  // Version 3 adds the IgnoreStaleControllerRegistrations field.
+  "validVersions": "0-3",
   "flexibleVersions": "0+",
   "fields": [
     { "name": "timeoutMs", "type": "int32", "versions": "0+", "default": "60000",
@@ -38,6 +40,8 @@
         "about": "Determine which type of upgrade will be performed: 1 will perform an upgrade only (default), 2 is safe downgrades only (lossless), 3 is unsafe downgrades (lossy)."}
     ]},
     { "name": "ValidateOnly", "type": "bool", "versions": "1+", "default": false,
-      "about": "True if we should validate the request, but not perform the upgrade or downgrade."}
+      "about": "True if we should validate the request, but not perform the upgrade or downgrade."},
+    { "name": "IgnoreStaleControllerRegistrations", "type": "bool", "versions": "3+", "default": false,
+      "about": "True if feature validation should ignore controller registrations that are no longer part of the current live voter set."}
   ]
 }
