@@ -461,7 +461,7 @@ public class GetOffsetShellTest {
     @ClusterTest
     public void testPrintVersion() {
         String out = ToolsTestUtils.captureStandardOut(() -> GetOffsetShell.mainNoExit("--version"));
-        assertEquals(AppInfoParser.getVersion(), out);
+        assertEquals(AppInfoParser.getVersion() + AppInfoParser.getInklessTagSuffix(), out);
     }
 
     private void assertExitCodeIsOne(String... args) {

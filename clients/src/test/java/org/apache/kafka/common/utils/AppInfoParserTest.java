@@ -72,6 +72,14 @@ public class AppInfoParserTest {
         assertNull(metrics.metric(metrics.metricName("start-time-ms", "app-info")));
     }
 
+    // INKLESS: without a baked kafka-version.properties on the test classpath the inkless
+    // tag defaults to "unknown" and the --version suffix is suppressed.
+    @Test
+    public void testInklessTagDefaultsToUnknownAndSuppressesSuffix() {
+        assertEquals(AppInfoParser.DEFAULT_VALUE, AppInfoParser.getInklessTag());
+        assertEquals("", AppInfoParser.getInklessTagSuffix());
+    }
+
     private void registerAppInfo() throws JMException {
         assertEquals(EXPECTED_COMMIT_VERSION, AppInfoParser.getCommitId());
         assertEquals(EXPECTED_VERSION, AppInfoParser.getVersion());
