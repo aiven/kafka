@@ -137,7 +137,9 @@ public interface RaftClient<T> extends AutoCloseable {
      *
      * @return the current voter IDs
      */
-    Set<Integer> voterIds();
+    default Set<Integer> voterIds() {
+        return Set.of();
+    }
 
     /**
      * Prepare a list of records to be appended to the log.

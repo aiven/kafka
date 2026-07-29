@@ -34,5 +34,7 @@ public interface ClusterFeatureSupportDescriber {
      * the metadata image but are not voters, including observers and controllers that were removed
      * from the quorum, are not included. May be empty if the voter set is not known yet.
      */
-    Set<Integer> quorumControllerIds();
+    default Set<Integer> quorumControllerIds() {
+        return Set.of();
+    }
 }

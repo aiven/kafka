@@ -338,7 +338,32 @@ public class FeatureControlManagerTest {
     }
 
     @Test
-    public void testMetadataVersionUpgradeIgnoresStaleControllerRegistrations() {
+    public void testMetadataVersionUpgradeChecksStaleControllerRegistrationsByDefault() {
+        FeatureControlManager manager = new FeatureControlManager.Builder().
+            setQuorumFeatures(features(MetadataVersion.FEATURE_NAME,
+                MetadataVersion.MINIMUM_VERSION.featureLevel(), MetadataVersion.IBP_4_0_IV3.featureLevel())).
+            setClusterFeatureSupportDescriber(createFakeClusterFeatureSupportDescriber(
+                Collections.emptyList(),
+                Arrays.asList(
+                    new SimpleImmutableEntry<>(1, Collections.singletonMap(MetadataVersion.FEATURE_NAME,
+                        VersionRange.of(MetadataVersion.MINIMUM_VERSION.featureLevel(), MetadataVersion.IBP_4_0_IV3.featureLevel()))),
+                    new SimpleImmutableEntry<>(2, Collections.singletonMap(MetadataVersion.FEATURE_NAME,
+                        VersionRange.of(MetadataVersion.MINIMUM_VERSION.featureLevel(), MetadataVersion.IBP_4_0_IV2.featureLevel())))
+                ),
+                Set.of(0, 1))).
+            setMetadataVersion(MetadataVersion.IBP_4_0_IV2).
+            build();
+
+        assertEquals(ControllerResult.of(Collections.emptyList(), new ApiError(Errors.INVALID_UPDATE_VERSION,
+            "Invalid update version 25 for feature metadata.version. Controller 2 only supports versions 7-24")),
+            manager.updateFeatures(
+                singletonMap(MetadataVersion.FEATURE_NAME, MetadataVersion.IBP_4_0_IV3.featureLevel()),
+                singletonMap(MetadataVersion.FEATURE_NAME, FeatureUpdate.UpgradeType.UPGRADE),
+                true));
+    }
+
+    @Test
+    public void testMetadataVersionUpgradeIgnoresStaleControllerRegistrationsWhenOptedIn() {
         FeatureControlManager manager = new FeatureControlManager.Builder().
             setQuorumFeatures(features(MetadataVersion.FEATURE_NAME,
                 MetadataVersion.MINIMUM_VERSION.featureLevel(), MetadataVersion.IBP_4_0_IV3.featureLevel())).
@@ -358,6 +383,7 @@ public class FeatureControlManagerTest {
             manager.updateFeatures(
                 singletonMap(MetadataVersion.FEATURE_NAME, MetadataVersion.IBP_4_0_IV3.featureLevel()),
                 singletonMap(MetadataVersion.FEATURE_NAME, FeatureUpdate.UpgradeType.UPGRADE),
+                true,
                 true));
     }
 
@@ -383,6 +409,54 @@ public class FeatureControlManagerTest {
             manager.updateFeatures(
                 singletonMap(MetadataVersion.FEATURE_NAME, MetadataVersion.IBP_4_0_IV3.featureLevel()),
                 singletonMap(MetadataVersion.FEATURE_NAME, FeatureUpdate.UpgradeType.UPGRADE),
+                true,
+                true));
+    }
+
+    @Test
+    public void testMetadataVersionUpgradeRequiresLiveQuorumIdsWhenIgnoringStaleControllers() {
+        FeatureControlManager manager = new FeatureControlManager.Builder().
+            setQuorumFeatures(features(MetadataVersion.FEATURE_NAME,
+                MetadataVersion.MINIMUM_VERSION.featureLevel(), MetadataVersion.IBP_4_0_IV3.featureLevel())).
+            setClusterFeatureSupportDescriber(createFakeClusterFeatureSupportDescriber(
+                Collections.emptyList(),
+                Arrays.asList(
+                    new SimpleImmutableEntry<>(1, Collections.singletonMap(MetadataVersion.FEATURE_NAME,
+                        VersionRange.of(MetadataVersion.MINIMUM_VERSION.featureLevel(), MetadataVersion.IBP_4_0_IV3.featureLevel()))),
+                    new SimpleImmutableEntry<>(2, Collections.singletonMap(MetadataVersion.FEATURE_NAME,
+                        VersionRange.of(MetadataVersion.MINIMUM_VERSION.featureLevel(), MetadataVersion.IBP_4_0_IV2.featureLevel())))
+                ),
+                Set.of())).
+            setMetadataVersion(MetadataVersion.IBP_4_0_IV2).
+            build();
+
+        assertEquals(ControllerResult.of(Collections.emptyList(), new ApiError(Errors.INVALID_UPDATE_VERSION,
+            "Invalid update version 25 for feature metadata.version. " +
+                "Unable to determine the current quorum controller IDs while ignoring stale controller registrations.")),
+            manager.updateFeatures(
+                singletonMap(MetadataVersion.FEATURE_NAME, MetadataVersion.IBP_4_0_IV3.featureLevel()),
+                singletonMap(MetadataVersion.FEATURE_NAME, FeatureUpdate.UpgradeType.UPGRADE),
+                true,
+                true));
+    }
+
+    @Test
+    public void testIgnoreStaleControllersDoesNotRequireLiveQuorumIdsBeforeControllerRegistrationSupport() {
+        FeatureControlManager manager = new FeatureControlManager.Builder().
+            setQuorumFeatures(features(MetadataVersion.FEATURE_NAME,
+                MetadataVersion.MINIMUM_VERSION.featureLevel(), MetadataVersion.IBP_4_0_IV3.featureLevel())).
+            setClusterFeatureSupportDescriber(createFakeClusterFeatureSupportDescriber(
+                Collections.emptyList(),
+                Collections.emptyList(),
+                Set.of())).
+            setMetadataVersion(MetadataVersion.IBP_3_6_IV0).
+            build();
+
+        assertEquals(ControllerResult.of(Collections.emptyList(), ApiError.NONE),
+            manager.updateFeatures(
+                singletonMap(MetadataVersion.FEATURE_NAME, MetadataVersion.IBP_3_6_IV1.featureLevel()),
+                singletonMap(MetadataVersion.FEATURE_NAME, FeatureUpdate.UpgradeType.UPGRADE),
+                true,
                 true));
     }
 

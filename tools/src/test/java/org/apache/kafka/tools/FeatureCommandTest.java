@@ -16,7 +16,10 @@
  */
 package org.apache.kafka.tools;
 
+import org.apache.kafka.clients.admin.FeatureUpdate;
 import org.apache.kafka.clients.admin.MockAdminClient;
+import org.apache.kafka.clients.admin.UpdateFeaturesOptions;
+import org.apache.kafka.clients.admin.UpdateFeaturesResult;
 import org.apache.kafka.common.test.ClusterInstance;
 import org.apache.kafka.common.test.api.ClusterTest;
 import org.apache.kafka.common.test.api.Type;
@@ -26,12 +29,15 @@ import org.apache.kafka.server.common.MetadataVersion;
 import net.sourceforge.argparse4j.inf.Namespace;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
 import static java.lang.String.format;
@@ -219,6 +225,32 @@ public class FeatureCommandTest {
             .getMessage().contains("Can't parse feature=level string baaz: equals sign not found."));
         assertTrue(assertThrows(RuntimeException.class, () -> FeatureCommand.parseNameAndLevel("w=tf"))
             .getMessage().contains("Can't parse feature=level string w=tf: unable to parse tf as a short."));
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    public void testHandleUpgradePropagatesIgnoreStaleControllerRegistrations(boolean ignoreStaleControllerRegistrations) {
+        AtomicReference<UpdateFeaturesOptions> capturedOptions = new AtomicReference<>();
+        MockAdminClient admin = new MockAdminClient() {
+            @Override
+            public UpdateFeaturesResult updateFeatures(Map<String, FeatureUpdate> featureUpdates, UpdateFeaturesOptions options) {
+                capturedOptions.set(options);
+                return super.updateFeatures(featureUpdates, options);
+            }
+        };
+
+        Map<String, Object> namespace = new HashMap<>();
+        namespace.put("feature", Collections.singletonList("foo.bar=1"));
+        namespace.put("dry_run", true);
+        if (ignoreStaleControllerRegistrations) {
+            namespace.put("ignore_stale_controller_registrations", true);
+        }
+
+        ToolsTestUtils.captureStandardOut(() ->
+            assertThrows(TerseException.class, () -> FeatureCommand.handleUpgrade(new Namespace(namespace), admin)));
+
+        assertEquals(ignoreStaleControllerRegistrations, capturedOptions.get().ignoreStaleControllerRegistrations());
+        assertTrue(capturedOptions.get().validateOnly());
     }
 
     private static MockAdminClient buildAdminClient() {

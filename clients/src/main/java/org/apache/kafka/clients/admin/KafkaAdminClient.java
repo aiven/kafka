@@ -4539,6 +4539,7 @@ public class KafkaAdminClient extends AdminClient {
                     new UpdateFeaturesRequestData()
                         .setTimeoutMs(timeoutMs)
                         .setValidateOnly(options.validateOnly())
+                        .setIgnoreStaleControllerRegistrations(options.ignoreStaleControllerRegistrations())
                         .setFeatureUpdates(featureUpdatesRequestData));
             }
 
