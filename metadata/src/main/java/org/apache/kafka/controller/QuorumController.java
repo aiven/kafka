@@ -2068,7 +2068,11 @@ public final class QuorumController implements Controller {
                 upgradeTypes.put(featureName, FeatureUpdate.UpgradeType.fromCode(featureUpdate.upgradeType()));
                 updates.put(featureName, featureUpdate.maxVersionLevel());
             });
-            return configurationControl.updateFeatures(updates, upgradeTypes, request.validateOnly());
+            return configurationControl.updateFeatures(
+                updates,
+                upgradeTypes,
+                request.validateOnly(),
+                request.ignoreStaleControllerRegistrations());
         }).thenApply(result -> {
             UpdateFeaturesResponseData responseData = new UpdateFeaturesResponseData();
 

@@ -148,6 +148,7 @@ import org.apache.kafka.common.message.OffsetFetchRequestData.OffsetFetchRequest
 import org.apache.kafka.common.message.OffsetFetchRequestData.OffsetFetchRequestTopics;
 import org.apache.kafka.common.message.RemoveRaftVoterRequestData;
 import org.apache.kafka.common.message.RemoveRaftVoterResponseData;
+import org.apache.kafka.common.message.UpdateFeaturesRequestData;
 import org.apache.kafka.common.message.ShareGroupDescribeResponseData;
 import org.apache.kafka.common.message.UnregisterBrokerResponseData;
 import org.apache.kafka.common.message.WriteTxnMarkersResponseData;
@@ -7032,6 +7033,29 @@ public class KafkaAdminClientTest {
     public void testUpdateFeaturesTopLevelError() throws Exception {
         final Map<String, FeatureUpdate> updates = makeTestFeatureUpdates();
         testUpdateFeatures(updates, new ApiError(Errors.INVALID_REQUEST), Set.of());
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    public void testUpdateFeaturesRequestSetsIgnoreStaleControllerRegistrations(boolean ignoreStaleControllerRegistrations) throws Exception {
+        try (final AdminClientUnitTestEnv env = mockClientEnv()) {
+            AtomicReference<UpdateFeaturesRequestData> requestData = new AtomicReference<>();
+            env.kafkaClient().prepareResponse(
+                request -> {
+                    if (!(request instanceof UpdateFeaturesRequest)) return false;
+                    requestData.set((UpdateFeaturesRequestData) request.data());
+                    return true;
+                },
+                UpdateFeaturesResponse.createWithErrors(ApiError.NONE, Set.of(), 0));
+
+            env.adminClient().updateFeatures(
+                makeTestFeatureUpdates(),
+                new UpdateFeaturesOptions()
+                    .timeoutMs(10000)
+                    .ignoreStaleControllerRegistrations(ignoreStaleControllerRegistrations)).all().get();
+
+            assertEquals(ignoreStaleControllerRegistrations, requestData.get().ignoreStaleControllerRegistrations());
+        }
     }
 
     @ParameterizedTest
