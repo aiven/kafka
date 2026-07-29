@@ -17,7 +17,8 @@
   "apiKey": 57,
   "type": "response",
   "name": "UpdateFeaturesResponse",
-  "validVersions": "0-2",
+  // Version 3 uses the same response schema as version 2.
+  "validVersions": "0-3",
   "flexibleVersions": "0+",
   "fields": [
     { "name": "ThrottleTimeMs", "type": "int32", "versions": "0+",

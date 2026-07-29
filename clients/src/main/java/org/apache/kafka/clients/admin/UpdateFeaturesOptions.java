@@ -23,6 +23,7 @@ import java.util.Map;
  */
 public class UpdateFeaturesOptions extends AbstractOptions<UpdateFeaturesOptions> {
     private boolean validateOnly = false;
+    private boolean ignoreStaleControllerRegistrations = false;
 
     public boolean validateOnly() {
         return validateOnly;
@@ -30,6 +31,29 @@ public class UpdateFeaturesOptions extends AbstractOptions<UpdateFeaturesOptions
 
     public UpdateFeaturesOptions validateOnly(boolean validateOnly) {
         this.validateOnly = validateOnly;
+        return this;
+    }
+
+    /**
+     * Returns whether feature validation on the controller should ignore controller registrations
+     * that are not part of the current live voter set.
+     */
+    public boolean ignoreStaleControllerRegistrations() {
+        return ignoreStaleControllerRegistrations;
+    }
+
+    /**
+     * Set whether feature validation on the controller should ignore controller registrations that
+     * are not part of the current live voter set.
+     *
+     * This is a recovery option for clusters where removed controllers are still registered in the
+     * metadata log and block feature upgrades. Controllers that are running but are not voters, such
+     * as observer controllers, are ignored as well. Setting this to true requires a controller that
+     * supports version 3 or later of the UpdateFeatures RPC; otherwise the request fails with
+     * {@link org.apache.kafka.common.errors.UnsupportedVersionException}.
+     */
+    public UpdateFeaturesOptions ignoreStaleControllerRegistrations(boolean ignoreStaleControllerRegistrations) {
+        this.ignoreStaleControllerRegistrations = ignoreStaleControllerRegistrations;
         return this;
     }
 }

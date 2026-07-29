@@ -36,6 +36,7 @@ import org.apache.kafka.timeline.TimelineObject;
 
 import org.slf4j.Logger;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -160,6 +161,15 @@ public class FeatureControlManager {
         Map<String, FeatureUpdate.UpgradeType> upgradeTypes,
         boolean validateOnly
     ) {
+        return updateFeatures(updates, upgradeTypes, validateOnly, false);
+    }
+
+    ControllerResult<ApiError> updateFeatures(
+        Map<String, Short> updates,
+        Map<String, FeatureUpdate.UpgradeType> upgradeTypes,
+        boolean validateOnly,
+        boolean ignoreStaleControllerRegistrations
+    ) {
         List<ApiMessageAndVersion> records =
                 BoundedList.newArrayBacked(MAX_RECORDS_PER_USER_OP);
 
@@ -169,7 +179,10 @@ public class FeatureControlManager {
 
         for (Entry<String, Short> entry : updates.entrySet()) {
             ApiError error = updateFeature(entry.getKey(), entry.getValue(),
-                upgradeTypes.getOrDefault(entry.getKey(), FeatureUpdate.UpgradeType.UPGRADE), records, proposedUpdatedVersions);
+                upgradeTypes.getOrDefault(entry.getKey(), FeatureUpdate.UpgradeType.UPGRADE),
+                records,
+                proposedUpdatedVersions,
+                ignoreStaleControllerRegistrations);
             if (!error.error().equals(Errors.NONE)) {
                 return ControllerResult.of(Collections.emptyList(), error);
             }
@@ -191,7 +204,8 @@ public class FeatureControlManager {
         short newVersion,
         FeatureUpdate.UpgradeType upgradeType,
         List<ApiMessageAndVersion> records,
-        Map<String, Short> proposedUpdatedVersions
+        Map<String, Short> proposedUpdatedVersions,
+        boolean ignoreStaleControllerRegistrations
     ) {
         if (upgradeType.equals(FeatureUpdate.UpgradeType.UNKNOWN)) {
             return invalidUpdateVersion(featureName, newVersion,
@@ -210,7 +224,10 @@ public class FeatureControlManager {
                 "A feature version cannot be less than 0.");
         }
 
-        Optional<String> reasonNotSupported = reasonNotSupported(featureName, newVersion);
+        Optional<String> reasonNotSupported = reasonNotSupported(
+            featureName,
+            newVersion,
+            ignoreStaleControllerRegistrations);
         if (reasonNotSupported.isPresent()) {
             return invalidUpdateVersion(featureName, newVersion, reasonNotSupported.get());
         }
@@ -249,7 +266,8 @@ public class FeatureControlManager {
 
     private Optional<String> reasonNotSupported(
         String featureName,
-        short newVersion
+        short newVersion,
+        boolean ignoreStaleControllerRegistrations
     ) {
         int numBrokersChecked = 0;
         int numControllersChecked = 0;
@@ -268,14 +286,21 @@ public class FeatureControlManager {
         }
         String registrationSuffix = "";
         HashSet<Integer> foundControllers = new HashSet<>();
-        Set<Integer> quorumControllerIds = clusterSupportDescriber.quorumControllerIds();
+        List<Integer> ignoredControllers = new ArrayList<>();
+        Set<Integer> controllerIdsToVerify = ignoreStaleControllerRegistrations ?
+            clusterSupportDescriber.quorumControllerIds() :
+            Set.copyOf(quorumFeatures.quorumNodeIds());
         foundControllers.add(quorumFeatures.nodeId());
         if (metadataVersion.get().isControllerRegistrationSupported()) {
+            if (ignoreStaleControllerRegistrations && controllerIdsToVerify.isEmpty()) {
+                return Optional.of("Unable to determine the current quorum controller IDs while ignoring stale controller registrations.");
+            }
             for (Iterator<Entry<Integer, Map<String, VersionRange>>> iter =
                  clusterSupportDescriber.controllerSupported();
                  iter.hasNext(); ) {
                 Entry<Integer, Map<String, VersionRange>> entry = iter.next();
-                if (!quorumControllerIds.contains(entry.getKey())) {
+                if (ignoreStaleControllerRegistrations && !controllerIdsToVerify.contains(entry.getKey())) {
+                    ignoredControllers.add(entry.getKey());
                     continue;
                 }
                 if (entry.getKey() == quorumFeatures.nodeId()) {
@@ -290,11 +315,18 @@ public class FeatureControlManager {
                 foundControllers.add(entry.getKey());
                 numControllersChecked++;
             }
-            for (int id : quorumControllerIds) {
+            for (int id : controllerIdsToVerify) {
                 if (!foundControllers.contains(id)) {
                     return Optional.of("controller " + id + " has not registered, and may not " +
                         "support this feature");
                 }
+            }
+            if (ignoreStaleControllerRegistrations) {
+                log.warn("Validating the update of {} to feature level {} with the stale controller " +
+                    "registration override enabled. Ignored controller registration(s) {} that are not " +
+                    "in the current voter set {}. Any ignored controller that is still running, such as " +
+                    "an observer controller, may be unable to process metadata at this feature level.",
+                    featureName, newVersion, ignoredControllers, controllerIdsToVerify);
             }
         } else {
             registrationSuffix = " Note: unable to verify controller support in the current " +
