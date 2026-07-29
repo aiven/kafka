@@ -666,7 +666,20 @@ public class ConfigurationControlManager {
         Map<String, FeatureUpdate.UpgradeType> upgradeTypes,
         boolean validateOnly
     ) {
-        ControllerResult<ApiError> result = featureControl.updateFeatures(updates, upgradeTypes, validateOnly);
+        return updateFeatures(updates, upgradeTypes, validateOnly, false);
+    }
+
+    ControllerResult<ApiError> updateFeatures(
+        Map<String, Short> updates,
+        Map<String, FeatureUpdate.UpgradeType> upgradeTypes,
+        boolean validateOnly,
+        boolean ignoreStaleControllerRegistrations
+    ) {
+        ControllerResult<ApiError> result = featureControl.updateFeatures(
+            updates,
+            upgradeTypes,
+            validateOnly,
+            ignoreStaleControllerRegistrations);
         if (result.response().isSuccess() &&
             !validateOnly &&
             updates.getOrDefault(EligibleLeaderReplicasVersion.FEATURE_NAME, (short) 0) > 0

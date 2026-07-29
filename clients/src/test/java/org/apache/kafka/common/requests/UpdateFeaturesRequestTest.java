@@ -144,4 +144,27 @@ public class UpdateFeaturesRequestTest {
             "This should fail since allowDowngrade is not supported in v1 of this RPC");
     }
 
+    @Test
+    public void testUpdateFeaturesV3IgnoreStaleControllerRegistrations() {
+        UpdateFeaturesRequestData.FeatureUpdateKeyCollection features =
+            new UpdateFeaturesRequestData.FeatureUpdateKeyCollection();
+
+        features.add(new UpdateFeaturesRequestData.FeatureUpdateKey()
+            .setFeature("foo")
+            .setMaxVersionLevel((short) 1)
+            .setUpgradeType(FeatureUpdate.UpgradeType.SAFE_DOWNGRADE.code())
+        );
+
+        UpdateFeaturesRequest request = new UpdateFeaturesRequest(
+            new UpdateFeaturesRequestData()
+                .setFeatureUpdates(features)
+                .setIgnoreStaleControllerRegistrations(true),
+            UpdateFeaturesRequestData.HIGHEST_SUPPORTED_VERSION
+        );
+
+        request = UpdateFeaturesRequest.parse(request.serialize(), UpdateFeaturesRequestData.HIGHEST_SUPPORTED_VERSION);
+
+        assertEquals(true, request.data().ignoreStaleControllerRegistrations());
+    }
+
 }
