@@ -23,6 +23,7 @@ import java.util.Map;
  */
 public class UpdateFeaturesOptions extends AbstractOptions<UpdateFeaturesOptions> {
     private boolean validateOnly = false;
+    private boolean ignoreStaleControllerRegistrations = false;
 
     public boolean validateOnly() {
         return validateOnly;
@@ -30,6 +31,15 @@ public class UpdateFeaturesOptions extends AbstractOptions<UpdateFeaturesOptions
 
     public UpdateFeaturesOptions validateOnly(boolean validateOnly) {
         this.validateOnly = validateOnly;
+        return this;
+    }
+
+    public boolean ignoreStaleControllerRegistrations() {
+        return ignoreStaleControllerRegistrations;
+    }
+
+    public UpdateFeaturesOptions ignoreStaleControllerRegistrations(boolean ignoreStaleControllerRegistrations) {
+        this.ignoreStaleControllerRegistrations = ignoreStaleControllerRegistrations;
         return this;
     }
 }
