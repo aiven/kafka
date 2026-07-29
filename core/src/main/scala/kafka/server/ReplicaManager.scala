@@ -30,7 +30,7 @@ import kafka.cluster.Partition
 import kafka.log.LogManager
 import kafka.server.HostedPartition.Online
 import kafka.server.QuotaFactory.QuotaManagers
-import kafka.server.ReplicaManager.{AtMinIsrPartitionCountMetricName, ConsolidationFetchBytesInPerSecMetricName, FailedIsrUpdatesPerSecMetricName, IsrExpandsPerSecMetricName, IsrShrinksPerSecMetricName, LeaderCountMetricName, OfflineReplicaCountMetricName, PartitionCountMetricName, PartitionsWithLateTransactionsCountMetricName, ProducerIdCountMetricName, ReassigningPartitionsMetricName, SealedPartitionsCountMetricName, UnderMinIsrPartitionCountMetricName, UnderReplicatedPartitionsMetricName, createLogReadResult, isListOffsetsTimestampUnsupported}
+import kafka.server.ReplicaManager.{AtMinIsrPartitionCountMetricName, ConsolidationFetchBytesInPerSecMetricName, ConsolidationLocalBytesPerSecMetricName, ConsolidationSupplementBytesPerSecMetricName, ConsolidationSupplementRateMetricName, FailedIsrUpdatesPerSecMetricName, IsrExpandsPerSecMetricName, IsrShrinksPerSecMetricName, LeaderCountMetricName, OfflineReplicaCountMetricName, PartitionCountMetricName, PartitionsWithLateTransactionsCountMetricName, ProducerIdCountMetricName, ReassigningPartitionsMetricName, SealedPartitionsCountMetricName, UnderMinIsrPartitionCountMetricName, UnderReplicatedPartitionsMetricName, createLogReadResult, isListOffsetsTimestampUnsupported}
 import kafka.server.metadata.{InklessMetadataView, KRaftMetadataCache}
 import kafka.server.share.DelayedShareFetch
 import kafka.utils._
@@ -160,6 +160,9 @@ object ReplicaManager {
   private val IsrShrinksPerSecMetricName = "IsrShrinksPerSec"
   private val FailedIsrUpdatesPerSecMetricName = "FailedIsrUpdatesPerSec"
   private val ConsolidationFetchBytesInPerSecMetricName = "ConsolidationFetchBytesInPerSec"
+  private val ConsolidationSupplementRateMetricName = "ConsolidationSupplementRate"
+  private val ConsolidationSupplementBytesPerSecMetricName = "ConsolidationSupplementBytesPerSec"
+  private val ConsolidationLocalBytesPerSecMetricName = "ConsolidationLocalBytesPerSec"
 
   private[server] val GaugeMetricNames = Set(
     LeaderCountMetricName,
@@ -178,7 +181,10 @@ object ReplicaManager {
     IsrExpandsPerSecMetricName,
     IsrShrinksPerSecMetricName,
     FailedIsrUpdatesPerSecMetricName,
-    ConsolidationFetchBytesInPerSecMetricName
+    ConsolidationFetchBytesInPerSecMetricName,
+    ConsolidationSupplementRateMetricName,
+    ConsolidationSupplementBytesPerSecMetricName,
+    ConsolidationLocalBytesPerSecMetricName
   )
 
   private[server] val MetricNames = GaugeMetricNames.union(MeterMetricNames)
@@ -457,6 +463,9 @@ class ReplicaManager(val config: KafkaConfig,
   val isrShrinkRate: Meter = metricsGroup.newMeter(IsrShrinksPerSecMetricName, "shrinks", TimeUnit.SECONDS)
   val failedIsrUpdatesRate: Meter = metricsGroup.newMeter(FailedIsrUpdatesPerSecMetricName, "failedUpdates", TimeUnit.SECONDS)
   private val consolidationFetchBytesInPerSec: Meter = metricsGroup.newMeter(ConsolidationFetchBytesInPerSecMetricName, "bytes", TimeUnit.SECONDS)
+  private val consolidationSupplementRate: Meter = metricsGroup.newMeter(ConsolidationSupplementRateMetricName, "supplements", TimeUnit.SECONDS)
+  private val consolidationSupplementBytesPerSec: Meter = metricsGroup.newMeter(ConsolidationSupplementBytesPerSecMetricName, "bytes", TimeUnit.SECONDS)
+  private val consolidationLocalBytesPerSec: Meter = metricsGroup.newMeter(ConsolidationLocalBytesPerSecMetricName, "bytes", TimeUnit.SECONDS)
 
   private def isConsolidatingPartition(partition: Partition): Boolean =
     config.disklessRemoteStorageConsolidationEnabled && _inklessMetadataView.isConsolidatingDisklessTopic(partition.topic)
@@ -2261,6 +2270,13 @@ class ReplicaManager(val config: KafkaConfig,
    * local read has not yet reached the local log end offset (the classic->diskless seal), are
    * dropped — see the exhaustion guard below.
    */
+  private[server] def recordConsolidationSupplementIssued(): Unit = consolidationSupplementRate.mark()
+  private[server] def recordConsolidationSupplementBytes(bytes: Long): Unit = consolidationSupplementBytesPerSec.mark(bytes)
+  private[server] def recordConsolidationLocalBytes(bytes: Long): Unit = consolidationLocalBytesPerSec.mark(bytes)
+
+  private[server] def successfulSupplementBytes(data: Map[TopicIdPartition, FetchPartitionData]): Long =
+    data.values.filter(_.error == Errors.NONE).map(_.records.sizeInBytes.toLong).sum
+
   private[server] def buildConsolidationSupplementFetchInfos(
       supplements: Map[TopicIdPartition, Long],
       fetchInfos: Seq[(TopicIdPartition, PartitionData)],
@@ -2612,6 +2628,7 @@ class ReplicaManager(val config: KafkaConfig,
     var hasPreferredReadReplica = false
     val logReadResultMap = new util.HashMap[TopicIdPartition, LogReadResult]
 
+    var consolidationLocalBytes = 0L
     logReadResults.foreach { case (topicIdPartition, logReadResult) =>
       brokerTopicStats.topicStats(topicIdPartition.topicPartition.topic).totalFetchRequestRate.mark()
       brokerTopicStats.allTopicsStats.totalFetchRequestRate.mark()
@@ -2625,7 +2642,21 @@ class ReplicaManager(val config: KafkaConfig,
       if (logReadResult.preferredReadReplica.isPresent)
         hasPreferredReadReplica = true
       bytesReadable = bytesReadable + logReadResult.info.records.sizeInBytes
+      if (consolidatingLocalFetchSupplements.contains(topicIdPartition)) {
+        consolidationLocalBytes += logReadResult.info.records.sizeInBytes
+      }
       logReadResultMap.put(topicIdPartition, logReadResult)
+    }
+    // Record consolidation byte/rate metrics only on the paths that respond from this synchronous
+    // read. The delayedResponse path discards this read and re-reads (and re-issues the supplement)
+    // inside DelayedFetch, which records there; marking here as well would double-count
+    // (DelayedFetch.scala).
+    var consolidationSupplementIssued = false
+    var consolidationSupplementBytes = 0L
+    def recordConsolidationMetricsIfAny(): Unit = {
+      if (consolidationLocalBytes > 0) consolidationLocalBytesPerSec.mark(consolidationLocalBytes)
+      if (consolidationSupplementIssued) consolidationSupplementRate.mark()
+      if (consolidationSupplementBytes > 0) consolidationSupplementBytesPerSec.mark(consolidationSupplementBytes)
     }
 
     // For consolidating partitions where local log was read, supplement with diskless data if minBytes not satisfied.
@@ -2643,14 +2674,16 @@ class ReplicaManager(val config: KafkaConfig,
       val supplementFetchInfos = buildConsolidationSupplementFetchInfos(consolidatingLocalFetchSupplements, fetchInfos, logReadResultMap)
 
       if (supplementFetchInfos.nonEmpty) {
+        consolidationSupplementIssued = true
         try {
           val supplementParams = fetchParamsWithNewMaxBytes(params, supplementFetchInfos.size.toFloat / fetchInfos.size.toFloat)
           // Future not cancelled on failure — diskless reads are idempotent and hold no resources.
           consolidationSupplementData = fetchDisklessMessages(supplementParams, supplementFetchInfos)
             .get(Math.max(config.disklessFetchMaxWaitMs.toLong, params.maxWaitMs), TimeUnit.MILLISECONDS)
             .toMap
-          bytesReadable += consolidationSupplementData.values
-            .filter(_.error == Errors.NONE).map(_.records.sizeInBytes).sum
+          val supplementBytes = successfulSupplementBytes(consolidationSupplementData)
+          consolidationSupplementBytes = supplementBytes
+          bytesReadable += supplementBytes
         } catch {
           case e: InterruptedException =>
             Thread.currentThread().interrupt()
@@ -2688,6 +2721,7 @@ class ReplicaManager(val config: KafkaConfig,
     //                        6) has a preferred read replica
     if (!remoteFetchInfo.isPresent && disklessFetchInfos.isEmpty && (params.maxWaitMs <= 0 || bytesReadable >= params.minBytes || errorReadingData ||
       hasDivergingEpoch || hasPreferredReadReplica)) {
+      recordConsolidationMetricsIfAny()
       respond(fetchPartitionData)
     } else {
       // construct the fetch results from the read results
@@ -2734,6 +2768,7 @@ class ReplicaManager(val config: KafkaConfig,
             }
         }
         val readResults = logReadResults ++ disklessFetchResults
+        recordConsolidationMetricsIfAny()
         val maybeLogReadResultWithError = processRemoteFetch(remoteFetchInfo.get(), classicParams, respond, readResults, fetchPartitionStatus)
         if (maybeLogReadResultWithError.isDefined) {
           // If there is an error in scheduling the remote fetch task, return what we currently have
@@ -2744,6 +2779,7 @@ class ReplicaManager(val config: KafkaConfig,
         }
       } else {
         if (disklessFetchInfos.isEmpty && (bytesReadable >= params.minBytes || params.maxWaitMs <= 0)) {
+          recordConsolidationMetricsIfAny()
           respond(fetchPartitionData)
         } else {
           delayedResponse(fetchPartitionStatus)
