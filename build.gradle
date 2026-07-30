@@ -2066,6 +2066,7 @@ project(':clients:clients-integration-tests') {
     testImplementation libs.metrics
     testImplementation libs.slf4jApi
     testImplementation project(':test-common:test-common-internal-api')
+    testImplementation project(':test-common:test-common-util')
     testImplementation project(':test-common:test-common-runtime')
     testImplementation project(':metadata')
     testImplementation project(':server')
@@ -3013,6 +3014,7 @@ project(':streams') {
     testCompileOnly libs.bndlib
 
     testImplementation project(':clients').sourceSets.test.output
+    testImplementation project(':test-common:test-common-util')
     testImplementation libs.jacksonDatabindYaml
     testImplementation libs.junitJupiter
     testImplementation libs.bcpkix
@@ -4159,6 +4161,7 @@ project(':connect:mirror') {
     testImplementation project(':connect:runtime').sourceSets.test.output
     testImplementation project(':core')
     testImplementation project(':test-common:test-common-runtime')
+    testImplementation project(':test-common:test-common-util')
     testImplementation project(':server')
     testImplementation project(':server-common')
 
