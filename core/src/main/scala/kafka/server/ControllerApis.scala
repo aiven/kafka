@@ -57,7 +57,7 @@ import org.apache.kafka.metadata.{BrokerHeartbeatReply, BrokerRegistrationReply}
 import org.apache.kafka.common.security.auth.KafkaPrincipal
 import org.apache.kafka.common.security.auth.SecurityProtocol
 import org.apache.kafka.server.authorizer.Authorizer
-import org.apache.kafka.server.common.{ApiMessageAndVersion, RequestLocal}
+import org.apache.kafka.server.common.{ApiMessageAndVersion, MetadataVersion, RequestLocal}
 
 import scala.jdk.CollectionConverters._
 
@@ -1089,9 +1089,48 @@ class ControllerApis(
     }
   }
 
+  private def validateAddRaftVoterAgainstMetadataVersion(request: RequestChannel.Request): Option[AddRaftVoterResponse] = {
+    val metadataVersion = apiVersionManager.features.metadataVersion()
+    if (!metadataVersion.isControllerRegistrationSupported) {
+      None
+    } else {
+      val addVoterRequest = request.body[AddRaftVoterRequest]
+      val voterId = addVoterRequest.data().voterId()
+      val registration = registrationsPublisher.controllers().get(voterId)
+      if (registration == null) {
+        Some(new AddRaftVoterResponse(new AddRaftVoterResponseData().
+          setErrorCode(INVALID_REQUEST.code()).
+          setErrorMessage(s"Controller $voterId is not registered, so its metadata.version support cannot " +
+            s"be verified. Controllers register shortly after startup; wait for the registration of " +
+            s"controller $voterId to be committed to the metadata log and retry.")))
+      } else {
+        val supportedMetadataVersion = registration.supportedFeatures().get(MetadataVersion.FEATURE_NAME)
+        if (supportedMetadataVersion == null || !supportedMetadataVersion.contains(metadataVersion.featureLevel())) {
+          val errorMessage = if (supportedMetadataVersion == null) {
+            s"Controller $voterId did not register supported metadata.version range information."
+          } else {
+            s"Controller $voterId only supports metadata.version levels ${supportedMetadataVersion.min()}-${supportedMetadataVersion.max()}, " +
+              s"but the current cluster metadata.version is ${metadataVersion.featureLevel()} ($metadataVersion)."
+          }
+          Some(new AddRaftVoterResponse(new AddRaftVoterResponseData().
+            setErrorCode(INVALID_REQUEST.code()).
+            setErrorMessage(errorMessage)))
+        } else {
+          None
+        }
+      }
+    }
+  }
+
   def handleAddRaftVoter(request: RequestChannel.Request): CompletableFuture[Unit] = {
     authHelper.authorizeClusterOperation(request, ALTER)
-    handleRaftRequest(request, response => new AddRaftVoterResponse(response.asInstanceOf[AddRaftVoterResponseData]))
+    validateAddRaftVoterAgainstMetadataVersion(request) match {
+      case Some(response) =>
+        requestHelper.sendResponseExemptThrottle(request, response)
+        CompletableFuture.completedFuture[Unit](())
+      case None =>
+        handleRaftRequest(request, response => new AddRaftVoterResponse(response.asInstanceOf[AddRaftVoterResponseData]))
+    }
   }
 
   def handleRemoveRaftVoter(request: RequestChannel.Request): CompletableFuture[Unit] = {

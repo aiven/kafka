@@ -25,6 +25,7 @@ import org.apache.kafka.clients.admin.AlterConfigOp
 import org.apache.kafka.common.Uuid.ZERO_UUID
 import org.apache.kafka.common.acl.AclOperation
 import org.apache.kafka.common.config.{ConfigResource, TopicConfig}
+import org.apache.kafka.common.Endpoint
 import org.apache.kafka.common.errors._
 import org.apache.kafka.common.internals.Topic
 import org.apache.kafka.common.memory.MemoryPool
@@ -52,9 +53,10 @@ import org.apache.kafka.common.{ElectionType, Uuid}
 import org.apache.kafka.controller.ControllerRequestContextUtil.ANONYMOUS_CONTEXT
 import org.apache.kafka.controller.{Controller, ControllerRequestContext, ResultOrError}
 import org.apache.kafka.image.publisher.ControllerRegistrationsPublisher
+import org.apache.kafka.metadata.{ControllerRegistration, VersionRange}
 import org.apache.kafka.network.SocketServerConfigs
 import org.apache.kafka.network.metrics.RequestChannelMetrics
-import org.apache.kafka.raft.QuorumConfig
+import org.apache.kafka.raft.{Endpoints, QuorumConfig, RaftUtil, ReplicaKey}
 import org.apache.kafka.server.authorizer.{Action, AuthorizableRequestContext, AuthorizationResult, Authorizer}
 import org.apache.kafka.server.common.{ApiMessageAndVersion, FinalizedFeatures, KRaftVersion, MetadataVersion, ProducerIdsBlock, RequestLocal}
 import org.apache.kafka.server.config.{KRaftConfigs, ServerConfigs}
@@ -69,7 +71,7 @@ import org.mockito.Mockito._
 import org.mockito.{ArgumentCaptor, ArgumentMatchers}
 import org.slf4j.LoggerFactory
 
-import java.net.InetAddress
+import java.net.{InetAddress, InetSocketAddress}
 import java.util
 import java.util.Collections.{singleton, singletonList, singletonMap}
 import java.util.concurrent.{CompletableFuture, ExecutionException, TimeUnit}
@@ -148,12 +150,32 @@ class ControllerApisTest {
     replicaQuotaManager,
     Optional.empty())
 
+  private val clusterId = "JgxuGe9URy-E-ceaL04lEw"
   private var controllerApis: ControllerApis = _
 
   private def createControllerApis(authorizer: Option[Authorizer],
                                    controller: Controller,
                                    props: Properties = new Properties(),
                                    throttle: Boolean = false): ControllerApis = {
+    createControllerApis(
+      authorizer,
+      controller,
+      props,
+      throttle,
+      new ControllerRegistrationsPublisher(),
+      new SimpleApiVersionManager(
+        ListenerType.CONTROLLER,
+        true,
+        () => FinalizedFeatures.fromKRaftVersion(MetadataVersion.latestTesting()))
+    )
+  }
+
+  private def createControllerApis(authorizer: Option[Authorizer],
+                                   controller: Controller,
+                                   props: Properties,
+                                   throttle: Boolean,
+                                   registrationsPublisher: ControllerRegistrationsPublisher,
+                                   apiVersionManager: ApiVersionManager): ControllerApis = {
     props.put(KRaftConfigs.NODE_ID_CONFIG, nodeId: java.lang.Integer)
     props.put(KRaftConfigs.PROCESS_ROLES_CONFIG, "controller")
     props.put(KRaftConfigs.CONTROLLER_LISTENER_NAMES_CONFIG, "CONTROLLER")
@@ -167,14 +189,31 @@ class ControllerApisTest {
       controller,
       raftManager,
       new KafkaConfig(props),
-      "JgxuGe9URy-E-ceaL04lEw",
-      new ControllerRegistrationsPublisher(),
-      new SimpleApiVersionManager(
-        ListenerType.CONTROLLER,
-        true,
-        () => FinalizedFeatures.fromKRaftVersion(MetadataVersion.latestTesting())),
+      clusterId,
+      registrationsPublisher,
+      apiVersionManager,
       metadataCache
     )
+  }
+
+  private def addRaftVoterRequest(voterId: Int): AddRaftVoterRequest = {
+    val endpoints = Endpoints.fromInetSocketAddresses(singletonMap(
+      ListenerName.normalised("CONTROLLER"),
+      InetSocketAddress.createUnresolved("localhost", 9093)
+    ))
+    new AddRaftVoterRequest.Builder(
+      RaftUtil.addVoterRequest(clusterId, 1000, ReplicaKey.of(voterId, Uuid.randomUuid()), endpoints)
+    ).build(0)
+  }
+
+  private def controllerRegistration(voterId: Int, minMetadataVersion: MetadataVersion, maxMetadataVersion: MetadataVersion): ControllerRegistration = {
+    new ControllerRegistration.Builder().
+      setId(voterId).
+      setIncarnationId(Uuid.randomUuid()).
+      setListeners(singletonMap("CONTROLLER", new Endpoint("CONTROLLER", SecurityProtocol.PLAINTEXT, "localhost", 9093))).
+      setSupportedFeatures(singletonMap(MetadataVersion.FEATURE_NAME,
+        VersionRange.of(minMetadataVersion.featureLevel(), maxMetadataVersion.featureLevel()))).
+      build()
   }
 
   /**
@@ -1253,6 +1292,112 @@ class ControllerApisTest {
           s"but found ${response.getClass}")
     }
 
+  }
+
+  @Test
+  def testHandleAddRaftVoterRejectsControllerWithIncompatibleMetadataVersion(): Unit = {
+    clearInvocations(raftManager)
+    val publisher = mock(classOf[ControllerRegistrationsPublisher])
+    val currentMetadataVersion = MetadataVersion.IBP_4_0_IV3
+    when(publisher.controllers()).thenReturn(singletonMap(
+      2,
+      controllerRegistration(2, MetadataVersion.MINIMUM_VERSION, MetadataVersion.IBP_4_0_IV2)
+    ))
+    controllerApis = createControllerApis(
+      None,
+      new MockController.Builder().build(),
+      new Properties(),
+      false,
+      publisher,
+      new SimpleApiVersionManager(
+        ListenerType.CONTROLLER,
+        true,
+        () => FinalizedFeatures.fromKRaftVersion(currentMetadataVersion))
+    )
+
+    val response = handleRequest[AddRaftVoterResponse](addRaftVoterRequest(2), controllerApis)
+    assertEquals(Errors.INVALID_REQUEST.code(), response.data.errorCode)
+    assertTrue(response.data.errorMessage.contains("Controller 2 only supports metadata.version levels"))
+    assertTrue(response.data.errorMessage.contains(currentMetadataVersion.toString))
+    verify(raftManager, never()).handleRequest(any(), any(), any(), any())
+  }
+
+  @Test
+  def testHandleAddRaftVoterForwardsRegisteredControllerWithCompatibleMetadataVersion(): Unit = {
+    clearInvocations(raftManager)
+    val publisher = mock(classOf[ControllerRegistrationsPublisher])
+    val currentMetadataVersion = MetadataVersion.IBP_4_0_IV3
+    when(publisher.controllers()).thenReturn(singletonMap(
+      2,
+      controllerRegistration(2, MetadataVersion.MINIMUM_VERSION, currentMetadataVersion)
+    ))
+    when(raftManager.handleRequest(any(), any(), any(), any())).thenReturn(
+      CompletableFuture.completedFuture(new AddRaftVoterResponseData().setErrorCode(Errors.NONE.code()))
+    )
+    controllerApis = createControllerApis(
+      None,
+      new MockController.Builder().build(),
+      new Properties(),
+      false,
+      publisher,
+      new SimpleApiVersionManager(
+        ListenerType.CONTROLLER,
+        true,
+        () => FinalizedFeatures.fromKRaftVersion(currentMetadataVersion))
+    )
+
+    val response = handleRequest[AddRaftVoterResponse](addRaftVoterRequest(2), controllerApis)
+    assertEquals(Errors.NONE.code(), response.data.errorCode)
+    verify(raftManager).handleRequest(any(), any(), any(), any())
+  }
+
+  @Test
+  def testHandleAddRaftVoterRejectsUnregisteredController(): Unit = {
+    clearInvocations(raftManager)
+    val publisher = mock(classOf[ControllerRegistrationsPublisher])
+    when(publisher.controllers()).thenReturn(util.Collections.emptyMap[Integer, ControllerRegistration]())
+    controllerApis = createControllerApis(
+      None,
+      new MockController.Builder().build(),
+      new Properties(),
+      false,
+      publisher,
+      new SimpleApiVersionManager(
+        ListenerType.CONTROLLER,
+        true,
+        () => FinalizedFeatures.fromKRaftVersion(MetadataVersion.IBP_4_0_IV3))
+    )
+
+    val response = handleRequest[AddRaftVoterResponse](addRaftVoterRequest(2), controllerApis)
+    assertEquals(Errors.INVALID_REQUEST.code(), response.data.errorCode)
+    assertTrue(response.data.errorMessage.contains("Controller 2 is not registered"))
+    assertTrue(response.data.errorMessage.contains("retry"))
+    verify(raftManager, never()).handleRequest(any(), any(), any(), any())
+  }
+
+  @Test
+  def testHandleAddRaftVoterSkipsCheckWhenControllerRegistrationIsNotSupported(): Unit = {
+    clearInvocations(raftManager)
+    val publisher = mock(classOf[ControllerRegistrationsPublisher])
+    when(raftManager.handleRequest(any(), any(), any(), any())).thenReturn(
+      CompletableFuture.completedFuture(new AddRaftVoterResponseData().setErrorCode(Errors.NONE.code()))
+    )
+    controllerApis = createControllerApis(
+      None,
+      new MockController.Builder().build(),
+      new Properties(),
+      false,
+      publisher,
+      new SimpleApiVersionManager(
+        ListenerType.CONTROLLER,
+        true,
+        () => FinalizedFeatures.fromKRaftVersion(MetadataVersion.MINIMUM_VERSION))
+    )
+
+    val response = handleRequest[AddRaftVoterResponse](addRaftVoterRequest(2), controllerApis)
+    assertEquals(Errors.NONE.code(), response.data.errorCode)
+    verify(publisher, never()).controllers()
+    verify(raftManager).handleRequest(any(), any(), any(), any())
   }
 
   @Test
