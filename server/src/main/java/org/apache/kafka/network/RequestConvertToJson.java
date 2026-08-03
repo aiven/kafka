@@ -60,6 +60,8 @@ import org.apache.kafka.common.message.CreatePartitionsRequestDataJsonConverter;
 import org.apache.kafka.common.message.CreatePartitionsResponseDataJsonConverter;
 import org.apache.kafka.common.message.CreateTopicsRequestDataJsonConverter;
 import org.apache.kafka.common.message.CreateTopicsResponseDataJsonConverter;
+import org.apache.kafka.common.message.DecommissionControllerRequestDataJsonConverter;
+import org.apache.kafka.common.message.DecommissionControllerResponseDataJsonConverter;
 import org.apache.kafka.common.message.DeleteAclsRequestDataJsonConverter;
 import org.apache.kafka.common.message.DeleteAclsResponseDataJsonConverter;
 import org.apache.kafka.common.message.DeleteGroupsRequestDataJsonConverter;
@@ -232,6 +234,8 @@ import org.apache.kafka.common.requests.CreatePartitionsRequest;
 import org.apache.kafka.common.requests.CreatePartitionsResponse;
 import org.apache.kafka.common.requests.CreateTopicsRequest;
 import org.apache.kafka.common.requests.CreateTopicsResponse;
+import org.apache.kafka.common.requests.DecommissionControllerRequest;
+import org.apache.kafka.common.requests.DecommissionControllerResponse;
 import org.apache.kafka.common.requests.DeleteAclsRequest;
 import org.apache.kafka.common.requests.DeleteAclsResponse;
 import org.apache.kafka.common.requests.DeleteGroupsRequest;
@@ -415,6 +419,8 @@ public class RequestConvertToJson {
                 return CreatePartitionsRequestDataJsonConverter.write(((CreatePartitionsRequest) request).data(), request.version());
             case CREATE_TOPICS:
                 return CreateTopicsRequestDataJsonConverter.write(((CreateTopicsRequest) request).data(), request.version());
+            case DECOMMISSION_CONTROLLER:
+                return DecommissionControllerRequestDataJsonConverter.write(((DecommissionControllerRequest) request).data(), request.version());
             case DELETE_ACLS:
                 return DeleteAclsRequestDataJsonConverter.write(((DeleteAclsRequest) request).data(), request.version());
             case DELETE_GROUPS:
@@ -591,6 +597,8 @@ public class RequestConvertToJson {
                 return CreatePartitionsResponseDataJsonConverter.write(((CreatePartitionsResponse) response).data(), version);
             case CREATE_TOPICS:
                 return CreateTopicsResponseDataJsonConverter.write(((CreateTopicsResponse) response).data(), version);
+            case DECOMMISSION_CONTROLLER:
+                return DecommissionControllerResponseDataJsonConverter.write(((DecommissionControllerResponse) response).data(), version);
             case DELETE_ACLS:
                 return DeleteAclsResponseDataJsonConverter.write(((DeleteAclsResponse) response).data(), version);
             case DELETE_GROUPS:

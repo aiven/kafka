@@ -130,7 +130,12 @@ public enum ApiKeys {
     READ_SHARE_GROUP_STATE(ApiMessageType.READ_SHARE_GROUP_STATE, true),
     WRITE_SHARE_GROUP_STATE(ApiMessageType.WRITE_SHARE_GROUP_STATE, true),
     DELETE_SHARE_GROUP_STATE(ApiMessageType.DELETE_SHARE_GROUP_STATE, true),
-    READ_SHARE_GROUP_STATE_SUMMARY(ApiMessageType.READ_SHARE_GROUP_STATE_SUMMARY, true);
+    READ_SHARE_GROUP_STATE_SUMMARY(ApiMessageType.READ_SHARE_GROUP_STATE_SUMMARY, true),
+    // Aiven fork addition (KAFKA-20295): apiKey 94 is the number apache/kafka#22191 (KIP-1312)
+    // uses for the wire-identical UnregisterController RPC; taken verbatim so a patched client
+    // interoperates with a vanilla 4.4+ controller and vice versa. Only the name differs, since
+    // this branch decommissions rather than unregisters (see DecommissionControllerRequest.json).
+    DECOMMISSION_CONTROLLER(ApiMessageType.DECOMMISSION_CONTROLLER, false, true);
 
     private static final Map<ApiMessageType.ListenerType, EnumSet<ApiKeys>> APIS_BY_LISTENER =
         new EnumMap<>(ApiMessageType.ListenerType.class);

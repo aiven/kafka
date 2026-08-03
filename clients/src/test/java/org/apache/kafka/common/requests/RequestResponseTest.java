@@ -98,6 +98,8 @@ import org.apache.kafka.common.message.CreateTopicsRequestData.CreatableTopicCon
 import org.apache.kafka.common.message.CreateTopicsResponseData;
 import org.apache.kafka.common.message.CreateTopicsResponseData.CreatableTopicConfigs;
 import org.apache.kafka.common.message.CreateTopicsResponseData.CreatableTopicResult;
+import org.apache.kafka.common.message.DecommissionControllerRequestData;
+import org.apache.kafka.common.message.DecommissionControllerResponseData;
 import org.apache.kafka.common.message.DeleteAclsRequestData;
 import org.apache.kafka.common.message.DeleteAclsResponseData;
 import org.apache.kafka.common.message.DeleteGroupsRequestData;
@@ -1037,6 +1039,7 @@ public class RequestResponseTest {
             case WRITE_SHARE_GROUP_STATE: return createWriteShareGroupStateRequest(version);
             case DELETE_SHARE_GROUP_STATE: return createDeleteShareGroupStateRequest(version);
             case READ_SHARE_GROUP_STATE_SUMMARY: return createReadShareGroupStateSummaryRequest(version);
+            case DECOMMISSION_CONTROLLER: return createDecommissionControllerRequest(version);
             default: throw new IllegalArgumentException("Unknown API key " + apikey);
         }
     }
@@ -1127,6 +1130,7 @@ public class RequestResponseTest {
             case WRITE_SHARE_GROUP_STATE: return createWriteShareGroupStateResponse();
             case DELETE_SHARE_GROUP_STATE: return createDeleteShareGroupStateResponse();
             case READ_SHARE_GROUP_STATE_SUMMARY: return createReadShareGroupStateSummaryResponse();
+            case DECOMMISSION_CONTROLLER: return createDecommissionControllerResponse();
             default: throw new IllegalArgumentException("Unknown API key " + apikey);
         }
     }
@@ -3479,6 +3483,15 @@ public class RequestResponseTest {
 
     private UnregisterBrokerResponse createUnregisterBrokerResponse() {
         return new UnregisterBrokerResponse(new UnregisterBrokerResponseData());
+    }
+
+    private DecommissionControllerRequest createDecommissionControllerRequest(short version) {
+        DecommissionControllerRequestData data = new DecommissionControllerRequestData().setControllerId(1);
+        return new DecommissionControllerRequest.Builder(data).build(version);
+    }
+
+    private DecommissionControllerResponse createDecommissionControllerResponse() {
+        return new DecommissionControllerResponse(new DecommissionControllerResponseData());
     }
 
     private DescribeTransactionsRequest createDescribeTransactionsRequest(short version) {
