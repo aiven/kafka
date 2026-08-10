@@ -59,6 +59,7 @@ public class FindFilesToDeleteJob implements Callable<List<FileToDelete>> {
                 FILES.MARKED_FOR_DELETION_AT
             ).from(FILES)
             .where(FILES.STATE.eq(FileStateT.deleting))
+            .limit(10000)
             .fetchStream();
         return fetchResult.map(r -> new FileToDelete(
                 r.get(FILES.OBJECT_KEY),
