@@ -218,6 +218,13 @@ class KafkaConfig private(doLog: Boolean, val props: util.Map[_, _], enforceProv
   private val _inklessConfig = new InklessConfig(this)
   def inklessConfig = _inklessConfig
 
+  /**
+   * Builds a fresh `InklessConfig` from the current config, so it reflects dynamic updates.
+   * `inklessConfig` is cached at construction and a dynamic update never refreshes it, while
+   * `originalsWithPrefix` is redirected to the live config.
+   */
+  def currentInklessConfig: InklessConfig = new InklessConfig(this)
+
   /** ********* General Configuration ***********/
   val nodeId: Int = getInt(KRaftConfigs.NODE_ID_CONFIG)
   val initialRegistrationTimeoutMs: Int = getInt(KRaftConfigs.INITIAL_BROKER_REGISTRATION_TIMEOUT_MS_CONFIG)
