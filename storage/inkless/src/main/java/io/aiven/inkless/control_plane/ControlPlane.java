@@ -25,6 +25,7 @@ import org.apache.kafka.common.utils.Time;
 import java.io.Closeable;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
+import java.time.Instant;
 import java.util.List;
 import java.util.OptionalLong;
 import java.util.Set;
@@ -109,7 +110,15 @@ public interface ControlPlane extends Closeable, Configurable {
      */
     OptionalLong getCrossTierLogStart(TopicIdPartition topicIdPartition);
 
-    List<FileToDelete> getFilesToDelete();
+    /**
+     * Files that are dereferenced and whose deletion grace period has passed, i.e. those the caller may
+     * physically delete from object storage. Both bounds MUST be applied by the implementation: a caller
+     * that filters afterwards has already paid for the rows it discards. No ordering is guaranteed.
+     *
+     * @param markedBefore only return files marked for deletion strictly before this instant
+     * @param limit        maximum number of files to return; {@code 0} means unbounded
+     */
+    List<FileToDelete> getFilesToDelete(Instant markedBefore, int limit);
 
     void deleteFiles(DeleteFilesRequest request);
 
