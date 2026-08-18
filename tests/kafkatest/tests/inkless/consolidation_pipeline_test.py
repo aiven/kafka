@@ -75,8 +75,8 @@ class ConsolidationPipelineTest(Test):
                         "diskless.enable": "true",
                         "remote.storage.enable": "true",
                         "min.insync.replicas": 2,
-                        # Roll segments by size/time so they close and get tiered.
                         "segment.bytes": 1048576,
+                        "max.message.bytes": 524288,
                         "segment.ms": 5000,
                     },
                 },

@@ -75,8 +75,8 @@ class ReadFromRemoteAfterPruneTest(Test):
                         "diskless.enable": "true",
                         "remote.storage.enable": "true",
                         "min.insync.replicas": 2,
-                        # Roll segments by size/time so they close and get tiered.
                         "segment.bytes": 1048576,
+                        "max.message.bytes": 524288,
                         "segment.ms": 5000,
                         # Evict local segments soon after upload so data lives in
                         # remote before the wipe.
