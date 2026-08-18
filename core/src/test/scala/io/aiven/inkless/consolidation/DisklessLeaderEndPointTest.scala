@@ -33,7 +33,7 @@ import org.apache.kafka.common.record.FileRecords.TimestampAndOffset
 import org.apache.kafka.common.record.{MemoryRecords, Records, SimpleRecord}
 import org.apache.kafka.common.requests.{FetchRequest, FetchResponse, ListOffsetsRequest, OffsetsForLeaderEpochResponse}
 import org.apache.kafka.common.{TopicIdPartition, TopicPartition, Uuid}
-import org.apache.kafka.metadata.LeaderAndIsr
+import org.apache.kafka.metadata.{LeaderAndIsr, PartitionRegistration}
 import org.apache.kafka.server.common.{MetadataVersion, OffsetAndEpoch}
 import org.apache.kafka.server.network.BrokerEndPoint
 import org.apache.kafka.server.purgatory.DelayedOperationPurgatory
@@ -277,6 +277,48 @@ class DisklessLeaderEndPointTest {
   @Test
   def testFetchLatestOffsetUsesLatestTimestamp(): Unit = {
     verifyListOffsetTimestamp(ListOffsetsRequest.LATEST_TIMESTAMP, _.fetchLatestOffset(topicPartition, 3))
+  }
+
+  @Test
+  def testFetchLatestOffsetBelowSealUsesSealAndDisklessEpoch(): Unit = {
+    val endPoint = listOffsetEndPointWithPlaceholderEpoch(offset = 0L, seal = 150000L, disklessLeaderEpoch = 5)
+    assertEquals(new OffsetAndEpoch(150000L, 5), endPoint.fetchLatestOffset(topicPartition, 3))
+  }
+
+  @Test
+  def testFetchLatestOffsetAtOrAboveSealIsUnchanged(): Unit = {
+    val endPoint = listOffsetEndPointWithPlaceholderEpoch(offset = 200000L, seal = 150000L, disklessLeaderEpoch = 5)
+    assertEquals(new OffsetAndEpoch(200000L, 5), endPoint.fetchLatestOffset(topicPartition, 3))
+  }
+
+  @Test
+  def testFetchLatestOffsetNonEmptyBelowSealUsesSealAndDisklessEpoch(): Unit = {
+    val endPoint = listOffsetEndPointWithPlaceholderEpoch(offset = 10L, seal = 150000L, disklessLeaderEpoch = 5)
+    assertEquals(new OffsetAndEpoch(150000L, 5), endPoint.fetchLatestOffset(topicPartition, 3))
+  }
+
+  @Test
+  def testFetchLatestOffsetSwitchPendingSealIsUnchanged(): Unit = {
+    val endPoint = listOffsetEndPointWithPlaceholderEpoch(
+      offset = 0L,
+      seal = PartitionRegistration.CLASSIC_TO_DISKLESS_SWITCH_PENDING,
+      disklessLeaderEpoch = PartitionRegistration.NO_DISKLESS_LEADER_EPOCH)
+    assertEquals(new OffsetAndEpoch(0L, 0), endPoint.fetchLatestOffset(topicPartition, 3))
+  }
+
+  @Test
+  def testFetchLatestOffsetBornDisklessSealIsUnchanged(): Unit = {
+    val endPoint = listOffsetEndPointWithPlaceholderEpoch(
+      offset = 0L,
+      seal = PartitionRegistration.NO_CLASSIC_TO_DISKLESS_START_OFFSET,
+      disklessLeaderEpoch = PartitionRegistration.NO_DISKLESS_LEADER_EPOCH)
+    assertEquals(new OffsetAndEpoch(0L, 0), endPoint.fetchLatestOffset(topicPartition, 3))
+  }
+
+  @Test
+  def testFetchLatestOffsetExactlyAtSealIsUnchanged(): Unit = {
+    val endPoint = listOffsetEndPointWithPlaceholderEpoch(offset = 150000L, seal = 150000L, disklessLeaderEpoch = 5)
+    assertEquals(new OffsetAndEpoch(150000L, 5), endPoint.fetchLatestOffset(topicPartition, 3))
   }
 
   @Test
@@ -577,6 +619,42 @@ class DisklessLeaderEndPointTest {
       .setErrorCode(Errors.NONE.code)
       .setLeaderEpoch(queriedEpoch)
       .setEndOffset(250L)
+    assertEquals(Map(topicPartition -> expected), result)
+  }
+
+  @Test
+  def testFetchEpochEndOffsetsDisklessLeoBelowSealUsesSeal(): Unit = {
+    val fetchHandler = mock(classOf[FetchHandler])
+    val fetchOffsetHandler = mock(classOf[FetchOffsetHandler])
+    val replicaManager = replicaManagerMock()
+    val job = mock(classOf[FetchOffsetHandler.Job])
+
+    val holder = new FileRecordsOrError(
+      Optional.empty(),
+      Optional.of(new TimestampAndOffset(0L, 0L, Optional.of(5)))
+    )
+    when(fetchOffsetHandler.createJob()).thenReturn(job)
+    when(job.mustHandle(topicPartition.topic())).thenReturn(true)
+    when(job.add(eqTo(topicPartition), any())).thenReturn(CompletableFuture.completedFuture(holder))
+    when(replicaManager.classicToDisklessStartOffset(topicPartition)).thenReturn(100L)
+    when(replicaManager.disklessLeaderEpoch(topicPartition)).thenReturn(5)
+
+    val endPoint = newEndPoint(fetchHandler, fetchOffsetHandler, replicaManager)
+    val queriedEpoch = 5
+    val result = endPoint.fetchEpochEndOffsets(
+      util.Map.of(
+        topicPartition,
+        new OffsetForLeaderPartition()
+          .setPartition(topicPartition.partition)
+          .setLeaderEpoch(queriedEpoch)
+      )
+    ).asScala
+
+    val expected = new EpochEndOffset()
+      .setPartition(topicPartition.partition)
+      .setErrorCode(Errors.NONE.code)
+      .setLeaderEpoch(queriedEpoch)
+      .setEndOffset(100L)
     assertEquals(Map(topicPartition -> expected), result)
   }
 
