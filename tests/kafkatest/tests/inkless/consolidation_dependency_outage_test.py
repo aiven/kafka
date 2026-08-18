@@ -92,6 +92,7 @@ class DependencyOutageDuringProduceTest(Test):
                         "remote.storage.enable": "true",
                         "min.insync.replicas": 2,
                         "segment.bytes": 1048576,
+                        "max.message.bytes": 524288,
                         "segment.ms": 5000,
                         "local.retention.ms": 5000,
                     },
