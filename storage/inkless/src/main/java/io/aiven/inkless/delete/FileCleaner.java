@@ -26,6 +26,7 @@ import org.slf4j.LoggerFactory;
 import java.io.Closeable;
 import java.io.IOException;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -50,6 +51,7 @@ public class FileCleaner implements Runnable, Closeable {
     final StorageBackend storage;
     final ObjectKeyCreator objectKeyCreator;
     final Duration retentionPeriod;
+    final int maxFilesPerCycle;
     final FileCleanerMetrics metrics;
     private final ExponentialBackoff errorBackoff = new ExponentialBackoff(100, 2, 60 * 1000, 0.2);
     private final Supplier<Long> noWorkBackoffSupplier;
@@ -65,7 +67,8 @@ public class FileCleaner implements Runnable, Closeable {
             sharedState.controlPlane(),
             sharedState.backgroundStorage(),
             sharedState.objectKeyCreator(),
-            sharedState.config().fileCleanerRetentionPeriod()
+            sharedState.config().fileCleanerRetentionPeriod(),
+            sharedState.config().fileCleanerMaxFilesPerCycle()
         );
     }
 
@@ -74,12 +77,14 @@ public class FileCleaner implements Runnable, Closeable {
                 ControlPlane controlPlane,
                 StorageBackend storage,
                 ObjectKeyCreator objectKeyCreator,
-                Duration retentionPeriod) {
+                Duration retentionPeriod,
+                int maxFilesPerCycle) {
         this.time = time;
         this.controlPlane = controlPlane;
         this.storage = storage;
         this.objectKeyCreator = objectKeyCreator;
         this.retentionPeriod = retentionPeriod;
+        this.maxFilesPerCycle = maxFilesPerCycle;
         this.metrics = new FileCleanerMetrics(time);
 
         // This backoff is needed only for jitter, there's no exponent in it.
@@ -94,10 +99,17 @@ public class FileCleaner implements Runnable, Closeable {
         try {
             final var now = TimeUtils.now(time);
 
-            // find all files that are marked for deletion
-            final List<FileToDelete> filesToDelete = controlPlane.getFilesToDelete();
+            final Instant markedBefore = now.minus(retentionPeriod);
+            // One row beyond the cap distinguishes a saturated cycle from an exactly-full one. The add
+            // saturates: at MAX_VALUE there is no room for the probe, and overflowing to a negative
+            // limit would read as unbounded and remove the cap the operator asked for.
+            final int queryLimit = maxFilesPerCycle > 0 && maxFilesPerCycle < Integer.MAX_VALUE
+                ? maxFilesPerCycle + 1
+                : maxFilesPerCycle;
+            final List<FileToDelete> fetched = controlPlane.getFilesToDelete(markedBefore, queryLimit);
+            final boolean saturated = maxFilesPerCycle > 0 && fetched.size() > maxFilesPerCycle;
+            final List<FileToDelete> filesToDelete = saturated ? fetched.subList(0, maxFilesPerCycle) : fetched;
             final Set<String> objectKeyPaths = filesToDelete.stream()
-                .filter(f -> Duration.between(f.markedForDeletionAt(), now).compareTo(retentionPeriod) > 0)
                 .map(FileToDelete::objectKey)
                 .collect(Collectors.toSet());
             if (objectKeyPaths.isEmpty()) {
@@ -106,7 +118,13 @@ public class FileCleaner implements Runnable, Closeable {
                 LOGGER.info("No files to delete, sleeping for {}", sleepDuration);
                 time.sleep(sleepMillis);
             } else {
-                LOGGER.info("Running file cleaner: deleting {} of {} marked files", objectKeyPaths.size(), filesToDelete.size());
+                if (saturated) {
+                    metrics.recordFileCleanerCycleSaturated();
+                    LOGGER.info("Running file cleaner: deleting {} files (per-cycle cap reached, more remain)",
+                        objectKeyPaths.size());
+                } else {
+                    LOGGER.info("Running file cleaner: deleting {} files", objectKeyPaths.size());
+                }
                 metrics.recordFileCleanerStart();
                 final int deletedCount = TimeUtils.measureDurationMs(time,
                     () -> cleanFiles(objectKeyPaths),
