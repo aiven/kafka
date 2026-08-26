@@ -35,13 +35,13 @@ import org.slf4j.Logger;
 
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -54,6 +54,7 @@ import java.util.stream.Collectors;
  * <p>ShareSessionHandler tracks the partitions which are in the session. It also determines
  * which partitions need to be included in each ShareFetch/ShareAcknowledge request.
  */
+@SuppressWarnings({"NPathComplexity", "CyclomaticComplexity"})
 public class ShareSessionHandler {
     private final Logger log;
     private final int node;
@@ -94,7 +95,7 @@ public class ShareSessionHandler {
     }
 
     public Collection<TopicIdPartition> sessionPartitions() {
-        return Collections.unmodifiableCollection(sessionPartitions.values());
+        return Set.copyOf(sessionPartitions.values());
     }
 
     public void addPartitionToFetch(TopicIdPartition topicIdPartition, Acknowledgements partitionAcknowledgements) {
@@ -112,7 +113,7 @@ public class ShareSessionHandler {
         return nextMetadata.isNewSession();
     }
 
-    public ShareFetchRequest.Builder newShareFetchBuilder(String groupId, ShareFetchConfig shareFetchConfig) {
+    public ShareFetchRequest.Builder newShareFetchBuilder(String groupId, ShareFetchConfig shareFetchConfig, boolean canSkipIfRequestEmpty) {
         List<TopicIdPartition> added = new ArrayList<>();
         List<TopicIdPartition> removed = new ArrayList<>();
         List<TopicIdPartition> replaced = new ArrayList<>();
@@ -158,15 +159,6 @@ public class ShareSessionHandler {
             }
         }
 
-        if (log.isDebugEnabled()) {
-            log.debug("Build ShareFetch {} for node {}. Added {}, removed {}, replaced {} out of {}",
-                    nextMetadata, node,
-                    topicIdPartitionsToLogString(added),
-                    topicIdPartitionsToLogString(removed),
-                    topicIdPartitionsToLogString(replaced),
-                    topicIdPartitionsToLogString(sessionPartitions.values()));
-        }
-
         // The replaced topic-partitions need to be removed, and their replacements are already added
         removed.addAll(replaced);
 
@@ -187,6 +179,19 @@ public class ShareSessionHandler {
         nextPartitions = new LinkedHashMap<>();
         nextAcknowledgements = new LinkedHashMap<>();
 
+        if (canSkipIfRequestEmpty && added.isEmpty() && removed.isEmpty() && acknowledgementBatches.isEmpty()) {
+            return null;
+        }
+
+        if (log.isDebugEnabled()) {
+            log.debug("Build ShareFetch {} for node {}. Added {}, removed {}, replaced {} out of {}",
+                nextMetadata, node,
+                topicIdPartitionsToLogString(added),
+                topicIdPartitionsToLogString(removed),
+                topicIdPartitionsToLogString(replaced),
+                topicIdPartitionsToLogString(sessionPartitions.values()));
+        }
+
         if (hasRenewAcknowledgements) {
             // If the request has renew acknowledgements, the ShareFetch is only used to send the acknowledgements
             // and potentially update the share session. The parameters for wait time, number of bytes and number of
@@ -195,6 +200,14 @@ public class ShareSessionHandler {
                 groupId, nextMetadata, 0,
                 0, 0, 0,
                 0, shareFetchConfig.shareAcquireMode.id, true,
+                added, removed, acknowledgementBatches);
+        } else if (canSkipIfRequestEmpty) {
+            // The request contains changes to the share session or acknowledgements only. The parameters for wait time,
+            // number of bytes and number of records are all zero.
+            return ShareFetchRequest.Builder.forConsumer(
+                groupId, nextMetadata, 0,
+                0, 0, 0,
+                0, shareFetchConfig.shareAcquireMode.id, false,
                 added, removed, acknowledgementBatches);
         } else {
             return ShareFetchRequest.Builder.forConsumer(
@@ -205,9 +218,9 @@ public class ShareSessionHandler {
         }
     }
 
-    public ShareAcknowledgeRequest.Builder newShareAcknowledgeBuilder(String groupId, ShareFetchConfig shareFetchConfig) {
+    public ShareAcknowledgeRequest.Builder newShareAcknowledgeBuilder(String groupId) {
         if (nextMetadata.isNewSession()) {
-            // A share session cannot be started with a ShareAcknowledge request
+            // A share session cannot be started with a ShareAcknowledge request. The caller handles completing the acks.
             nextPartitions.clear();
             nextAcknowledgements.clear();
             return null;

@@ -510,7 +510,6 @@ abstract class BaseProducerSendTest extends KafkaServerTestHarness {
   def testCloseWithZeroTimeoutFromCallerThread(groupProtocol: String, topicType: String): Unit = {
     TestUtils.createTopicWithAdmin(admin, topic, brokers, controllerServers, 2, 2)
     val partition = 0
-    consumer.assign(java.util.List.of(new TopicPartition(topic, partition)))
     val record0 = new ProducerRecord[Array[Byte], Array[Byte]](topic, partition, null,
       "value".getBytes(StandardCharsets.UTF_8))
 
@@ -524,7 +523,6 @@ abstract class BaseProducerSendTest extends KafkaServerTestHarness {
         val e = assertThrows(classOf[ExecutionException], () => future.get())
         assertEquals(classOf[KafkaException], e.getCause.getClass)
       }
-      assertEquals(0, consumer.poll(Duration.ofMillis(50L)).count, "Fetch response should have no message returned.")
     }
   }
 

@@ -34,6 +34,7 @@ import org.apache.kafka.common.utils.LogContext;
 import org.apache.kafka.metadata.KafkaConfigSchema;
 import org.apache.kafka.server.common.ApiMessageAndVersion;
 import org.apache.kafka.server.common.EligibleLeaderReplicasVersion;
+import org.apache.kafka.server.common.MetadataVersion;
 import org.apache.kafka.server.config.ServerConfigs;
 import org.apache.kafka.server.mutable.BoundedList;
 import org.apache.kafka.server.policy.AlterConfigPolicy;
@@ -63,6 +64,7 @@ import static org.apache.kafka.common.config.TopicConfig.UNCLEAN_LEADER_ELECTION
 import static org.apache.kafka.common.metadata.MetadataRecordType.CONFIG_RECORD;
 import static org.apache.kafka.common.protocol.Errors.INVALID_CONFIG;
 import static org.apache.kafka.controller.QuorumController.MAX_RECORDS_PER_USER_OP;
+import static org.apache.kafka.server.config.ServerLogConfigs.CORDONED_LOG_DIRS_CONFIG;
 
 
 public class ConfigurationControlManager {
@@ -365,6 +367,8 @@ public class ConfigurationControlManager {
                 return DISALLOWED_BROKER_MIN_ISR_TRANSITION_ERROR;
             } else if (isDisallowedClusterMinIsrTransition(configRecord)) {
                 return DISALLOWED_CLUSTER_MIN_ISR_REMOVAL_ERROR;
+            } else if (isCordonedLogDirsDisallowed(configRecord)) {
+                return DISALLOWED_CORDONED_LOG_DIRS_ERROR;
             } else if (configRecord.value() == null) {
                 if (Objects.equals(configRecord.name(), TopicConfig.DISKLESS_ENABLE_CONFIG)) {
                     // Deleting diskless.enable is not allowed: it would revert the topic to the
@@ -409,6 +413,8 @@ public class ConfigurationControlManager {
                 // supported, this guard must be updated to allow an explicit diskless.enable=false.
                 return ApiError.fromThrowable(
                     new InvalidConfigurationException("It is not allowed to delete the diskless.enable config"));
+            } else if (isCordonedLogDirsDisallowed(configRecord)) {
+                return DISALLOWED_CORDONED_LOG_DIRS_ERROR;
             } else {
                 allConfigs.remove(configRecord.name());
             }
@@ -482,6 +488,10 @@ public class ConfigurationControlManager {
             ServerConfigs.DISKLESS_ALLOW_FROM_CLASSIC_ENABLE_DEFAULT)));
     }
 
+    static final ApiError DISALLOWED_CORDONED_LOG_DIRS_ERROR =
+            new ApiError(INVALID_CONFIG, "The " + CORDONED_LOG_DIRS_CONFIG + " configuration value cannot be " +
+                    "set because it requires metadata.version >= " + MetadataVersion.IBP_4_3_IV0);
+
     boolean isDisallowedBrokerMinIsrTransition(ConfigRecord configRecord) {
         if (configRecord.name().equals(MIN_IN_SYNC_REPLICAS_CONFIG) &&
                 configRecord.resourceType() == BROKER.id() &&
@@ -489,6 +499,14 @@ public class ConfigurationControlManager {
             if (featureControl.isElrFeatureEnabled()) {
                 return true;
             }
+        }
+        return false;
+    }
+
+    boolean isCordonedLogDirsDisallowed(ConfigRecord configRecord) {
+        if (configRecord.name().equals(CORDONED_LOG_DIRS_CONFIG) &&
+                configRecord.resourceType() == BROKER.id()) {
+            return !featureControl.metadataVersionOrThrow().isCordonedLogDirsSupported();
         }
         return false;
     }

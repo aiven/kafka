@@ -51,11 +51,11 @@ import org.apache.kafka.common.network.ListenerName;
 import org.apache.kafka.common.protocol.ApiKeys;
 import org.apache.kafka.common.protocol.ApiMessage;
 import org.apache.kafka.common.protocol.Errors;
-import org.apache.kafka.common.record.DefaultRecordBatch;
-import org.apache.kafka.common.record.MemoryRecords;
-import org.apache.kafka.common.record.Records;
-import org.apache.kafka.common.record.UnalignedMemoryRecords;
-import org.apache.kafka.common.record.UnalignedRecords;
+import org.apache.kafka.common.record.internal.DefaultRecordBatch;
+import org.apache.kafka.common.record.internal.MemoryRecords;
+import org.apache.kafka.common.record.internal.Records;
+import org.apache.kafka.common.record.internal.UnalignedMemoryRecords;
+import org.apache.kafka.common.record.internal.UnalignedRecords;
 import org.apache.kafka.common.requests.DescribeQuorumRequest;
 import org.apache.kafka.common.requests.DescribeQuorumResponse;
 import org.apache.kafka.common.requests.EndQuorumEpochRequest;
@@ -185,7 +185,7 @@ public final class KafkaRaftClient<T> implements RaftClient<T> {
     private final Endpoints localListeners;
     private final SupportedVersionRange localSupportedKRaftVersion;
     private final NetworkChannel channel;
-    private final ReplicatedLog log;
+    private final RaftLog log;
     private final Random random;
     private final FuturePurgatory<Long> appendPurgatory;
     private final FuturePurgatory<Long> fetchPurgatory;
@@ -236,7 +236,7 @@ public final class KafkaRaftClient<T> implements RaftClient<T> {
         Uuid nodeDirectoryId,
         RecordSerde<T> serde,
         NetworkChannel channel,
-        ReplicatedLog log,
+        RaftLog log,
         Time time,
         ExpirationService expirationService,
         LogContext logContext,
@@ -275,7 +275,7 @@ public final class KafkaRaftClient<T> implements RaftClient<T> {
         RecordSerde<T> serde,
         NetworkChannel channel,
         RaftMessageQueue messageQueue,
-        ReplicatedLog log,
+        RaftLog log,
         MemoryPool memoryPool,
         Time time,
         ExpirationService expirationService,
@@ -4028,8 +4028,13 @@ public final class KafkaRaftClient<T> implements RaftClient<T> {
                 lastSent = null;
             }
 
-            logger.debug("Notifying listener {} of snapshot {}", listenerName(), reader.snapshotId());
-            listener.handleLoadSnapshot(reader);
+            if (reader.snapshotId().equals(BOOTSTRAP_SNAPSHOT_ID)) {
+                logger.debug("Notifying listener {} of bootstrap snapshot {}", listenerName(), reader.snapshotId());
+                listener.handleLoadBootstrap(reader);
+            } else {
+                logger.debug("Notifying listener {} of committed snapshot {}", listenerName(), reader.snapshotId());
+                listener.handleLoadSnapshot(reader);
+            }
         }
 
         /**
