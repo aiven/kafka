@@ -18,7 +18,7 @@
 package io.aiven.inkless.control_plane;
 
 import org.apache.kafka.common.TopicIdPartition;
-import org.apache.kafka.common.record.RecordBatch;
+import org.apache.kafka.common.record.internal.RecordBatch;
 import org.apache.kafka.common.record.TimestampType;
 
 import io.aiven.inkless.common.ByteRange;

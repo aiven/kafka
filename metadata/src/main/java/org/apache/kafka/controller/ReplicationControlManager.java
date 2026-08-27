@@ -1777,6 +1777,8 @@ public class ReplicationControlManager {
 
         return ControllerResult.of(List.of(new ApiMessageAndVersion(record, (short) 0)),
             new AlterDisklessSwitchResponseData());
+    }
+
     private static String logPartitionChangeInfo(PartitionRegistration oldRegistration, PartitionRegistration newRegistration) {
         return String.format("isr: %s -> %s, replicaSet: %s -> %s, partitionEpoch: %d -> %d, leaderEpoch: %d -> %d",
             Arrays.toString(oldRegistration.isr), Arrays.toString(newRegistration.isr),
@@ -2533,7 +2535,6 @@ public class ReplicationControlManager {
         return String.format("(isr: %s, replicaSet: %s, partitionEpoch: %d, leaderEpoch: %d)",
             Arrays.toString(partition.isr), Arrays.toString(partition.replicas), partition.partitionEpoch,
             partition.leaderEpoch);
-    }
     }
 
     ControllerResult<List<CreatePartitionsTopicResult>> createPartitions(

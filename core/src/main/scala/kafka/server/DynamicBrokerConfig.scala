@@ -631,7 +631,7 @@ class DynamicLogConfig(logManager: LogManager, directoryEventHandler: DirectoryE
 
 class DynamicInklessLogConfig(inklessMetadataView: InklessMetadataView) extends BrokerReconfigurable {
 
-  override def reconfigurableConfigs: Set[String] = DynamicLogConfig.ReconfigurableConfigs
+  override def reconfigurableConfigs: util.Set[String] = JDynamicBrokerConfig.DynamicLogConfig.RECONFIGURABLE_CONFIGS
 
   override def validateReconfiguration(newConfig: KafkaConfig): Unit = {}
 

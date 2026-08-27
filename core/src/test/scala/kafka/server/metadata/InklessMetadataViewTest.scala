@@ -21,7 +21,7 @@ package kafka.server.metadata
 import org.apache.kafka.common.config.TopicConfig
 import org.apache.kafka.common.{DirectoryId, TopicIdPartition, TopicPartition, Uuid}
 import org.apache.kafka.image.{MetadataImage, TopicImage, TopicsImage}
-import org.apache.kafka.metadata.{LeaderRecoveryState, PartitionRegistration}
+import org.apache.kafka.metadata.{KRaftMetadataCache, LeaderRecoveryState, PartitionRegistration}
 import org.junit.jupiter.api.{BeforeEach, Nested, Test}
 import org.junit.jupiter.api.Assertions._
 import org.mockito.ArgumentMatchers.anyString

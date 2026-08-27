@@ -22,7 +22,7 @@ import io.aiven.inkless.consume.ConcatenatedRecords
 import kafka.server.{FailedPartitions, KafkaConfig, ReplicaFetcherThread, ReplicaManager, ReplicaQuota}
 import org.apache.kafka.common.TopicPartition
 import org.apache.kafka.common.errors.RecordBatchTooLargeException
-import org.apache.kafka.common.record.{MemoryRecords, Records}
+import org.apache.kafka.common.record.internal.{MemoryRecords, Records}
 import org.apache.kafka.common.requests.FetchResponse
 import org.apache.kafka.metadata.PartitionRegistration
 import org.apache.kafka.server.LeaderEndPoint

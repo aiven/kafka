@@ -28,7 +28,7 @@ import kafka.cluster.Partition
 import kafka.log.LogManager
 import kafka.server.QuotaFactory.QuotaManagers
 import kafka.server.ReplicaManager.{AtMinIsrPartitionCountMetricName, ConsolidationFetchBytesInPerSecMetricName, ConsolidationLocalBytesPerSecMetricName, ConsolidationSupplementBytesPerSecMetricName, ConsolidationSupplementRateMetricName, FailedIsrUpdatesPerSecMetricName, IsrExpandsPerSecMetricName, IsrShrinksPerSecMetricName, LeaderCountMetricName, OfflineReplicaCountMetricName, PartitionCountMetricName, PartitionsWithLateTransactionsCountMetricName, ProducerIdCountMetricName, ReassigningPartitionsMetricName, SealedPartitionsCountMetricName, DisklessSwitchedReplicasOutsideIsrCountMetricName, UnderMinIsrPartitionCountMetricName, UnderReplicatedPartitionsMetricName, createLogReadResult, isListOffsetsTimestampUnsupported}
-import kafka.server.metadata.{InklessMetadataView, KRaftMetadataCache}
+import kafka.server.metadata.InklessMetadataView
 import kafka.server.share.DelayedShareFetch
 import kafka.utils._
 import org.apache.kafka.common.{IsolationLevel, KafkaException, Node, TopicIdPartition, TopicPartition, Uuid}
@@ -56,7 +56,7 @@ import org.apache.kafka.common.utils.{Exit, Time, Utils}
 import org.apache.kafka.coordinator.transaction.{AddPartitionsToTxnConfig, TransactionLogConfig}
 import org.apache.kafka.image.{LocalReplicaChanges, MetadataImage, TopicsDelta}
 import org.apache.kafka.logger.StateChangeLogger
-import org.apache.kafka.metadata.{LeaderAndIsr, MetadataCache, PartitionRegistration}
+import org.apache.kafka.metadata.{KRaftMetadataCache, LeaderAndIsr, MetadataCache, PartitionRegistration}
 import org.apache.kafka.metadata.LeaderConstants.NO_LEADER
 import org.apache.kafka.server.purgatory.DelayedProduce.ProducePartitionStatus
 import org.apache.kafka.server.LogAppendResult.LogAppendSummary
@@ -870,7 +870,7 @@ class ReplicaManager(val config: KafkaConfig,
         CompletableFuture.completedFuture(util.Map.of[TopicIdPartition, PartitionResponse]())
     }
 
-    def classicResponseCallback(classicResult: Map[TopicIdPartition, PartitionResponse]): Unit = {
+    def classicResponseCallback(classicResult: util.Map[TopicIdPartition, PartitionResponse]): Unit = {
       disklessResponsesFuture.whenComplete { case (result, e) =>
         val disklessResult: Map[TopicIdPartition, PartitionResponse] = if (result != null) result.asScala else {
           error("Diskless append future failed", e)
@@ -878,12 +878,12 @@ class ReplicaManager(val config: KafkaConfig,
         }
         // Diskless append results do not complete purgatory actions to avoid overloading the control-plane.
         // only classic append results complete purgatory actions.
-        responseCallback(disklessResult ++ pendingDisklessSwitchResult ++ classicResult)
+        responseCallback((disklessResult ++ pendingDisklessSwitchResult ++ classicResult.asScala).asJava)
       }
     }
 
     if (classicEntries.isEmpty) {
-      classicResponseCallback(Map.empty)
+      classicResponseCallback(util.Map.of[TopicIdPartition, PartitionResponse]())
       return
     }
 

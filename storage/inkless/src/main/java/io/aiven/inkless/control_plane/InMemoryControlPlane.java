@@ -45,7 +45,7 @@ import java.util.stream.Stream;
 import io.aiven.inkless.TimeUtils;
 import io.aiven.inkless.common.ObjectFormat;
 
-import static org.apache.kafka.common.record.RecordBatch.NO_TIMESTAMP;
+import static org.apache.kafka.common.record.internal.RecordBatch.NO_TIMESTAMP;
 import static org.apache.kafka.storage.internals.log.ProducerStateEntry.NUM_BATCHES_TO_RETAIN;
 
 // TODO: in-memory control plane is using synchronous operations. It could be improved by using finer-grained locks if needed later.

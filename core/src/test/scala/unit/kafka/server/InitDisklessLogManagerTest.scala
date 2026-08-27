@@ -24,6 +24,7 @@ import org.apache.kafka.common.message.{InitDisklessLogRequestData, InitDiskless
 import org.apache.kafka.common.protocol.Errors
 import org.apache.kafka.common.requests.{AbstractRequest, InitDisklessLogRequest, InitDisklessLogResponse, RequestHeader}
 import org.apache.kafka.common.protocol.ApiKeys
+import org.apache.kafka.common.record.internal.RecordBatch
 import org.apache.kafka.server.metrics.KafkaYammerMetrics
 import org.apache.kafka.server.partition.PartitionListener
 import org.apache.kafka.server.common.{ControllerRequestCompletionHandler, NodeToControllerChannelManager}
@@ -159,6 +160,17 @@ class InitDisklessLogManagerTest {
     partition
   }
 
+  // ProducerStateEntry's constructor and addBatch method are package-private to
+  // org.apache.kafka.storage.internals.log, so cross-package tests mock the entry instead
+  // of building one via addBatch.
+  private def mockProducerEntry(producerId: Long, producerEpoch: Short, batches: BatchMetadata*): ProducerStateEntry = {
+    val entry = mock(classOf[ProducerStateEntry])
+    when(entry.producerId()).thenReturn(producerId)
+    when(entry.producerEpoch()).thenReturn(producerEpoch)
+    when(entry.batchMetadata()).thenReturn(util.List.of(batches: _*))
+    entry
+  }
+
   @Test
   def testRegisterPartitionHWEqualsLEO(): Unit = {
     // Given a partition where HW equals LEO
@@ -226,12 +238,9 @@ class InitDisklessLogManagerTest {
     val partition = mockPartition(hw = 100, leo = 100, leaderEpoch = 5)
 
     val producerStateManager = partition.log.get.producerStateManager()
-    val producerEntry = new ProducerStateEntry(
-      42L, 1.toShort, 0, 5000L,
-      java.util.OptionalLong.empty(),
-      Optional.of(new org.apache.kafka.storage.internals.log.BatchMetadata(14, 99, 4, 5000L))
-    )
-    producerEntry.addBatch(1.toShort, 19, 104, 4, 6000L)
+    val producerEntry = mockProducerEntry(42L, 1.toShort,
+      new BatchMetadata(14, 99, 4, 5000L),
+      new BatchMetadata(19, 104, 4, 6000L))
     val producers = new util.HashMap[java.lang.Long, ProducerStateEntry]()
     producers.put(42L, producerEntry)
     when(producerStateManager.activeProducers()).thenReturn(producers)
@@ -288,27 +297,21 @@ class InitDisklessLogManagerTest {
     val partition = mockPartition(hw = 250, leo = 250, leaderEpoch = 7)
 
     // Producer id 42, epoch 1, with three retained batches.
-    val producerEntry = new ProducerStateEntry(
-      42L, 1.toShort, 0, 1000L,
-      java.util.OptionalLong.empty(),
-      Optional.of(new BatchMetadata(12, 112, 2, 1000L))
-    )
-    producerEntry.addBatch(1.toShort, 15, 120, 2, 2000L)
-    producerEntry.addBatch(1.toShort, 17, 130, 1, 3000L)
+    val producerEntry = mockProducerEntry(42L, 1.toShort,
+      new BatchMetadata(12, 112, 2, 1000L),
+      new BatchMetadata(15, 120, 2, 2000L),
+      new BatchMetadata(17, 130, 1, 3000L))
 
     // Producer id 77, epoch 3, with two retained batches.
-    val otherProducerEntry = new ProducerStateEntry(
-      77L, 3.toShort, 0, 4000L,
-      java.util.OptionalLong.empty(),
-      Optional.of(new BatchMetadata(4, 204, 4, 4000L))
-    )
-    otherProducerEntry.addBatch(3.toShort, 7, 208, 2, 5000L)
+    val otherProducerEntry = mockProducerEntry(77L, 3.toShort,
+      new BatchMetadata(4, 204, 4, 4000L),
+      new BatchMetadata(7, 208, 2, 5000L))
 
     val producers = new util.HashMap[java.lang.Long, ProducerStateEntry]()
     producers.put(producerEntry.producerId(), producerEntry)
     producers.put(otherProducerEntry.producerId(), otherProducerEntry)
     // Producer id 88 is empty and should not be included in the request.
-    producers.put(88L, ProducerStateEntry.empty(88L))
+    producers.put(88L, mockProducerEntry(88L, RecordBatch.NO_PRODUCER_EPOCH))
 
     val producerStateManager = partition.log.get.producerStateManager()
     when(producerStateManager.activeProducers()).thenReturn(producers)

@@ -18,7 +18,7 @@
 package io.aiven.inkless.test_utils;
 
 import org.apache.kafka.common.header.Header;
-import org.apache.kafka.common.record.SimpleRecord;
+import org.apache.kafka.common.record.internal.SimpleRecord;
 
 import net.jqwik.api.Arbitraries;
 import net.jqwik.api.Arbitrary;

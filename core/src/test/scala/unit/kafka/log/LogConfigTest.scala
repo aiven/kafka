@@ -955,18 +955,18 @@ class LogConfigTest {
       mutualExclusionError, kafkaConfig, disklessAllowFromClassic = true)
   }
 
-  private def topicProps(entries: (String, String)*): Properties = {
-    val props = new Properties()
+  private def topicProps(entries: (String, String)*): util.Map[String, String] = {
+    val props = new util.HashMap[String, String]()
     entries.foreach { case (k, v) => props.put(k, v) }
     props
   }
 
-  private def assertValid(existingConfigs: util.Map[String, String], props: Properties, kafkaConfig: KafkaConfig,
+  private def assertValid(existingConfigs: util.Map[String, String], props: util.Map[String, String], kafkaConfig: KafkaConfig,
                           disklessAllowFromClassic: Boolean = false, remoteStorageConsolidationEnabled: Boolean = false): Unit = {
     LogConfig.validate(existingConfigs, props, kafkaConfig.extractLogConfigMap, true, disklessAllowFromClassic, true, remoteStorageConsolidationEnabled)
   }
 
-  private def assertInvalid(existingConfigs: util.Map[String, String], props: Properties, expectedMessage: String,
+  private def assertInvalid(existingConfigs: util.Map[String, String], props: util.Map[String, String], expectedMessage: String,
                             kafkaConfig: KafkaConfig, disklessAllowFromClassic: Boolean = false, remoteStorageConsolidationEnabled: Boolean = false): Unit = {
     val ex = assertThrows(classOf[InvalidConfigurationException],
       () => LogConfig.validate(existingConfigs, props, kafkaConfig.extractLogConfigMap, true, disklessAllowFromClassic, true, remoteStorageConsolidationEnabled))

@@ -373,9 +373,9 @@ class BrokerServer(
         time,
         metrics,
         config,
-        channelName = "init-diskless-log",
+        "init-diskless-log",
         s"broker-${config.nodeId}-",
-        retryTimeoutMs = 60000
+        60000
       )
       initDisklessLogChannelManager.start()
       maybeInitDisklessLogManager = sharedServer.inklessControlPlane.map { controlPlane =>
@@ -935,14 +935,14 @@ class BrokerServer(
       // SharedState.initialize() and ReplicaManager construction). When ReplicaManager exists,
       // it already closes SharedState during its own shutdown.
       if (replicaManager == null)
-        maybeInklessSharedState.foreach(s => CoreUtils.swallow(s.close(), this))
+        maybeInklessSharedState.foreach(s => Utils.swallow(this.logger.underlying, () => s.close()))
 
-      maybeInitDisklessLogManager.foreach(m => CoreUtils.swallow(m.shutdown(), this))
+      maybeInitDisklessLogManager.foreach(m => Utils.swallow(this.logger.underlying, () => m.shutdown()))
 
-      maybeDisklessDeleteRecordsForwarder.foreach(f => CoreUtils.swallow(f.shutdown(), this))
+      maybeDisklessDeleteRecordsForwarder.foreach(f => Utils.swallow(this.logger.underlying, () => f.shutdown()))
 
       if (initDisklessLogChannelManager != null)
-        CoreUtils.swallow(initDisklessLogChannelManager.shutdown(), this)
+        Utils.swallow(this.logger.underlying, () => initDisklessLogChannelManager.shutdown())
 
       if (alterPartitionManager != null)
         Utils.swallow(this.logger.underlying, () => alterPartitionManager.shutdown())

@@ -275,9 +275,9 @@ class Partition(val topicPartition: TopicPartition,
    * at the classic prefix) is the expected steady state, so this is silent on a no-op.
    */
   def ensureConsolidationPruneFloorAtLeast(floor: Long): Unit = {
-    inWriteLock(leaderIsrUpdateLock) {
+    inWriteLock(leaderIsrUpdateLock, () => {
       raiseConsolidationPruneFloor(floor)
-    }
+    })
   }
 
   /**
@@ -285,13 +285,13 @@ class Partition(val topicPartition: TopicPartition,
    * indicates a stale or out-of-order pruner response, which is unexpected and surfaced as a warning.
    */
   def maybeAdvanceConsolidationPruneFloor(newFloor: Long): Unit = {
-    inWriteLock(leaderIsrUpdateLock) {
+    inWriteLock[Exception](leaderIsrUpdateLock, () => {
       if (!raiseConsolidationPruneFloor(newFloor)) {
         warn(s"Ignoring stale consolidation prune floor for $topicPartition. " +
           s"The new value ($newFloor) is less than the current floor " +
           s"(${safeConsolidationPruningFloor.get}).")
       }
-    }
+    })
   }
 
   // Raises the floor to `floor` if it does not regress an existing one. Returns whether the floor
@@ -321,7 +321,7 @@ class Partition(val topicPartition: TopicPartition,
    * RemoteLogManager only tiers closed segments.
    * @throws KafkaStorageException If transaction abortion or segment rolling fails due to an I/O error.
    */
-  def seal(): Unit = inWriteLock(leaderIsrUpdateLock) {
+  def seal(): Unit = inWriteLock[Exception](leaderIsrUpdateLock, () => {
     if (!_sealed) {
       val leaderLog = localLogOrException
       if (leaderLog.producerStateManager().firstUndecidedOffset().isPresent) {
@@ -343,18 +343,18 @@ class Partition(val topicPartition: TopicPartition,
       }
       stateChangeLogger.info(s"Sealed partition $topicPartition for diskless switch with LEO ${leaderLog.logEndOffset}")
     }
-  }
+  })
 
   /**
    * Unseal this Partition so classic appends are accepted again. Used when a classic-to-diskless
    * switch is aborted and the partition reverts to a normal classic topic.
    */
-  def unseal(): Unit = inWriteLock(leaderIsrUpdateLock) {
+  def unseal(): Unit = inWriteLock[Exception](leaderIsrUpdateLock, () => {
     if (_sealed) {
       _sealed = false
       stateChangeLogger.info(s"Unsealed partition $topicPartition after classic-to-diskless switch abort")
     }
-  }
+  })
 
   /**
    * Abort all ongoing transactions by appending ABORT markers directly to the log.
