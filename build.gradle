@@ -962,6 +962,11 @@ subprojects {
     group = "Verification"
     description = "Verify ASF License header in JSON files"
 
+    // storage:inkless is entirely Aiven-owned code under the AGPL license (see
+    // INKLESS_OWNERSHIP), so its JSON files intentionally carry an AGPL header
+    // instead of the ASF one this task checks for.
+    enabled = project.path != ':storage:inkless'
+
     doLast {
       def asfHeader = file("${rootProject.projectDir}/gradle/LICENSE.json").readLines()*.trim()
 
