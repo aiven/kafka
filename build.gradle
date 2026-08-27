@@ -2593,6 +2593,10 @@ project(':storage:inkless') {
     compileOnly libs.jooqMeta  // mostly to suppress compiler warnings, we don't use this at run time
     implementation libs.awsSdkS3
     runtimeOnly libs.awsSdkSts
+    // The Azure/GCS SDKs and wiremock pull in an older Jackson BOM transitively. Enforce
+    // Kafka's own Jackson version here so dependency resolution doesn't produce a strict
+    // version conflict between the SDKs' preferred Jackson BOM and Kafka's.
+    implementation enforcedPlatform("com.fasterxml.jackson:jackson-bom:$versions.jackson")
     implementation platform(libs.azureSdkBom)
     implementation("com.azure:azure-identity") {
       exclude group: "com.fasterxml.jackson.core"
