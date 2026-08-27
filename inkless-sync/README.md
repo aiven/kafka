@@ -56,12 +56,18 @@ Context for the agent:
 ./inkless-sync/main-sync.sh
 ```
 
-### Sync Before New Kafka Version
+### Pin main to a release-branch cut
 
 ```bash
-# Sync to the commit just before a version tag (e.g., before 4.3)
+# Last trunk commit that is also on apache/4.3 (4.3.0-SNAPSHOT).
+# Use this to cut inkless-4.3; do not pass 4.4.
 ./inkless-sync/main-sync.sh --before-version 4.3
 ```
+
+`--before-version 4.3` is the merge base of `apache/trunk` and `apache/4.3`, not a
+tag parent. Trunk commits after that cut never landed on `apache/4.3` (or landed
+later as cherry-picks with different SHAs). Merging them into main would put them
+on `inkless-4.3`.
 
 ### Dry Run (Preview)
 
@@ -147,7 +153,8 @@ For detailed cherry-pick workflow, conflict resolution patterns, and session tra
 
 ### Phase 1: Preparation
 1. Fetches upstream apache/kafka
-2. Determines sync target (trunk HEAD or before-version)
+2. Determines sync target (trunk HEAD, or trunk's merge base with the
+   `--before-version` release branch)
 3. Generates "inkless manifest" - list of files we've modified
 4. Creates sync branch: `sync/upstream-YYYYMMDD`
 
