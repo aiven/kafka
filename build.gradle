@@ -4414,10 +4414,13 @@ task aggregatedJavadoc(type: Javadoc, dependsOn: compileJava) {
 
 // Helper to get version targets and expected patterns
 ext.getVersionTargets = { rawVersion ->
-    // Python Package Version (PEP 440): 4.3.0.dev0
+    // Python Package Version (PEP 440): 4.3.0.dev0+inkless
+    // rawVersion carries Kafka's "-inkless-SNAPSHOT"/"-inkless" suffix, which isn't valid PEP 440.
+    // Move the "inkless" marker into the PEP 440 local version segment (the part after "+") instead.
+    def baseKafkaVersion = rawVersion.replace("-inkless-SNAPSHOT", "").replace("-inkless", "")
     def pythonVersion = rawVersion.contains("SNAPSHOT") ?
-            rawVersion.replace("-SNAPSHOT", ".dev0") :
-            rawVersion
+            "${baseKafkaVersion}.dev0+inkless" :
+            "${baseKafkaVersion}+inkless"
 
     def baseVersion = rawVersion.replace("-SNAPSHOT", "")
 
