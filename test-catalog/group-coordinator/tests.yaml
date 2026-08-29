@@ -397,8 +397,6 @@ org.apache.kafka.coordinator.group.GroupCoordinatorShardTest:
 - testStreamsGroupHeartbeat
 - testValidateStreamsGroupMemberDelegates
 org.apache.kafka.coordinator.group.GroupMetadataManagerTest:
-- testAlterShareGroupOffsetsBumpsGroupEpoch
-- testAlterShareGroupOffsetsErroneousCallDoesNotBumpGroupEpoch
 - testCanComputeNextTargetAssignment
 - testCanComputeNextTargetAssignmentWithNoPreviousAssignmentTimestamp
 - testCanComputeNextTargetAssignmentWithZeroAssignmentIntervalMs
@@ -1611,13 +1609,6 @@ org.apache.kafka.coordinator.group.streams.TopologyMetadataTest:
 - testMetadataImage
 - testSubtopologies
 - testTopology
-org.apache.kafka.coordinator.group.streams.assignor.AssignmentConfigsImplTest:
-- testDefault
-- testFromEmptyMap
-- testFromMap
-- testFromMapWithoutRackAwareAssignmentTags
-- testRackAwareAssignmentTagsAreUnmodifiable
-- testWithers
 org.apache.kafka.coordinator.group.streams.assignor.GroupSpecImplTest:
 - testConfigs
 - testMemberAssignmentState
@@ -1658,17 +1649,13 @@ org.apache.kafka.coordinator.group.streams.assignor.StickyTaskAssignorTest:
 - shouldAssignOneActiveTaskToEachProcessWhenTaskCountSameAsProcessCount
 - shouldAssignStandbyTaskToPreviousOwnerBasedOnBelowQuotaCondition
 - shouldAssignStandbyTasksToDifferentClientThanCorrespondingActiveTaskIsAssignedTo
-- shouldAssignStandbyToPreviousStandbyThatDoesNotHoldTheActiveTask
-- shouldAssignStandbysAwayFromProcessHoldingStateOnColdStart
 - shouldAssignTasksEvenlyWithUnequalTopicGroupSizes
 - shouldAssignTasksNotPreviouslyActiveToMultipleNewClients
 - shouldAssignTasksNotPreviouslyActiveToNewClient
 - shouldAssignTasksToClientWithPreviousStandbyTasks
-- shouldAssignTasksToMembersReportingTaskOffsetsOnColdStart
 - shouldAssignTasksToNewClient
 - shouldAssignTasksToNewClientWithoutFlippingAssignmentBetweenExistingAndBouncedClients
 - shouldAssignTasksToNewClientWithoutFlippingAssignmentBetweenExistingClients
-- shouldAssignTasksToProcessesReportingTaskOffsetsOnColdStartWithMultipleMembersPerProcess
 - shouldAssignTopicGroupIdEvenlyAcrossClientsWithNoStandByTasks
 - shouldAssignTopicGroupIdEvenlyAcrossClientsWithStandByTasks
 - shouldBalanceActiveAndStandbyTasksAcrossAvailableClients
@@ -1687,7 +1674,6 @@ org.apache.kafka.coordinator.group.streams.assignor.StickyTaskAssignorTest:
 - shouldNotMoveAnyTasksWhenNewTasksAdded
 - shouldRangeAssignTasksWhenScalingUp
 - shouldRangeAssignTasksWhenStartingEmpty
-- shouldRankCurrentOwnersAheadOfReportedTaskOffsetsAndMostCaughtUpFirst
 - shouldReBalanceTasksAcrossAllClientsWhenCapacityAndTaskCountTheSame
 - shouldReBalanceTasksAcrossClientsWhenCapacityLessThanTaskCount
 - shouldReassignTasksWhenNewNodeJoinsWithExistingActiveAndStandbyAssignments
@@ -1735,7 +1721,6 @@ org.apache.kafka.coordinator.group.streams.topics.CopartitionedTopicsEnforcerTes
 org.apache.kafka.coordinator.group.streams.topics.EndpointToPartitionsManagerTest:
 - Should
 - testEndpointToPartitionsExcludesPartitionsMissingFromSmallerSourceTopic
-- testEndpointToPartitionsWithStandbyAndWarmupTasksInSameSubtopology
 - testEndpointToPartitionsWithStandbyTaskAssignments
 org.apache.kafka.coordinator.group.streams.topics.InternalTopicManagerTest:
 - testConfigureTopics

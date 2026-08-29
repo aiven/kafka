@@ -11,8 +11,6 @@ org.apache.kafka.streams.integration.AdjustStreamThreadCountTest:
 - testRebalanceHappensBeforeStreamThreadGetDown
 org.apache.kafka.streams.integration.AtLeastOnceDeliveryMessageLossIntegrationTest:
 - shouldCommitOffsetsAndProduceOutputRecordsWhenProducerFailsWithMessageTooLarge
-org.apache.kafka.streams.integration.ColdStartStickinessIntegrationTest:
-- shouldStickToLocalStateOnColdStart
 org.apache.kafka.streams.integration.ConsistencyVectorIntegrationTest:
 - shouldHaveSamePositionBoundActiveAndStandBy
 org.apache.kafka.streams.integration.DeadLetterQueueIntegrationTest:
@@ -23,7 +21,6 @@ org.apache.kafka.streams.integration.DeadLetterQueueIntegrationTest:
 - shouldSendToDlqAndFailFromDsl
 - shouldSendToDlqAndFailFromProcessorAPI
 org.apache.kafka.streams.integration.EOSUncleanShutdownIntegrationTest:
-- shouldNotWipeStateStoreOnUncleanShutdownWhenTransactional
 - shouldWorkWithUncleanShutdownWipeOutStateStore
 org.apache.kafka.streams.integration.EmitOnChangeIntegrationTest:
 - shouldEmitSameRecordAfterFailover
@@ -35,7 +32,6 @@ org.apache.kafka.streams.integration.EosIntegrationTest:
 - shouldBeAbleToRunWithEosEnabled
 - shouldBeAbleToRunWithTwoSubtopologies
 - shouldBeAbleToRunWithTwoSubtopologiesAndMultiplePartitions
-- shouldBufferStateStoreWritesUntilCommitUnderEos
 - shouldCheckpointRestoredOffsetsWhenClosingCleanDuringRestoring
 - shouldCommitCorrectOffsetIfInputTopicIsTransactional
 - shouldNotCommitActiveTasksWithPendingInputIfRevokedTaskDidNotMakeProgress
@@ -103,13 +99,6 @@ org.apache.kafka.streams.integration.HeadersStoreUpgradeIntegrationTest:
 org.apache.kafka.streams.integration.HighAvailabilityTaskAssignorIntegrationTest:
 - shouldScaleOutWithWarmupTasksAndInMemoryStores
 - shouldScaleOutWithWarmupTasksAndPersistentStores
-org.apache.kafka.streams.integration.IQv1IsolationLevelIntegrationTest:
-- IN_MEMORY_KV
-- IN_MEMORY_SESSION
-- IN_MEMORY_WINDOW
-- PERSISTENT_KV
-- PERSISTENT_SESSION
-- PERSISTENT_WINDOW
 org.apache.kafka.streams.integration.IQv2EndpointToPartitionsIntegrationTest:
 - CLASSIC
 - STREAMS
@@ -141,19 +130,6 @@ org.apache.kafka.streams.integration.IQv2HeadersStoreIntegrationTest:
 org.apache.kafka.streams.integration.IQv2IntegrationTest:
 - CLASSIC
 - STREAMS
-org.apache.kafka.streams.integration.IQv2IsolationLevelIntegrationTest:
-- IN_MEMORY_KV_POINT
-- IN_MEMORY_KV_RANGE
-- IN_MEMORY_SESSION
-- IN_MEMORY_WINDOW_POINT
-- IN_MEMORY_WINDOW_RANGE
-- PERSISTENT_KV_POINT
-- PERSISTENT_KV_RANGE
-- PERSISTENT_SESSION
-- PERSISTENT_VERSIONED_MULTI
-- PERSISTENT_VERSIONED_POINT
-- PERSISTENT_WINDOW_POINT
-- PERSISTENT_WINDOW_RANGE
 org.apache.kafka.streams.integration.IQv2StoreIntegrationTest:
 - verifyStore
 org.apache.kafka.streams.integration.IQv2VersionedStoreIntegrationTest:
@@ -434,7 +410,7 @@ org.apache.kafka.streams.integration.StateDirectoryIntegrationTest:
 - testCleanUpStateDirIfEmpty
 - testNotCleanUpStateDirIfNotEmpty
 org.apache.kafka.streams.integration.StateUpdaterFailureIntegrationTest:
-- correctlyHandleFailuresDuringRebalance
+- correctlyHandleFlushErrorsDuringRebalance
 org.apache.kafka.streams.integration.StoreQueryIntegrationTest:
 - shouldFailWithIllegalArgumentExceptionWhenIQPartitionerReturnsMultiplePartitions
 - shouldQueryAllStalePartitionStores
@@ -548,6 +524,7 @@ org.apache.kafka.streams.integration.TopologyDescriptionPluginIntegrationTest:
 - shouldPushTopologyDescriptionToPluginAfterJoin
 - shouldStopSolicitingPushAfterPermanentPluginFailure
 org.apache.kafka.streams.integration.TransactionalPositionRestartIntegrationTest:
+- initializationError
 - verifyStore
 org.apache.kafka.streams.integration.VersionedKeyValueStoreIntegrationTest:
 - shouldAllowCustomIQv2ForCustomStoreImplementations

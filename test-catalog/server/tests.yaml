@@ -11,10 +11,6 @@ org.apache.kafka.network.RequestConvertToJsonTest:
 - testAllRequestTypesHandled
 - testAllResponseTypesHandled
 - testClientInfoNode
-- testRequestDesc
-- testRequestDescMetrics
-- testRequestDescMetricsOmitsNonPositiveMetrics
-- testRequestHeaderNode
 org.apache.kafka.network.RequestTest:
 - testAlterRequests
 - testBuildEnvelopeResponse
@@ -389,8 +385,6 @@ org.apache.kafka.server.ReconfigurableQuorumIntegrationTest:
 - testRemoveAndAddVoterWithInconsistentClusterId
 - testRemoveAndAddVoterWithValidClusterId
 - testRemoveController
-org.apache.kafka.server.ReplicaFetchTest:
-- testReplicaFetcherThread
 org.apache.kafka.server.SimpleApiVersionManagerTest:
 - testUnknownFeaturesHasNoMetadataVersion
 org.apache.kafka.server.UncleanLeaderElectionTest:

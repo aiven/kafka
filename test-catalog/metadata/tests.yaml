@@ -268,17 +268,13 @@ org.apache.kafka.controller.QuorumControllerTest:
 - testUncleanShutdownBrokerElrEnabled
 - testUncleanShutdownElrDisabled
 - testUnregisterBroker
-- testUnregisterControllerInVoterSet
 org.apache.kafka.controller.QuorumFeaturesTest:
 - ensureDefaultSupportedFeaturesRangeMaxNotZero
 - testDefaultFeatureMap
 - testDefaultFeatureMapWithUnstable
-- testIsVoterId
+- testIsControllerId
 - testLocalSupportedFeature
 - testReasonNotSupported
-- testVoterIdsAreSuppliedOnEveryCall
-org.apache.kafka.controller.RaftClientVotersSupplierTest:
-- testVoterSupplier
 org.apache.kafka.controller.ReplicationControlManagerTest:
 - testAlterPartitionDisallowReplicationFactorChange
 - testAlterPartitionHandleUnknownTopicIdOrName
@@ -831,6 +827,16 @@ org.apache.kafka.metadata.VersionRangeTest:
 - testContains
 - testEquality
 - testToString
+org.apache.kafka.metadata.authorizer.CidrUtilsTest:
+- testIpv4MappedAddress
+- testIpv4MappedAddressWithSubnet
+- testIsInRangeNullOrNonCidr
+- testValidateHostnameWithPath
+- testValidateInvalidIpv4Cidr
+- testValidateInvalidIpv6Cidr
+- testValidateIpv4MappedIpv6Cidr
+- testValidateValidIpv4Cidr
+- testValidateValidIpv6Cidr
 org.apache.kafka.metadata.authorizer.ClusterMetadataAuthorizerTest:
 - testCreateAcls
 - testCreateAclsError
@@ -859,7 +865,6 @@ org.apache.kafka.metadata.authorizer.StandardAuthorizerTest:
 - testAllowEveryoneIfNoAclFoundConfigEnabled
 - testAuthorizationPriorToCompleteInitialLoad
 - testAuthorizationWithManyAcls
-- testAuthorizeByResourceTypeWithCidrHost
 - testAuthorizerMetrics
 - testCompleteInitialLoad
 - testCompleteInitialLoadWithException

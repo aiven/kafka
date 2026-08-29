@@ -492,6 +492,10 @@ kafka.api.SaslPlainSslEndToEndAuthorizationTest:
 - testProduceConsumeWithPrefixedAcls
 - testProduceConsumeWithWildcardAcls
 - testTwoConsumersWithDifferentSaslCredentials
+kafka.api.SaslPlaintextConsumerTest:
+- testClusterResourceListener
+- testCoordinatorFailover
+- testSimpleConsumption
 kafka.api.SaslScramSslEndToEndAuthorizationTest:
 - testAuthentications
 - testNoConsumeWithDescribeAclViaAssign
@@ -956,6 +960,10 @@ kafka.network.DynamicConnectionQuotaTest:
 - testDynamicListenerConnectionQuota
 kafka.network.DynamicNumNetworkThreadsTest:
 - testDynamicNumNetworkThreads
+kafka.network.RequestConvertToJsonTest:
+- testRequestDesc
+- testRequestDescMetrics
+- testRequestHeaderNode
 kafka.network.SocketServerTest:
 - closingChannelSendFailure
 - closingChannelWithBufferedReceivesFailedSend
@@ -1400,7 +1408,6 @@ kafka.server.DynamicBrokerConfigTest:
 - testImproperConfigsAreRemoved
 - testIsolatedControllerAuthorizerConfig
 - testLogRetentionTimeMinutesIsNotDynamicallyReconfigurable
-- testMetricReportersAreConfiguredWithBothIdConfigs
 - testReconfigurableValidation
 - testRemoteLogDynamicThreadPoolWithInvalidValues
 - testRemoteLogManagerCopyQuotaUpdates
@@ -2011,6 +2018,8 @@ kafka.server.ReplicaAlterLogDirsThreadTest:
 - shouldTruncateToInitialFetchOffsetIfReplicaReturnsUndefinedOffset
 - shouldTruncateToReplicaOffset
 - shouldUpdateLeaderEpochAfterFencedEpochError
+kafka.server.ReplicaFetchTest:
+- testReplicaFetcherThread
 kafka.server.ReplicaFetcherThreadTest:
 - shouldCatchExceptionFromBlockingSendWhenShuttingDownReplicaFetcherThread
 - shouldHandleExceptionFromBlockingSend
@@ -2729,7 +2738,6 @@ kafka.server.share.SharePartitionTest:
 - testMaybeInitializeWhenReadStateRpcReturnsZeroAvailableRecords
 - testMaybeInitializeWithEmptyStateBatches
 - testMaybeInitializeWithEmptyTopicsData
-- testMaybeInitializeWithEqualButDistinctTopicIdResponse
 - testMaybeInitializeWithErrorPartitionResponse
 - testMaybeInitializeWithInvalidOffsetInBatch
 - testMaybeInitializeWithInvalidPartitionResponse
@@ -2794,7 +2802,6 @@ kafka.server.share.SharePartitionTest:
 - testThrottleRecordsWhenPendingDeliveriesExist
 - testWriteShareGroupState
 - testWriteShareGroupStateFailure
-- testWriteShareGroupStateWithEqualButDistinctTopicIdResponse
 - testWriteShareGroupStateWithInvalidTopicsData
 - testWriteShareGroupStateWithNoOpStatePersister
 - testWriteShareGroupStateWithNullResponse
