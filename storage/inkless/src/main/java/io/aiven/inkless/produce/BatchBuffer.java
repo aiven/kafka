@@ -18,7 +18,7 @@
 package io.aiven.inkless.produce;
 
 import org.apache.kafka.common.TopicIdPartition;
-import org.apache.kafka.common.record.MutableRecordBatch;
+import org.apache.kafka.common.record.internal.MutableRecordBatch;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;

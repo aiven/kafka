@@ -35,7 +35,10 @@ import java.util.stream.Collectors;
 import static org.apache.kafka.common.protocol.types.Type.BYTES;
 import static org.apache.kafka.common.protocol.types.Type.COMPACT_BYTES;
 import static org.apache.kafka.common.protocol.types.Type.COMPACT_NULLABLE_BYTES;
+import static org.apache.kafka.common.protocol.types.Type.COMPACT_NULLABLE_RECORDS;
+import static org.apache.kafka.common.protocol.types.Type.COMPACT_RECORDS;
 import static org.apache.kafka.common.protocol.types.Type.NULLABLE_BYTES;
+import static org.apache.kafka.common.protocol.types.Type.NULLABLE_RECORDS;
 import static org.apache.kafka.common.protocol.types.Type.RECORDS;
 
 /**
@@ -138,7 +141,7 @@ public enum ApiKeys {
     INIT_DISKLESS_LOG(ApiMessageType.INIT_DISKLESS_LOG, true),
     ALTER_DISKLESS_SWITCH(ApiMessageType.ALTER_DISKLESS_SWITCH, false, true),
     REPAIR_DISKLESS_LOG(ApiMessageType.REPAIR_DISKLESS_LOG, false, false);
-    
+
 
     private static final Map<ApiMessageType.ListenerType, EnumSet<ApiKeys>> APIS_BY_LISTENER =
         new EnumMap<>(ApiMessageType.ListenerType.class);
@@ -345,9 +348,14 @@ public enum ApiKeys {
         Schema.Visitor detector = new Schema.Visitor() {
             @Override
             public void visit(Type field) {
-                if (field == BYTES || field == NULLABLE_BYTES || field == RECORDS ||
-                    field == COMPACT_BYTES || field == COMPACT_NULLABLE_BYTES)
+                // avoid BooleanExpressionComplexity checkstyle warning
+                boolean isBytesType = field == BYTES || field == NULLABLE_BYTES ||
+                    field == COMPACT_BYTES || field == COMPACT_NULLABLE_BYTES;
+                boolean isRecordsType = field == RECORDS || field == NULLABLE_RECORDS ||
+                    field == COMPACT_RECORDS || field == COMPACT_NULLABLE_RECORDS;
+                if (isBytesType || isRecordsType) {
                     hasBuffer.set(true);
+                }
             }
         };
         schema.walk(detector);

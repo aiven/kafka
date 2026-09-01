@@ -72,6 +72,7 @@ import org.apache.kafka.common.requests.DeleteShareGroupOffsetsRequest;
 import org.apache.kafka.common.requests.DescribeGroupsRequest;
 import org.apache.kafka.common.requests.DescribeShareGroupOffsetsRequest;
 import org.apache.kafka.common.requests.OffsetCommitRequest;
+import org.apache.kafka.common.requests.OffsetFetchRequest;
 import org.apache.kafka.common.requests.OffsetFetchResponse;
 import org.apache.kafka.common.requests.ShareGroupDescribeRequest;
 import org.apache.kafka.common.requests.ShareGroupHeartbeatRequest;
@@ -82,20 +83,26 @@ import org.apache.kafka.common.utils.BufferSupplier;
 import org.apache.kafka.common.utils.LogContext;
 import org.apache.kafka.common.utils.Time;
 import org.apache.kafka.common.utils.Utils;
+import org.apache.kafka.coordinator.common.runtime.CoordinatorBackgroundThreadPoolExecutor;
 import org.apache.kafka.coordinator.common.runtime.CoordinatorEventProcessor;
 import org.apache.kafka.coordinator.common.runtime.CoordinatorLoader;
-import org.apache.kafka.coordinator.common.runtime.CoordinatorMetadataDelta;
 import org.apache.kafka.coordinator.common.runtime.CoordinatorMetadataImage;
 import org.apache.kafka.coordinator.common.runtime.CoordinatorRecord;
 import org.apache.kafka.coordinator.common.runtime.CoordinatorResult;
 import org.apache.kafka.coordinator.common.runtime.CoordinatorRuntime;
 import org.apache.kafka.coordinator.common.runtime.CoordinatorRuntimeMetrics;
 import org.apache.kafka.coordinator.common.runtime.CoordinatorShardBuilderSupplier;
+import org.apache.kafka.coordinator.common.runtime.KRaftCoordinatorMetadataDelta;
+import org.apache.kafka.coordinator.common.runtime.KRaftCoordinatorMetadataImage;
 import org.apache.kafka.coordinator.common.runtime.MultiThreadedEventProcessor;
 import org.apache.kafka.coordinator.common.runtime.PartitionWriter;
+import org.apache.kafka.coordinator.group.GroupCoordinatorShard.DeletedTopic;
 import org.apache.kafka.coordinator.group.api.assignor.ConsumerGroupPartitionAssignor;
 import org.apache.kafka.coordinator.group.metrics.GroupCoordinatorMetrics;
 import org.apache.kafka.coordinator.group.streams.StreamsGroupHeartbeatResult;
+import org.apache.kafka.image.MetadataDelta;
+import org.apache.kafka.image.MetadataImage;
+import org.apache.kafka.image.TopicsDelta;
 import org.apache.kafka.server.authorizer.AuthorizableRequestContext;
 import org.apache.kafka.server.authorizer.Authorizer;
 import org.apache.kafka.server.record.BrokerCompressionType;
@@ -113,6 +120,7 @@ import org.apache.kafka.server.share.persister.ReadShareGroupStateSummaryParamet
 import org.apache.kafka.server.share.persister.ReadShareGroupStateSummaryResult;
 import org.apache.kafka.server.share.persister.TopicData;
 import org.apache.kafka.server.util.FutureUtils;
+import org.apache.kafka.server.util.PartitionMetadataClient;
 import org.apache.kafka.server.util.timer.Timer;
 import org.apache.kafka.server.util.timer.TimerTask;
 
@@ -125,14 +133,14 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Executors;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.IntSupplier;
 import java.util.stream.Collectors;
@@ -253,6 +261,13 @@ public class GroupCoordinatorService implements GroupCoordinator {
                 coordinatorRuntimeMetrics
             );
 
+            ExecutorService executorService = new CoordinatorBackgroundThreadPoolExecutor(
+                "group-coordinator-background-",
+                config.numBackgroundThreads(),
+                time,
+                coordinatorRuntimeMetrics
+            );
+
             CoordinatorRuntime<GroupCoordinatorShard, CoordinatorRecord> runtime =
                 new CoordinatorRuntime.Builder<GroupCoordinatorShard, CoordinatorRecord>()
                     .withTime(time)
@@ -263,13 +278,14 @@ public class GroupCoordinatorService implements GroupCoordinator {
                     .withPartitionWriter(writer)
                     .withLoader(loader)
                     .withCoordinatorShardBuilderSupplier(supplier)
-                    .withDefaultWriteTimeOut(Duration.ofMillis(config.offsetCommitTimeoutMs()))
+                    .withWriteTimeout(Duration.ofMillis(config.offsetCommitTimeoutMs()))
                     .withCoordinatorRuntimeMetrics(coordinatorRuntimeMetrics)
                     .withCoordinatorMetrics(groupCoordinatorMetrics)
                     .withSerializer(new GroupCoordinatorRecordSerde())
                     .withCompression(Compression.of(config.offsetTopicCompressionType()).build())
                     .withAppendLingerMs(config.appendLingerMs())
-                    .withExecutorService(Executors.newSingleThreadExecutor())
+                    .withExecutorService(executorService)
+                    .withCachedBufferMaxBytesSupplier(config::cachedBufferMaxBytes)
                     .build();
 
             return new GroupCoordinatorService(
@@ -343,9 +359,9 @@ public class GroupCoordinatorService implements GroupCoordinator {
 
     /**
      * The metadata image to extract topic id to names map.
-     * This is initialised when the {@link GroupCoordinator#onNewMetadataImage(CoordinatorMetadataImage, CoordinatorMetadataDelta)} is called
+     * This is initialised when the {@link GroupCoordinator#onMetadataUpdate(MetadataDelta, MetadataImage)} is called
      */
-    private CoordinatorMetadataImage metadataImage = null;
+    private volatile CoordinatorMetadataImage metadataImage = null;
 
     /**
      *
@@ -487,7 +503,6 @@ public class GroupCoordinatorService implements GroupCoordinator {
         return runtime.scheduleWriteOperation(
             "consumer-group-heartbeat",
             topicPartitionFor(request.groupId()),
-            Duration.ofMillis(config.offsetCommitTimeoutMs()),
             coordinator -> coordinator.consumerGroupHeartbeat(context, request)
         ).exceptionally(exception -> handleOperationException(
             "consumer-group-heartbeat",
@@ -615,7 +630,6 @@ public class GroupCoordinatorService implements GroupCoordinator {
         return runtime.scheduleWriteOperation(
             "streams-group-heartbeat",
             topicPartitionFor(request.groupId()),
-            Duration.ofMillis(config.offsetCommitTimeoutMs()),
             coordinator -> coordinator.streamsGroupHeartbeat(context, request)
         ).exceptionally(exception -> handleOperationException(
             "streams-group-heartbeat",
@@ -681,7 +695,6 @@ public class GroupCoordinatorService implements GroupCoordinator {
         return runtime.scheduleWriteOperation(
             "share-group-heartbeat",
             topicPartitionFor(request.groupId()),
-            Duration.ofMillis(config.offsetCommitTimeoutMs()),
             coordinator -> coordinator.shareGroupHeartbeat(context, request)
         ).thenCompose(result -> {
             if (result.getValue().isPresent()) {
@@ -861,7 +874,6 @@ public class GroupCoordinatorService implements GroupCoordinator {
         return runtime.scheduleWriteOperation(
             "uninitialize-share-group-state",
             topicPartitionFor(groupId),
-            Duration.ofMillis(config.offsetCommitTimeoutMs()),
             coordinator -> coordinator.uninitializeShareGroupState(groupId, topicPartitionMap)
         ).thenApply(__ -> new ShareGroupHeartbeatResponseData()
             .setErrorCode(error.code())
@@ -883,7 +895,6 @@ public class GroupCoordinatorService implements GroupCoordinator {
         return runtime.scheduleWriteOperation(
             "initialize-share-group-state",
             topicPartitionFor(groupId),
-            Duration.ofMillis(config.offsetCommitTimeoutMs()),
             coordinator -> coordinator.initializeShareGroupState(groupId, topicPartitionMap)
         ).handle((__, exp) -> {
             if (exp == null) {
@@ -931,7 +942,6 @@ public class GroupCoordinatorService implements GroupCoordinator {
         runtime.scheduleWriteOperation(
             "classic-group-join",
             topicPartitionFor(request.groupId()),
-            Duration.ofMillis(config.offsetCommitTimeoutMs()),
             coordinator -> coordinator.classicGroupJoin(context, request, responseFuture)
         ).exceptionally(exception -> {
             if (!responseFuture.isDone()) {
@@ -975,7 +985,6 @@ public class GroupCoordinatorService implements GroupCoordinator {
         runtime.scheduleWriteOperation(
             "classic-group-sync",
             topicPartitionFor(request.groupId()),
-            Duration.ofMillis(config.offsetCommitTimeoutMs()),
             coordinator -> coordinator.classicGroupSync(context, request, responseFuture)
         ).exceptionally(exception -> {
             if (!responseFuture.isDone()) {
@@ -1016,7 +1025,6 @@ public class GroupCoordinatorService implements GroupCoordinator {
         return runtime.scheduleWriteOperation(
             "classic-group-heartbeat",
             topicPartitionFor(request.groupId()),
-            Duration.ofMillis(config.offsetCommitTimeoutMs()),
             coordinator -> coordinator.classicGroupHeartbeat(context, request)
         ).exceptionally(exception -> handleOperationException(
             "classic-group-heartbeat",
@@ -1059,7 +1067,6 @@ public class GroupCoordinatorService implements GroupCoordinator {
         return runtime.scheduleWriteOperation(
             "classic-group-leave",
             topicPartitionFor(request.groupId()),
-            Duration.ofMillis(config.offsetCommitTimeoutMs()),
             coordinator -> coordinator.classicGroupLeave(context, request)
         ).exceptionally(exception -> handleOperationException(
             "classic-group-leave",
@@ -1310,7 +1317,6 @@ public class GroupCoordinatorService implements GroupCoordinator {
         return runtime.scheduleWriteOperation(
             "share-group-offsets-alter",
             topicPartitionFor(groupId),
-            Duration.ofMillis(config.offsetCommitTimeoutMs()),
             coordinator -> coordinator.alterShareGroupOffsets(groupId, request)
         ).thenCompose(result ->
             persisterInitialize(result.getValue(), result.getKey())
@@ -1493,7 +1499,6 @@ public class GroupCoordinatorService implements GroupCoordinator {
         return runtime.scheduleWriteOperation(
             "delete-groups",
             topicPartition,
-            Duration.ofMillis(config.offsetCommitTimeoutMs()),
             coordinator -> coordinator.deleteGroups(context, groupIds)
         ).exceptionally(exception -> handleOperationException(
             "delete-groups",
@@ -1512,7 +1517,6 @@ public class GroupCoordinatorService implements GroupCoordinator {
         return runtime.scheduleWriteOperation(
             "delete-share-groups",
             topicPartition,
-            Duration.ofMillis(config.offsetCommitTimeoutMs()),
             coordinator -> coordinator.sharePartitionDeleteRequests(groupList)
         ).thenCompose(
             this::performShareGroupsDeletion
@@ -1629,6 +1633,8 @@ public class GroupCoordinatorService implements GroupCoordinator {
             ));
         }
 
+        var name = OffsetFetchRequest.requestAllOffsets(request) ? "fetch-all-offsets" : "fetch-offsets";
+
         // The require stable flag when set tells the broker to hold on returning unstable
         // (or uncommitted) offsets. In the previous implementation of the group coordinator,
         // the UNSTABLE_OFFSET_COMMIT error is returned when unstable offsets are present. As
@@ -1639,82 +1645,23 @@ public class GroupCoordinatorService implements GroupCoordinator {
         // the pending offsets are committed. Otherwise, we use a read operation.
         if (requireStable) {
             return runtime.scheduleWriteOperation(
-                "fetch-offsets",
+                name,
                 topicPartitionFor(request.groupId()),
-                Duration.ofMillis(config.offsetCommitTimeoutMs()),
                 coordinator -> new CoordinatorResult<>(
                     List.of(),
                     coordinator.fetchOffsets(request, Long.MAX_VALUE)
                 )
             ).exceptionally(exception -> handleOffsetFetchException(
-                "fetch-offsets",
+                name,
                 context,
                 request,
                 exception
             ));
         } else {
             return runtime.scheduleReadOperation(
-                "fetch-offsets",
+                name,
                 topicPartitionFor(request.groupId()),
                 (coordinator, offset) -> coordinator.fetchOffsets(request, offset)
-            );
-        }
-    }
-
-    /**
-     * See {@link GroupCoordinator#fetchAllOffsets(AuthorizableRequestContext, OffsetFetchRequestData.OffsetFetchRequestGroup, boolean)}.
-     */
-    @Override
-    public CompletableFuture<OffsetFetchResponseData.OffsetFetchResponseGroup> fetchAllOffsets(
-        AuthorizableRequestContext context,
-        OffsetFetchRequestData.OffsetFetchRequestGroup request,
-        boolean requireStable
-    ) {
-        if (!isActive.get()) {
-            return CompletableFuture.completedFuture(OffsetFetchResponse.groupError(
-                request,
-                Errors.COORDINATOR_NOT_AVAILABLE,
-                context.requestVersion()
-            ));
-        }
-
-        // For backwards compatibility, we support fetch commits for the empty group id.
-        if (request.groupId() == null) {
-            return CompletableFuture.completedFuture(OffsetFetchResponse.groupError(
-                request,
-                Errors.INVALID_GROUP_ID,
-                context.requestVersion()
-            ));
-        }
-
-        // The require stable flag when set tells the broker to hold on returning unstable
-        // (or uncommitted) offsets. In the previous implementation of the group coordinator,
-        // the UNSTABLE_OFFSET_COMMIT error is returned when unstable offsets are present. As
-        // the new implementation relies on timeline data structures, the coordinator does not
-        // really know whether offsets are stable or not so it is hard to return the same error.
-        // Instead, we use a write operation when the flag is set to guarantee that the fetch
-        // is based on all the available offsets and to ensure that the response waits until
-        // the pending offsets are committed. Otherwise, we use a read operation.
-        if (requireStable) {
-            return runtime.scheduleWriteOperation(
-                "fetch-all-offsets",
-                topicPartitionFor(request.groupId()),
-                Duration.ofMillis(config.offsetCommitTimeoutMs()),
-                coordinator -> new CoordinatorResult<>(
-                    List.of(),
-                    coordinator.fetchAllOffsets(request, Long.MAX_VALUE)
-                )
-            ).exceptionally(exception -> handleOffsetFetchException(
-                "fetch-all-offsets",
-                context,
-                request,
-                exception
-            ));
-        } else {
-            return runtime.scheduleReadOperation(
-                "fetch-all-offsets",
-                topicPartitionFor(request.groupId()),
-                (coordinator, offset) -> coordinator.fetchAllOffsets(request, offset)
             );
         }
     }
@@ -2002,7 +1949,6 @@ public class GroupCoordinatorService implements GroupCoordinator {
         return runtime.scheduleWriteOperation(
             "initiate-delete-share-group-offsets",
             topicPartitionFor(groupId),
-            Duration.ofMillis(config.offsetCommitTimeoutMs()),
             coordinator -> coordinator.initiateDeleteShareGroupOffsets(groupId, requestData)
         ).thenCompose(resultHolder -> deleteShareGroupOffsetsState(groupId, resultHolder)
         ).exceptionally(exception -> handleOperationException(
@@ -2107,7 +2053,6 @@ public class GroupCoordinatorService implements GroupCoordinator {
         return runtime.scheduleWriteOperation(
             "complete-delete-share-group-offsets",
             topicPartitionFor(groupId),
-            Duration.ofMillis(config.offsetCommitTimeoutMs()),
             coordinator -> coordinator.completeDeleteShareGroupOffsets(groupId, successTopics, errorTopicResponses)
         ).exceptionally(exception -> handleOperationException(
             "complete-delete-share-group-offsets",
@@ -2145,7 +2090,6 @@ public class GroupCoordinatorService implements GroupCoordinator {
         return runtime.scheduleWriteOperation(
             "commit-offset",
             topicPartitionFor(request.groupId()),
-            Duration.ofMillis(config.offsetCommitTimeoutMs()),
             coordinator -> coordinator.commitOffset(context, request)
         ).exceptionally(exception -> handleOperationException(
             "commit-offset",
@@ -2185,7 +2129,6 @@ public class GroupCoordinatorService implements GroupCoordinator {
             request.transactionalId(),
             request.producerId(),
             request.producerEpoch(),
-            Duration.ofMillis(config.offsetCommitTimeoutMs()),
             coordinator -> coordinator.commitTransactionalOffset(context, request),
             context.requestVersion()
         ).exceptionally(exception -> handleOperationException(
@@ -2221,7 +2164,6 @@ public class GroupCoordinatorService implements GroupCoordinator {
         return runtime.scheduleWriteOperation(
             "delete-offsets",
             topicPartitionFor(request.groupId()),
-            Duration.ofMillis(config.offsetCommitTimeoutMs()),
             coordinator -> coordinator.deleteOffsets(context, request)
         ).exceptionally(exception -> handleOperationException(
             "delete-offsets",
@@ -2233,7 +2175,7 @@ public class GroupCoordinatorService implements GroupCoordinator {
     }
 
     /**
-     * See {@link GroupCoordinator#completeTransaction(TopicPartition, long, short, int, TransactionResult, short, Duration)}.
+     * See {@link GroupCoordinator#completeTransaction(TopicPartition, long, short, int, TransactionResult, short)}.
      */
     @Override
     public CompletableFuture<Void> completeTransaction(
@@ -2242,15 +2184,14 @@ public class GroupCoordinatorService implements GroupCoordinator {
         short producerEpoch,
         int coordinatorEpoch,
         TransactionResult result,
-        short transactionVersion,
-        Duration timeout
+        short transactionVersion
     ) {
         if (!isActive.get()) {
-            return FutureUtils.failedFuture(Errors.COORDINATOR_NOT_AVAILABLE.exception());
+            return CompletableFuture.failedFuture(Errors.COORDINATOR_NOT_AVAILABLE.exception());
         }
 
         if (!tp.topic().equals(Topic.GROUP_METADATA_TOPIC_NAME)) {
-            return FutureUtils.failedFuture(new IllegalStateException(
+            return CompletableFuture.failedFuture(new IllegalStateException(
                 "Completing a transaction for " + tp + " is not expected"
             ));
         }
@@ -2262,65 +2203,8 @@ public class GroupCoordinatorService implements GroupCoordinator {
             producerEpoch,
             coordinatorEpoch,
             result,
-            transactionVersion,
-            timeout
+            transactionVersion
         );
-    }
-
-    /**
-     * See {@link GroupCoordinator#onPartitionsDeleted(List, BufferSupplier)}.
-     */
-    @Override
-    public void onPartitionsDeleted(
-        List<TopicPartition> topicPartitions,
-        BufferSupplier bufferSupplier
-    ) throws ExecutionException, InterruptedException {
-        throwIfNotActive();
-
-        CompletableFuture.allOf(
-            FutureUtils.mapExceptionally(
-                runtime.scheduleWriteAllOperation(
-                    "on-partition-deleted",
-                    Duration.ofMillis(config.offsetCommitTimeoutMs()),
-                    coordinator -> coordinator.onPartitionsDeleted(topicPartitions)
-                ),
-                exception -> {
-                    log.error("Could not delete offsets for deleted partitions {} due to: {}.",
-                        topicPartitions, exception.getMessage(), exception
-                    );
-                    return null;
-                }
-            ).toArray(new CompletableFuture<?>[0])
-        ).get();
-
-        // At this point the metadata will not have been updated
-        // with the deleted topics. However, we must guard against it.
-        if (metadataImage == null || metadataImage.equals(CoordinatorMetadataImage.EMPTY)) {
-            return;
-        }
-
-        Set<Uuid> topicIds = topicPartitions.stream()
-            .filter(tp -> metadataImage.topicMetadata(tp.topic()).isPresent())
-            .map(tp -> metadataImage.topicMetadata(tp.topic()).get().id())
-            .collect(Collectors.toSet());
-
-        if (topicIds.isEmpty()) {
-            return;
-        }
-
-        CompletableFuture.allOf(
-            FutureUtils.mapExceptionally(
-                runtime.scheduleWriteAllOperation(
-                    "maybe-cleanup-share-group-state",
-                    Duration.ofMillis(config.offsetCommitTimeoutMs()),
-                    coordinator -> coordinator.maybeCleanupShareGroupState(topicIds)
-                ),
-                exception -> {
-                    log.error("Unable to cleanup state for the deleted topics {}", topicIds, exception);
-                    return null;
-                }
-            ).toArray(new CompletableFuture<?>[0])
-        ).get();
     }
 
     /**
@@ -2354,16 +2238,83 @@ public class GroupCoordinatorService implements GroupCoordinator {
     }
 
     /**
-     * See {@link GroupCoordinator#onNewMetadataImage(CoordinatorMetadataImage, CoordinatorMetadataDelta)}.
+     * See {@link GroupCoordinator#onMetadataUpdate(MetadataDelta, MetadataImage)}.
      */
     @Override
-    public void onNewMetadataImage(
-        CoordinatorMetadataImage newImage,
-        CoordinatorMetadataDelta delta
+    public void onMetadataUpdate(
+        MetadataDelta delta,
+        MetadataImage newImage
     ) {
         throwIfNotActive();
-        metadataImage = newImage;
-        runtime.onNewMetadataImage(newImage, delta);
+        Objects.requireNonNull(delta, "delta must be provided");
+        Objects.requireNonNull(newImage, "newImage must be provided");
+
+        // Update the metadata image and propagate to runtime.
+        var wrappedImage = new KRaftCoordinatorMetadataImage(newImage);
+        var wrappedDelta = new KRaftCoordinatorMetadataDelta(delta);
+        metadataImage = wrappedImage;
+        runtime.onMetadataUpdate(wrappedDelta, wrappedImage);
+
+        // Handle topic deletions from the delta.
+        if (delta.topicsDelta() != null && !delta.topicsDelta().deletedTopicIds().isEmpty()) {
+            handleTopicsDeletion(delta.topicsDelta());
+        }
+    }
+
+    /**
+     * Handles the deletion of topics by scheduling write operations
+     * to delete committed offsets and clean up share group state.
+     *
+     * @param topicsDelta The topics delta containing deleted topic IDs.
+     */
+    private void handleTopicsDeletion(TopicsDelta topicsDelta) {
+        var deletedTopicIds = topicsDelta.deletedTopicIds();
+        var deletedTopics = new ArrayList<DeletedTopic>();
+
+        deletedTopicIds.forEach(topicId -> {
+            var topicImage = topicsDelta.image().getTopic(topicId);
+            if (topicImage != null) {
+                deletedTopics.add(new DeletedTopic(topicId, topicImage.name()));
+            }
+        });
+
+        var futures = new ArrayList<CompletableFuture<Void>>();
+
+        if (!deletedTopics.isEmpty()) {
+            // Schedule offset deletion.
+            futures.addAll(
+                FutureUtils.mapExceptionally(
+                    runtime.scheduleWriteAllOperation(
+                        "on-topics-deleted",
+                        coordinator -> coordinator.onTopicsDeleted(deletedTopics)
+                    ),
+                    exception -> {
+                        log.error("Could not delete offsets for deleted topics {} due to: {}.",
+                            deletedTopics, exception.getMessage(), exception);
+                        return null;
+                    }
+                )
+            );
+        }
+
+        if (!deletedTopicIds.isEmpty()) {
+            // Schedule share group state cleanup.
+            futures.addAll(
+                FutureUtils.mapExceptionally(
+                    runtime.scheduleWriteAllOperation(
+                        "maybe-cleanup-share-group-state",
+                        coordinator -> coordinator.maybeCleanupShareGroupState(deletedTopicIds)
+                    ),
+                    exception -> {
+                        log.error("Unable to cleanup state for the deleted topics {}", deletedTopicIds, exception);
+                        return null;
+                    }
+                )
+            );
+        }
+
+        // Wait for all operations to complete.
+        CompletableFuture.allOf(futures.toArray(new CompletableFuture<?>[0])).join();
     }
 
     /**
@@ -2463,11 +2414,11 @@ public class GroupCoordinatorService implements GroupCoordinator {
                     // NOT_ENOUGH_REPLICAS and REQUEST_TIMED_OUT to COORDINATOR_NOT_AVAILABLE,
                     // COORDINATOR_NOT_AVAILABLE is also not handled by consumers on versions prior to
                     // 3.9.
-                    OffsetFetchResponse.groupError(
+                OffsetFetchResponse.groupError(
                             request,
                             Errors.NOT_COORDINATOR,
                             context.requestVersion()
-                    );
+                );
             default -> handleOperationException(
                     operationName,
                     request,

@@ -20,8 +20,8 @@ package io.aiven.inkless.control_plane;
 import org.apache.kafka.common.TopicIdPartition;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.Uuid;
-import org.apache.kafka.common.record.RecordBatch;
 import org.apache.kafka.common.record.TimestampType;
+import org.apache.kafka.common.record.internal.RecordBatch;
 
 import org.junit.jupiter.api.Test;
 

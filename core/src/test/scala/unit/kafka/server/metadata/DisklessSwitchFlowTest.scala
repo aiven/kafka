@@ -20,9 +20,10 @@ package kafka.server.metadata
 import com.yammer.metrics.core.Gauge
 import io.aiven.inkless.control_plane.{ControlPlane, InitDisklessLogResponse => CpInitResponse}
 import kafka.coordinator.transaction.TransactionCoordinator
+import kafka.cluster.Partition
 import kafka.log.LogManager
 import kafka.server.QuotaFactory.QuotaManagers
-import kafka.server.{AwaitingMetadata, HostedPartition, InitDisklessLogManager, InitDisklessLogState, MockInitDisklessLogChannelManager, ReplicaManager, SendingToController}
+import kafka.server.{AwaitingMetadata, InitDisklessLogManager, InitDisklessLogState, MockInitDisklessLogChannelManager, ReplicaManager, SendingToController}
 import kafka.server.share.SharePartitionManager
 import kafka.utils.TestUtils
 import org.apache.kafka.common.{Node, TopicPartition, Uuid}
@@ -35,8 +36,10 @@ import org.apache.kafka.common.metadata.{ConfigRecord, PartitionChangeRecord, Pa
 import org.apache.kafka.image.{AclsImage, ClientQuotasImage, ClusterImageTest, ConfigurationsImage, DelegationTokenImage, FeaturesImage, MetadataDelta, MetadataImage, MetadataProvenance, ProducerIdsImage, ScramImage, TopicsDelta, TopicsImage}
 import org.apache.kafka.image.loader.LogDeltaManifest
 import org.apache.kafka.metadata.InitDisklessLogFields
-import org.apache.kafka.metadata.publisher.{AclPublisher, DelegationTokenPublisher, DynamicClientQuotaPublisher, ScramPublisher}
+import org.apache.kafka.metadata.KRaftMetadataCache
+import org.apache.kafka.metadata.publisher.{AclPublisher, DelegationTokenPublisher, DynamicClientQuotaPublisher, DynamicTopicClusterQuotaPublisher, ScramPublisher}
 import org.apache.kafka.raft.LeaderAndEpoch
+import org.apache.kafka.server.HostedPartition
 import org.apache.kafka.server.common.MetadataVersion
 import org.apache.kafka.server.fault.FaultHandler
 import org.apache.kafka.server.metrics.KafkaYammerMetrics
@@ -380,7 +383,7 @@ class DisklessSwitchFlowTest {
       ctx.metadataPublisher.onMetadataUpdate(delta, image, metadataManifest())
 
       // Then no local classic partition is created and nothing is tracked for init.
-      assertEquals(HostedPartition.None, ctx.replicaManager.getPartition(tp))
+      assertEquals(new HostedPartition.None[Partition], ctx.replicaManager.getPartition(tp))
       assertTrackedStates(ctx, Map.empty)
       assertEquals(None, ctx.initDisklessLogManager.getInitState(tp))
       assertEquals(0, ctx.channelManager.requests.size())

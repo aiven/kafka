@@ -29,7 +29,8 @@ import org.apache.kafka.common.errors.RecordBatchTooLargeException
 import org.apache.kafka.common.message.FetchResponseData
 import org.apache.kafka.common.protocol.Errors
 import org.apache.kafka.common.requests.FetchRequest
-import org.apache.kafka.common.record.{BaseRecords, MemoryRecords, SimpleRecord, TimestampType}
+import org.apache.kafka.common.record.TimestampType
+import org.apache.kafka.common.record.internal.{BaseRecords, MemoryRecords, SimpleRecord}
 import org.apache.kafka.metadata.PartitionRegistration
 import org.apache.kafka.server.LeaderEndPoint
 import org.apache.kafka.server.common.{MetadataVersion, OffsetAndEpoch}

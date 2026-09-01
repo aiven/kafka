@@ -23,10 +23,10 @@ import kafka.server.KafkaConfig;
 import kafka.server.QuotaFactory.QuotaManagers;
 import kafka.server.ReplicaManager;
 import kafka.server.metadata.InklessMetadataView;
-import kafka.server.metadata.KRaftMetadataCache;
 
 import org.apache.kafka.common.metrics.Metrics;
 import org.apache.kafka.common.utils.Time;
+import org.apache.kafka.metadata.KRaftMetadataCache;
 import org.apache.kafka.metadata.MetadataCache;
 import org.apache.kafka.server.DelayedActionQueue;
 import org.apache.kafka.server.common.DirectoryEventHandler;
@@ -102,10 +102,10 @@ public class ReplicaManagerBuilder {
 
     public ReplicaManager build() {
         if (config == null) config = new KafkaConfig(Map.of());
-        if (logManager == null) throw new RuntimeException("You must set logManager");
-        if (metadataCache == null) throw new RuntimeException("You must set metadataCache");
-        if (logDirFailureChannel == null) throw new RuntimeException("You must set logDirFailureChannel");
-        if (alterPartitionManager == null) throw new RuntimeException("You must set alterIsrManager");
+        if (logManager == null) throw new IllegalStateException("You must set logManager");
+        if (metadataCache == null) throw new IllegalStateException("You must set metadataCache");
+        if (logDirFailureChannel == null) throw new IllegalStateException("You must set logDirFailureChannel");
+        if (alterPartitionManager == null) throw new IllegalStateException("You must set alterIsrManager");
         if (brokerTopicStats == null) brokerTopicStats = new BrokerTopicStats(config.remoteLogManagerConfig().isRemoteStorageSystemEnabled());
         // Initialize metrics in the end just before passing it to ReplicaManager to ensure ReplicaManager closes the
         // metrics correctly. There might be a resource leak if it is initialized and an exception occurs between

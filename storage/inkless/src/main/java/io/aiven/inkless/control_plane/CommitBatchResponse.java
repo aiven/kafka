@@ -18,7 +18,7 @@
 package io.aiven.inkless.control_plane;
 
 import org.apache.kafka.common.protocol.Errors;
-import org.apache.kafka.common.record.RecordBatch;
+import org.apache.kafka.common.record.internal.RecordBatch;
 
 import io.aiven.inkless.cache.CacheBatchCoordinate;
 

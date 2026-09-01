@@ -23,7 +23,8 @@ import io.aiven.inkless.control_plane.{BatchInfo, BatchMetadata, FindBatchRespon
 import kafka.server.ReplicaManager
 import org.apache.kafka.common.{TopicIdPartition, Uuid}
 import org.apache.kafka.common.protocol.Errors
-import org.apache.kafka.common.record.{MemoryRecords, TimestampType}
+import org.apache.kafka.common.record.TimestampType
+import org.apache.kafka.common.record.internal.MemoryRecords
 import org.apache.kafka.common.requests.FetchRequest
 import org.apache.kafka.server.storage.log.{FetchIsolation, FetchParams, FetchPartitionData}
 import org.junit.jupiter.api.Assertions._

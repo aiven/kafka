@@ -36,8 +36,8 @@ import org.apache.kafka.common.utils.LogCaptureAppender;
 import org.apache.kafka.common.utils.LogContext;
 import org.apache.kafka.common.utils.MockTime;
 import org.apache.kafka.streams.StreamsConfig;
-import org.apache.kafka.streams.StreamsConfig.InternalConfig;
 import org.apache.kafka.streams.errors.StreamsException;
+import org.apache.kafka.streams.processor.StandbyUpdateListener.SuspendReason;
 import org.apache.kafka.streams.processor.StateStore;
 import org.apache.kafka.streams.processor.TaskId;
 import org.apache.kafka.streams.processor.internals.ProcessorStateManager.StateStoreMetadata;
@@ -271,6 +271,8 @@ public class StoreChangelogReaderTest {
             assertNull(callback.storeNameCalledStates.get(RESTORE_SUSPENDED));
             assertEquals(storeName, standbyListener.capturedStore(UPDATE_START));
             assertEquals(tp, standbyListener.updatePartition);
+            assertEquals(storeName, standbyListener.capturedStore(UPDATE_SUSPENDED));
+            assertEquals(SuspendReason.MIGRATED, standbyListener.updateSuspendedReason);
         }
         assertNull(callback.storeNameCalledStates.get(RESTORE_BATCH));
     }
@@ -331,7 +333,37 @@ public class StoreChangelogReaderTest {
             assertNull(callback.storeNameCalledStates.get(UPDATE_BATCH));
             assertEquals(storeName, standbyListener.capturedStore(UPDATE_START));
             assertEquals(tp, standbyListener.updatePartition);
+            assertEquals(storeName, standbyListener.capturedStore(UPDATE_SUSPENDED));
+            assertEquals(SuspendReason.MIGRATED, standbyListener.updateSuspendedReason);
         }
+    }
+
+    @Test
+    public void shouldPassSuspendReasonToStandbyListener() {
+        setupStateManagerMock(STANDBY);
+        setupStoreMetadata();
+        setupStore();
+        @SuppressWarnings("unchecked")
+        final Map<TaskId, Task> mockTasks = mock(Map.class);
+        when(mockTasks.get(null)).thenReturn(mock(Task.class));
+        when(mockTasks.containsKey(null)).thenReturn(true);
+        when(storeMetadata.offset()).thenReturn(9L);
+        when(storeMetadata.endOffset()).thenReturn(10L);
+        when(stateManager.changelogAsSource(tp)).thenReturn(true);
+
+        adminClient.updateEndOffsets(Collections.singletonMap(tp, 100L));
+
+        final StoreChangelogReader changelogReader =
+            new StoreChangelogReader(time, config, logContext, adminClient, consumer, callback, standbyListener);
+
+        changelogReader.register(tp, stateManager);
+        changelogReader.transitToUpdateStandby();
+        changelogReader.restore(mockTasks);
+
+        changelogReader.unregister(Collections.singleton(tp), SuspendReason.PROMOTED);
+
+        assertEquals(storeName, standbyListener.capturedStore(UPDATE_SUSPENDED));
+        assertEquals(SuspendReason.PROMOTED, standbyListener.updateSuspendedReason);
     }
 
     @ParameterizedTest
@@ -412,39 +444,11 @@ public class StoreChangelogReaderTest {
 
     @ParameterizedTest
     @EnumSource(value = Task.TaskType.class, names = {"ACTIVE", "STANDBY"})
-    public void shouldPollWithRightTimeoutWithStateUpdater(final Task.TaskType type) {
+    public void shouldPollWithRightTimeout(final Task.TaskType type) {
         setupStateManagerMock(type);
         setupStoreMetadata();
         setupStore();
-        shouldPollWithRightTimeout(true, type);
-    }
 
-    @ParameterizedTest
-    @EnumSource(value = Task.TaskType.class, names = {"ACTIVE", "STANDBY"})
-    public void shouldPollWithRightTimeoutWithoutStateUpdater(final Task.TaskType type) {
-        setupStateManagerMock(type);
-        setupStoreMetadata();
-        setupStore();
-        shouldPollWithRightTimeout(false, type);
-    }
-
-    private void shouldPollWithRightTimeout(final boolean stateUpdaterEnabled, final Task.TaskType type) {
-        final Properties properties = new Properties();
-        properties.put(InternalConfig.STATE_UPDATER_ENABLED, stateUpdaterEnabled);
-        shouldPollWithRightTimeout(properties, type);
-    }
-
-    @ParameterizedTest
-    @EnumSource(value = Task.TaskType.class, names = {"ACTIVE", "STANDBY"})
-    public void shouldPollWithRightTimeoutWithStateUpdaterDefault(final Task.TaskType type) {
-        setupStateManagerMock(type);
-        setupStoreMetadata();
-        setupStore();
-        final Properties properties = new Properties();
-        shouldPollWithRightTimeout(properties, type);
-    }
-
-    private void shouldPollWithRightTimeout(final Properties properties, final Task.TaskType type) {
         final TaskId taskId = new TaskId(0, 0);
 
         when(storeMetadata.offset()).thenReturn(null).thenReturn(9L);
@@ -452,8 +456,6 @@ public class StoreChangelogReaderTest {
 
         consumer.updateBeginningOffsets(Collections.singletonMap(tp, 5L));
         adminClient.updateEndOffsets(Collections.singletonMap(tp, 11L));
-
-        final StreamsConfig config = new StreamsConfig(StreamsTestUtils.getStreamsConfig("test-reader", properties));
 
         final StoreChangelogReader changelogReader =
                 new StoreChangelogReader(time, config, logContext, adminClient, consumer, callback, standbyListener);
@@ -465,16 +467,8 @@ public class StoreChangelogReaderTest {
         }
 
         changelogReader.restore(Collections.singletonMap(taskId, mock(Task.class)));
-        if (type == ACTIVE) {
-            assertEquals(Duration.ofMillis(config.getLong(StreamsConfig.POLL_MS_CONFIG)), consumer.lastPollTimeout());
-        } else {
-            if (!properties.containsKey(InternalConfig.STATE_UPDATER_ENABLED)
-                    || (boolean) properties.get(InternalConfig.STATE_UPDATER_ENABLED)) {
-                assertEquals(Duration.ofMillis(config.getLong(StreamsConfig.POLL_MS_CONFIG)), consumer.lastPollTimeout());
-            } else {
-                assertEquals(Duration.ZERO, consumer.lastPollTimeout());
-            }
-        }
+
+        assertEquals(Duration.ofMillis(config.getLong(StreamsConfig.POLL_MS_CONFIG)), consumer.lastPollTimeout());
     }
 
     @ParameterizedTest

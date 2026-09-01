@@ -106,9 +106,9 @@ class LogConfigTest {
 
   @Test
   def testInvalidCompactionLagConfig(): Unit = {
-    val props = new Properties
-    props.setProperty(TopicConfig.MAX_COMPACTION_LAG_MS_CONFIG, "100")
-    props.setProperty(TopicConfig.MIN_COMPACTION_LAG_MS_CONFIG, "200")
+    val props = new util.HashMap[String, String]
+    props.put(TopicConfig.MAX_COMPACTION_LAG_MS_CONFIG, "100")
+    props.put(TopicConfig.MIN_COMPACTION_LAG_MS_CONFIG, "200")
     assertThrows(classOf[Exception], () => LogConfig.validate(props))
   }
 
@@ -290,7 +290,7 @@ class LogConfigTest {
     kafkaProps.put(RemoteLogManagerConfig.REMOTE_LOG_STORAGE_SYSTEM_ENABLE_PROP, "true")
     val kafkaConfig = KafkaConfig.fromProps(kafkaProps)
 
-    val props = new Properties()
+    val props = new util.HashMap[String, String]()
     props.put(TopicConfig.REMOTE_LOG_STORAGE_ENABLE_CONFIG, "true")
     props.put(TopicConfig.RETENTION_BYTES_CONFIG, retentionBytes.toString)
     props.put(TopicConfig.RETENTION_MS_CONFIG, retentionMs.toString)
@@ -306,7 +306,7 @@ class LogConfigTest {
     val kafkaProps = TestUtils.createDummyBrokerConfig()
     kafkaProps.put(RemoteLogManagerConfig.REMOTE_LOG_STORAGE_SYSTEM_ENABLE_PROP, "true")
     val kafkaConfig = KafkaConfig.fromProps(kafkaProps)
-    val logProps = new Properties()
+    val logProps = new util.HashMap[String, String]()
     def validateCleanupPolicy(): Unit = {
       LogConfig.validate(util.Map.of, logProps, kafkaConfig.extractLogConfigMap, kafkaConfig.remoteLogManagerConfig.isRemoteStorageSystemEnabled)
     }
@@ -319,7 +319,7 @@ class LogConfigTest {
     assertThrows(classOf[ConfigException], () => validateCleanupPolicy())
     logProps.put(TopicConfig.CLEANUP_POLICY_CONFIG, "compact,delete")
     assertThrows(classOf[ConfigException], () => validateCleanupPolicy())
-    logProps.put(TopicConfig.CLEANUP_POLICY_CONFIG, "delete")
+    logProps.put(TopicConfig.CLEANUP_POLICY_CONFIG, "delete,delete,delete")
     validateCleanupPolicy()
     logProps.put(TopicConfig.CLEANUP_POLICY_CONFIG, "")
     validateCleanupPolicy()
@@ -332,7 +332,7 @@ class LogConfigTest {
     kafkaProps.put(RemoteLogManagerConfig.REMOTE_LOG_STORAGE_SYSTEM_ENABLE_PROP, sysRemoteStorageEnabled.toString)
     val kafkaConfig = KafkaConfig.fromProps(kafkaProps)
 
-    val logProps = new Properties()
+    val logProps = new util.HashMap[String, String]()
     logProps.put(TopicConfig.REMOTE_LOG_STORAGE_ENABLE_CONFIG, "true")
     if (sysRemoteStorageEnabled) {
       LogConfig.validate(util.Map.of, logProps, kafkaConfig.extractLogConfigMap, kafkaConfig.remoteLogManagerConfig.isRemoteStorageSystemEnabled)
@@ -350,7 +350,7 @@ class LogConfigTest {
     kafkaProps.put(RemoteLogManagerConfig.REMOTE_LOG_STORAGE_SYSTEM_ENABLE_PROP, "true")
     val kafkaConfig = KafkaConfig.fromProps(kafkaProps)
 
-    val logProps = new Properties()
+    val logProps = new util.HashMap[String, String]()
     logProps.put(TopicConfig.REMOTE_LOG_STORAGE_ENABLE_CONFIG, "false")
     if (wasRemoteStorageEnabled) {
       val message = assertThrows(classOf[InvalidConfigurationException],
@@ -382,7 +382,7 @@ class LogConfigTest {
     val kafkaConfig = KafkaConfig.fromProps(kafkaProps)
 
     // Topic local log retention time inherited from Broker is greater than the topic's complete log retention time
-    val logProps = new Properties()
+    val logProps = new util.HashMap[String, String]()
     logProps.put(TopicConfig.REMOTE_LOG_STORAGE_ENABLE_CONFIG, sysRemoteStorageEnabled.toString)
     logProps.put(TopicConfig.RETENTION_MS_CONFIG, "500")
     if (sysRemoteStorageEnabled) {
@@ -406,7 +406,7 @@ class LogConfigTest {
     val kafkaConfig = KafkaConfig.fromProps(props)
 
     // Topic local retention size inherited from Broker is greater than the topic's complete log retention size
-    val logProps = new Properties()
+    val logProps = new util.HashMap[String, String]()
     logProps.put(TopicConfig.REMOTE_LOG_STORAGE_ENABLE_CONFIG, sysRemoteStorageEnabled.toString)
     logProps.put(TopicConfig.RETENTION_BYTES_CONFIG, "128")
     if (sysRemoteStorageEnabled) {
@@ -441,7 +441,7 @@ class LogConfigTest {
   @ParameterizedTest
   @ValueSource(booleans = Array(true, false))
   def testValidRemoteLogCopyDisabled(copyDisabled: Boolean): Unit = {
-    val logProps = new Properties
+    val logProps = new util.HashMap[String, String]
     logProps.put(TopicConfig.REMOTE_LOG_COPY_DISABLE_CONFIG, copyDisabled.toString)
     LogConfig.validate(logProps)
   }
@@ -449,7 +449,7 @@ class LogConfigTest {
   @ParameterizedTest
   @ValueSource(booleans = Array(true, false))
   def testValidRemoteLogDeleteOnDisable(deleteOnDisable: Boolean): Unit = {
-    val logProps = new Properties
+    val logProps = new util.HashMap[String, String]
     logProps.put(TopicConfig.REMOTE_LOG_DELETE_ON_DISABLE_CONFIG, deleteOnDisable.toString)
     LogConfig.validate(logProps)
   }
@@ -955,18 +955,18 @@ class LogConfigTest {
       mutualExclusionError, kafkaConfig, disklessAllowFromClassic = true)
   }
 
-  private def topicProps(entries: (String, String)*): Properties = {
-    val props = new Properties()
+  private def topicProps(entries: (String, String)*): util.Map[String, String] = {
+    val props = new util.HashMap[String, String]()
     entries.foreach { case (k, v) => props.put(k, v) }
     props
   }
 
-  private def assertValid(existingConfigs: util.Map[String, String], props: Properties, kafkaConfig: KafkaConfig,
+  private def assertValid(existingConfigs: util.Map[String, String], props: util.Map[String, String], kafkaConfig: KafkaConfig,
                           disklessAllowFromClassic: Boolean = false, remoteStorageConsolidationEnabled: Boolean = false): Unit = {
     LogConfig.validate(existingConfigs, props, kafkaConfig.extractLogConfigMap, true, disklessAllowFromClassic, true, remoteStorageConsolidationEnabled)
   }
 
-  private def assertInvalid(existingConfigs: util.Map[String, String], props: Properties, expectedMessage: String,
+  private def assertInvalid(existingConfigs: util.Map[String, String], props: util.Map[String, String], expectedMessage: String,
                             kafkaConfig: KafkaConfig, disklessAllowFromClassic: Boolean = false, remoteStorageConsolidationEnabled: Boolean = false): Unit = {
     val ex = assertThrows(classOf[InvalidConfigurationException],
       () => LogConfig.validate(existingConfigs, props, kafkaConfig.extractLogConfigMap, true, disklessAllowFromClassic, true, remoteStorageConsolidationEnabled))

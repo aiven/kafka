@@ -93,6 +93,7 @@ class StreamsGroupHeartbeatRequestManagerTest {
     private static final int MEMBER_EPOCH = 1;
     private static final String INSTANCE_ID = "instance-id";
     private static final UUID PROCESS_ID = UUID.randomUUID();
+    private static final String RACK_ID = "datacenter-1";
     private static final StreamsRebalanceData.HostInfo ENDPOINT = new StreamsRebalanceData.HostInfo("localhost", 8080);
     private static final String SOURCE_TOPIC_1 = "sourceTopic1";
     private static final String SOURCE_TOPIC_2 = "sourceTopic2";
@@ -161,6 +162,7 @@ class StreamsGroupHeartbeatRequestManagerTest {
     private final StreamsRebalanceData streamsRebalanceData = new StreamsRebalanceData(
         PROCESS_ID,
         Optional.of(ENDPOINT),
+        Optional.of(RACK_ID),
         SUBTOPOLOGIES,
         CLIENT_TAGS
     );
@@ -626,6 +628,56 @@ class StreamsGroupHeartbeatRequestManagerTest {
 
     @ParameterizedTest
     @MethodSource("provideNonJoiningStates")
+    public void testBuildingHeartbeatRequestRackIdSentWhenJoining(final MemberState memberState) {
+        final StreamsGroupHeartbeatRequestManager.HeartbeatState heartbeatState =
+            new StreamsGroupHeartbeatRequestManager.HeartbeatState(
+                streamsRebalanceData,
+                membershipManager,
+                1234
+            );
+        when(membershipManager.state()).thenReturn(MemberState.JOINING);
+
+        StreamsGroupHeartbeatRequestData requestData1 = heartbeatState.buildRequestData();
+
+        assertEquals(RACK_ID, requestData1.rackId());
+
+        when(membershipManager.state()).thenReturn(memberState);
+
+        StreamsGroupHeartbeatRequestData nonJoiningRequestData = heartbeatState.buildRequestData();
+
+        assertNull(nonJoiningRequestData.rackId());
+    }
+
+    @ParameterizedTest
+    @MethodSource("provideNonJoiningStates")
+    public void testBuildingHeartbeatRequestClientTagSentWhenJoining(final MemberState memberState) {
+        final StreamsGroupHeartbeatRequestManager.HeartbeatState heartbeatState =
+            new StreamsGroupHeartbeatRequestManager.HeartbeatState(
+                streamsRebalanceData,
+                membershipManager,
+                1234
+            );
+        when(membershipManager.state()).thenReturn(MemberState.JOINING);
+
+        StreamsGroupHeartbeatRequestData requestData1 = heartbeatState.buildRequestData();
+
+        assertEquals(CLIENT_TAGS.entrySet().stream()
+            .map(entry -> {
+                StreamsGroupHeartbeatRequestData.KeyValue kv = new StreamsGroupHeartbeatRequestData.KeyValue();
+                kv.setKey(entry.getKey());
+                kv.setValue(entry.getValue());
+                return kv;
+            }).collect(Collectors.toList()), requestData1.clientTags());
+
+        when(membershipManager.state()).thenReturn(memberState);
+
+        StreamsGroupHeartbeatRequestData nonJoiningRequestData = heartbeatState.buildRequestData();
+
+        assertNull(nonJoiningRequestData.clientTags());
+    }
+
+    @ParameterizedTest
+    @MethodSource("provideNonJoiningStates")
     public void testBuildingHeartbeatRequestTopologySentWhenJoining(final MemberState memberState) {
         final StreamsGroupHeartbeatRequestManager.HeartbeatState heartbeatState =
             new StreamsGroupHeartbeatRequestManager.HeartbeatState(
@@ -821,7 +873,8 @@ class StreamsGroupHeartbeatRequestManagerTest {
                     new StreamsRebalanceData.TaskId(SUBTOPOLOGY_NAME_1, 3),
                     new StreamsRebalanceData.TaskId(SUBTOPOLOGY_NAME_1, 4),
                     new StreamsRebalanceData.TaskId(SUBTOPOLOGY_NAME_1, 5)
-                )
+                ),
+                true
             )
         );
 
@@ -870,7 +923,8 @@ class StreamsGroupHeartbeatRequestManagerTest {
                     new StreamsRebalanceData.TaskId(SUBTOPOLOGY_NAME_1, 2)
                 ),
                 Set.of(
-                )
+                ),
+                true
             )
         );
 
@@ -923,7 +977,8 @@ class StreamsGroupHeartbeatRequestManagerTest {
                     new StreamsRebalanceData.TaskId(SUBTOPOLOGY_NAME_1, 3),
                     new StreamsRebalanceData.TaskId(SUBTOPOLOGY_NAME_1, 4),
                     new StreamsRebalanceData.TaskId(SUBTOPOLOGY_NAME_1, 5)
-                )
+                ),
+                true
             )
         );
         StreamsGroupHeartbeatRequestData requestDataBeforeReset = heartbeatState.buildRequestData();

@@ -22,7 +22,7 @@ import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.Uuid;
 import org.apache.kafka.common.errors.UnknownServerException;
 import org.apache.kafka.common.message.ListOffsetsRequestData;
-import org.apache.kafka.common.record.FileRecords;
+import org.apache.kafka.common.record.internal.FileRecords;
 import org.apache.kafka.common.utils.MockTime;
 import org.apache.kafka.common.utils.Time;
 

@@ -20,19 +20,21 @@ package kafka.server
 import io.aiven.inkless.common.SharedState
 import io.aiven.inkless.config.InklessConfig
 import io.aiven.inkless.control_plane.ControlPlane
+import kafka.cluster.Partition
 import kafka.server.metadata.InklessMetadataView
 import kafka.utils.TestUtils
 import org.apache.kafka.common.{TopicPartition, Uuid}
 import org.apache.kafka.common.compress.Compression
 import org.apache.kafka.common.metadata.{PartitionRecord, TopicRecord}
 import org.apache.kafka.common.metrics.Metrics
-import org.apache.kafka.common.record.{MemoryRecords, SimpleRecord}
+import org.apache.kafka.common.record.internal.{MemoryRecords, SimpleRecord}
 import org.apache.kafka.common.utils.Time
 import org.apache.kafka.image._
-import org.apache.kafka.metadata.{InitDisklessLogFields, PartitionRegistration}
+import org.apache.kafka.metadata.{InitDisklessLogFields, KRaftMetadataCache, PartitionRegistration}
 import org.apache.kafka.server.common.{KRaftVersion, MetadataVersion}
 import org.apache.kafka.server.config.ServerConfigs
 import org.apache.kafka.server.PartitionFetchState
+import org.apache.kafka.server.HostedPartition
 import org.apache.kafka.server.util.MockTime
 import org.apache.kafka.storage.internals.log.{LogConfig, LogDirFailureChannel, UnifiedLog}
 import org.junit.jupiter.api.Assertions._
@@ -42,7 +44,6 @@ import org.junit.jupiter.params.provider.{Arguments, MethodSource}
 import org.mockito.ArgumentMatchers._
 import org.mockito.Mockito._
 import org.mockito.Answers
-import kafka.server.metadata.KRaftMetadataCache
 
 import java.io.File
 import java.util
@@ -108,7 +109,7 @@ class DisklessSwitchInvariantsTest {
     replicaManager.applyDelta(delta, imageFromTopics(delta.apply()))
 
     // --- Assert invariant ---
-    val partition = replicaManager.getPartition(tp).asInstanceOf[HostedPartition.Online].partition
+    val partition = replicaManager.getPartition(tp).asInstanceOf[HostedPartition.Online[Partition]].partition
     assertTrue(partition.isSealed, "Partition must be sealed")
     assertTrue(partition.isLeader, "Partition must be leader")
     assertEquals(expectedHw, partition.localLogOrException.highWatermark,
@@ -146,7 +147,7 @@ class DisklessSwitchInvariantsTest {
     replicaManager.applyDelta(delta, imageFromTopics(delta.apply()))
 
     // --- Assert invariant ---
-    val partition = replicaManager.getPartition(tp).asInstanceOf[HostedPartition.Online].partition
+    val partition = replicaManager.getPartition(tp).asInstanceOf[HostedPartition.Online[Partition]].partition
     assertTrue(partition.isSealed, "Partition must be sealed")
     assertFalse(partition.isLeader, "Partition must be follower")
 

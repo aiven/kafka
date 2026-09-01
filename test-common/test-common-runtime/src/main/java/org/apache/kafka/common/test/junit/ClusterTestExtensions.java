@@ -300,6 +300,7 @@ public class ClusterTestExtensions implements TestTemplateInvocationContextProvi
             .setMetadataVersion(clusterTest.metadataVersion())
             .setTags(List.of(clusterTest.tags()))
             .setFeatures(features)
+            .setStandalone(clusterTest.standalone())
             .build();
 
         return Arrays.stream(types)

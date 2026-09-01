@@ -27,7 +27,7 @@ import org.apache.kafka.common.message.OffsetFetchResponseData;
 import org.apache.kafka.common.protocol.ApiKeys;
 import org.apache.kafka.common.protocol.Errors;
 import org.apache.kafka.common.protocol.Readable;
-import org.apache.kafka.common.record.RecordBatch;
+import org.apache.kafka.common.record.internal.RecordBatch;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -323,6 +323,10 @@ public class OffsetFetchRequest extends AbstractRequest {
 
     public static boolean useTopicIds(short version) {
         return version >= TOPIC_ID_MIN_VERSION;
+    }
+
+    public static boolean requestAllOffsets(OffsetFetchRequestData.OffsetFetchRequestGroup request) {
+        return request.topics() == null;
     }
 
     @Override

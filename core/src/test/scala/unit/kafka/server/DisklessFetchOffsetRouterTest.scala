@@ -22,7 +22,7 @@ import org.apache.kafka.common.TopicPartition
 import org.apache.kafka.common.message.ListOffsetsRequestData.ListOffsetsPartition
 import org.apache.kafka.common.message.ListOffsetsResponseData.ListOffsetsPartitionResponse
 import org.apache.kafka.common.protocol.Errors
-import org.apache.kafka.common.record.{FileRecords, RecordBatch}
+import org.apache.kafka.common.record.internal.{FileRecords, RecordBatch}
 import org.apache.kafka.common.requests.ListOffsetsRequest
 import org.apache.kafka.metadata.PartitionRegistration
 import org.apache.kafka.server.purgatory.{DelayedOperationPurgatory, DelayedRemoteListOffsets, ListOffsetsPartitionStatus}

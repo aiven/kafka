@@ -19,9 +19,9 @@ package kafka.server
 
 import io.aiven.inkless.control_plane.ControlPlane
 import kafka.metrics.KafkaMetricsReporter
-import kafka.raft.{DefaultExternalKRaftMetrics, KafkaRaftManager}
+import kafka.raft.KafkaRaftManager
 import kafka.server.Server.MetricsPrefix
-import kafka.utils.{CoreUtils, Logging, VerifiableProperties}
+import kafka.utils.{Logging, VerifiableProperties}
 import org.apache.kafka.common.metrics.Metrics
 import org.apache.kafka.common.network.ListenerName
 import org.apache.kafka.common.utils.{AppInfoParser, LogContext, Time, Utils}
@@ -34,7 +34,7 @@ import org.apache.kafka.image.publisher.{SnapshotEmitter, SnapshotGenerator}
 import org.apache.kafka.metadata.ListenerInfo
 import org.apache.kafka.metadata.MetadataRecordSerde
 import org.apache.kafka.metadata.properties.MetaPropertiesEnsemble
-import org.apache.kafka.raft.Endpoints
+import org.apache.kafka.raft.{Endpoints, ExternalKRaftMetrics}
 import org.apache.kafka.server.{ProcessRole, ServerSocketFactory}
 import org.apache.kafka.server.common.ApiMessageAndVersion
 import org.apache.kafka.server.fault.{FaultHandler, LoggingFaultHandler, ProcessTerminatingFaultHandler}
@@ -285,7 +285,10 @@ class SharedServer(
           controllerServerMetrics = new ControllerMetadataMetrics(Optional.of(KafkaYammerMetrics.defaultRegistry()))
         }
 
-        val externalKRaftMetrics = new DefaultExternalKRaftMetrics(Option(brokerMetrics), Option(controllerServerMetrics))
+        val externalKRaftMetrics: ExternalKRaftMetrics = ignoredStaticVoters => {
+          Option(brokerMetrics).foreach(_.setIgnoredStaticVoters(ignoredStaticVoters))
+          Option(controllerServerMetrics).foreach(_.setIgnoredStaticVoters(ignoredStaticVoters))
+        }
 
         if (brokerConfig.disklessStorageSystemEnabled)
           inklessControlPlane = Some(ControlPlane.create(sharedServerConfig.inklessConfig, time))
@@ -371,7 +374,7 @@ class SharedServer(
     // Ideally, this would just resign our leadership, if we had it. But we don't have an API in
     // RaftManager for that yet, so shut down the RaftManager.
     Option(raftManager).foreach(_raftManager => {
-      CoreUtils.swallow(_raftManager.shutdown(), this)
+      Utils.swallow(this.logger.underlying, () => _raftManager.shutdown())
       raftManager = null
     })
   }
@@ -382,10 +385,10 @@ class SharedServer(
     } else {
       info("Stopping SharedServer")
       if (loader != null) {
-        CoreUtils.swallow(loader.beginShutdown(), this)
+        Utils.swallow(this.logger.underlying, () => loader.beginShutdown())
       }
       if (snapshotGenerator != null) {
-        CoreUtils.swallow(snapshotGenerator.beginShutdown(), this)
+        Utils.swallow(this.logger.underlying, () => snapshotGenerator.beginShutdown())
       }
       Utils.closeQuietly(loader, "loader")
       loader = null
@@ -394,7 +397,7 @@ class SharedServer(
       Utils.closeQuietly(snapshotGenerator, "snapshot generator")
       snapshotGenerator = null
       if (raftManager != null) {
-        CoreUtils.swallow(raftManager.shutdown(), this)
+        Utils.swallow(this.logger.underlying, () => raftManager.shutdown())
         raftManager = null
       }
 
@@ -409,7 +412,7 @@ class SharedServer(
       nodeMetrics = null
       Utils.closeQuietly(metrics, "metrics")
       metrics = null
-      CoreUtils.swallow(AppInfoParser.unregisterAppInfo(MetricsPrefix, sharedServerConfig.nodeId.toString, metrics), this)
+      Utils.swallow(this.logger.underlying, () => AppInfoParser.unregisterAppInfo(MetricsPrefix, sharedServerConfig.nodeId.toString, metrics))
       started = false
     }
   }

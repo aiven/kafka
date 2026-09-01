@@ -20,7 +20,7 @@ package io.aiven.inkless.control_plane;
 import org.apache.kafka.common.TopicIdPartition;
 import org.apache.kafka.common.protocol.Errors;
 
-import static org.apache.kafka.common.record.RecordBatch.NO_TIMESTAMP;
+import static org.apache.kafka.common.record.internal.RecordBatch.NO_TIMESTAMP;
 
 public record ListOffsetsResponse(
         Errors errors,

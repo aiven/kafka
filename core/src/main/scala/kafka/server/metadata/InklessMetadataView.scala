@@ -22,7 +22,7 @@ import io.aiven.inkless.control_plane.MetadataView
 import org.apache.kafka.common.config.TopicConfig
 import org.apache.kafka.common.network.ListenerName
 import org.apache.kafka.common.{Node, TopicIdPartition, TopicPartition, Uuid}
-import org.apache.kafka.metadata.PartitionRegistration
+import org.apache.kafka.metadata.{KRaftMetadataCache, PartitionRegistration}
 import org.apache.kafka.storage.internals.log.LogConfig
 
 import java.util

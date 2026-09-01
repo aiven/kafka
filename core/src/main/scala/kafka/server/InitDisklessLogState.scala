@@ -186,7 +186,7 @@ object SendingToController {
   private def extractProducerStates(log: UnifiedLog): util.List[InitDisklessLogRequestData.ProducerState] = {
     val states = new util.ArrayList[InitDisklessLogRequestData.ProducerState]()
     log.producerStateManager().activeProducers().forEach { (producerId, entry) =>
-      if (!entry.isEmpty) {
+      if (!entry.batchMetadata().isEmpty) {
         entry.batchMetadata().asScala.foreach { batch =>
           states.add(new InitDisklessLogRequestData.ProducerState()
             .setProducerId(producerId)
