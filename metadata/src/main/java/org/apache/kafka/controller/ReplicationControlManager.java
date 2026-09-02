@@ -770,7 +770,8 @@ public class ReplicationControlManager {
     ControllerResult<CreateTopicsResponseData> createTopics(
         ControllerRequestContext context,
         CreateTopicsRequestData request,
-        Set<String> describable
+        Set<String> describable,
+        boolean forwarded
     ) {
         Map<String, ApiError> topicErrors = new HashMap<>();
         List<ApiMessageAndVersion> records = BoundedList.newArrayBacked(MAX_RECORDS_PER_USER_OP);
@@ -820,7 +821,7 @@ public class ReplicationControlManager {
             List<ApiMessageAndVersion> configRecords;
             if (keyToOps != null) {
                 ControllerResult<ApiError> configResult =
-                    configurationControl.incrementalAlterConfig(configResource, keyToOps, true);
+                    configurationControl.incrementalAlterConfig(configResource, keyToOps, true, forwarded);
                 if (configResult.response().isFailure()) {
                     topicErrors.put(topic.name(), configResult.response());
                     continue;
@@ -2173,17 +2174,17 @@ public class ReplicationControlManager {
             List<Uuid> cordonedDirs,
             List<ApiMessageAndVersion> records
     ) {
+        // cordonedDirs is null until a broker has caught up with the latest metadata, so just ignore
+        if (cordonedDirs == null) return;
         BrokerRegistration registration = clusterControl.registration(brokerId);
-        List<Uuid> newCordonedDirs = registration.directoryIntersection(cordonedDirs);
-        if (!newCordonedDirs.isEmpty()) {
+        boolean cordonedDirsChanged = registration.cordonedDirChanged(cordonedDirs);
+        if (cordonedDirsChanged) {
             records.add(new ApiMessageAndVersion(new BrokerRegistrationChangeRecord().
                     setBrokerId(brokerId).setBrokerEpoch(brokerEpoch).
-                    setCordonedLogDirs(newCordonedDirs),
+                    setCordonedLogDirs(cordonedDirs),
                     (short) 3));
             if (log.isDebugEnabled()) {
-                List<Uuid> newUncordonedDirs = registration.directoryDifference(newCordonedDirs);
-                log.debug("Directories {} in broker {} marked cordoned, uncordoned directories: {}",
-                        newCordonedDirs, brokerId, newUncordonedDirs);
+                log.debug("Directories {} in broker {} marked cordoned", cordonedDirs, brokerId);
             }
         }
     }
@@ -2331,7 +2332,6 @@ public class ReplicationControlManager {
             handleDirectoriesOffline(brokerId, brokerEpoch, request.offlineLogDirs(), records);
         }
         if (featureControl.metadataVersionOrThrow().isCordonedLogDirsSupported()) {
-            clusterControl.updateCordonedLogDirs(brokerId, request.cordonedLogDirs());
             handleDirectoriesCordoned(brokerId, brokerEpoch, request.cordonedLogDirs(), records);
         }
         boolean isCaughtUp = request.currentMetadataOffset() >= registerBrokerRecordOffset;

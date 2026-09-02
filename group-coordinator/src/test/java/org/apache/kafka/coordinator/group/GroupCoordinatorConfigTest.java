@@ -202,17 +202,14 @@ public class GroupCoordinatorConfigTest {
         configs.put(GroupCoordinatorConfig.CONSUMER_GROUP_ASSIGNMENT_INTERVAL_MS_CONFIG, 500);
         configs.put(GroupCoordinatorConfig.CONSUMER_GROUP_MIN_ASSIGNMENT_INTERVAL_MS_CONFIG, 400);
         configs.put(GroupCoordinatorConfig.CONSUMER_GROUP_MAX_ASSIGNMENT_INTERVAL_MS_CONFIG, 600);
-        configs.put(GroupCoordinatorConfig.CONSUMER_GROUP_ASSIGNOR_OFFLOAD_ENABLE_CONFIG, false);
         configs.put(GroupCoordinatorConfig.CONSUMER_GROUP_REGEX_REFRESH_INTERVAL_MS_CONFIG, 15 * 60 * 1000);
         configs.put(GroupCoordinatorConfig.SHARE_GROUP_ASSIGNMENT_INTERVAL_MS_CONFIG, 250);
         configs.put(GroupCoordinatorConfig.SHARE_GROUP_MIN_ASSIGNMENT_INTERVAL_MS_CONFIG, 150);
         configs.put(GroupCoordinatorConfig.SHARE_GROUP_MAX_ASSIGNMENT_INTERVAL_MS_CONFIG, 350);
-        configs.put(GroupCoordinatorConfig.SHARE_GROUP_ASSIGNOR_OFFLOAD_ENABLE_CONFIG, false);
         configs.put(GroupCoordinatorConfig.STREAMS_GROUP_INITIAL_REBALANCE_DELAY_MS_CONFIG, 5000);
         configs.put(GroupCoordinatorConfig.STREAMS_GROUP_ASSIGNMENT_INTERVAL_MS_CONFIG, 125);
         configs.put(GroupCoordinatorConfig.STREAMS_GROUP_MIN_ASSIGNMENT_INTERVAL_MS_CONFIG, 25);
         configs.put(GroupCoordinatorConfig.STREAMS_GROUP_MAX_ASSIGNMENT_INTERVAL_MS_CONFIG, 225);
-        configs.put(GroupCoordinatorConfig.STREAMS_GROUP_ASSIGNOR_OFFLOAD_ENABLE_CONFIG, false);
         configs.put(GroupCoordinatorConfig.CACHED_BUFFER_MAX_BYTES_CONFIG, 2 * 1024 * 1024);
 
         GroupCoordinatorConfig config = createConfig(configs);
@@ -246,17 +243,14 @@ public class GroupCoordinatorConfigTest {
         assertEquals(500, config.consumerGroupAssignmentIntervalMs());
         assertEquals(400, config.consumerGroupMinAssignmentIntervalMs());
         assertEquals(600, config.consumerGroupMaxAssignmentIntervalMs());
-        assertEquals(false, config.consumerGroupAssignorOffloadEnable());
         assertEquals(15 * 60 * 1000, config.consumerGroupRegexRefreshIntervalMs());
         assertEquals(250, config.shareGroupAssignmentIntervalMs());
         assertEquals(150, config.shareGroupMinAssignmentIntervalMs());
         assertEquals(350, config.shareGroupMaxAssignmentIntervalMs());
-        assertEquals(false, config.shareGroupAssignorOffloadEnable());
         assertEquals(5000, config.streamsGroupInitialRebalanceDelayMs());
         assertEquals(125, config.streamsGroupAssignmentIntervalMs());
         assertEquals(25, config.streamsGroupMinAssignmentIntervalMs());
         assertEquals(225, config.streamsGroupMaxAssignmentIntervalMs());
-        assertEquals(false, config.streamsGroupAssignorOffloadEnable());
         assertEquals(2 * 1024 * 1024, config.cachedBufferMaxBytes());
     }
 
@@ -550,25 +544,6 @@ public class GroupCoordinatorConfigTest {
         configs.put(GroupCoordinatorConfig.STREAMS_GROUP_INITIAL_REBALANCE_DELAY_MS_CONFIG, -1);
         assertEquals("Invalid value -1 for configuration group.streams.initial.rebalance.delay.ms: Value must be at least 0",
             assertThrows(ConfigException.class, () -> createConfig(configs)).getMessage());
-
-        // group.streams.task.offset.interval.ms
-
-        // must be positive
-        configs.clear();
-        configs.put(GroupCoordinatorConfig.STREAMS_GROUP_TASK_OFFSET_INTERVAL_MS_CONFIG, 0);
-        assertEquals("Invalid value 0 for configuration group.streams.task.offset.interval.ms: Value must be at least 1",
-            assertThrows(ConfigException.class, () -> createConfig(configs)).getMessage());
-
-        // cannot be smaller than MIN
-        configs.clear();
-        configs.put(GroupCoordinatorConfig.STREAMS_GROUP_TASK_OFFSET_INTERVAL_MS_CONFIG, GroupCoordinatorConfig.STREAMS_GROUP_MIN_TASK_OFFSET_INTERVAL_MS_DEFAULT - 1);
-        assertEquals("group.streams.task.offset.interval.ms must be greater than or equal to group.streams.min.task.offset.interval.ms",
-            assertThrows(IllegalArgumentException.class, () -> createConfig(configs)).getMessage());
-
-        // can be MIN
-        configs.clear();
-        configs.put(GroupCoordinatorConfig.STREAMS_GROUP_TASK_OFFSET_INTERVAL_MS_CONFIG, GroupCoordinatorConfig.STREAMS_GROUP_MIN_TASK_OFFSET_INTERVAL_MS_DEFAULT);
-        createConfig(configs);
     }
 
     @Test
@@ -627,6 +602,20 @@ public class GroupCoordinatorConfigTest {
         long offsetsRetentionCheckIntervalMs,
         int offsetsRetentionMinutes
     ) {
+        return createGroupCoordinatorConfig(
+            offsetMetadataMaxSize,
+            offsetsRetentionCheckIntervalMs,
+            offsetsRetentionMinutes,
+            Map.of()
+        );
+    }
+
+    public static GroupCoordinatorConfig createGroupCoordinatorConfig(
+        int offsetMetadataMaxSize,
+        long offsetsRetentionCheckIntervalMs,
+        int offsetsRetentionMinutes,
+        Map<String, Object> additionalConfigs
+    ) {
         Map<String, Object> configs = new HashMap<>();
         configs.put(GroupCoordinatorConfig.GROUP_COORDINATOR_NUM_THREADS_CONFIG, 1);
         configs.put(GroupCoordinatorConfig.GROUP_COORDINATOR_APPEND_LINGER_MS_CONFIG, 10);
@@ -654,6 +643,8 @@ public class GroupCoordinatorConfigTest {
         configs.put(GroupCoordinatorConfig.SHARE_GROUP_MAX_SIZE_CONFIG, 1000);
         configs.put(GroupCoordinatorConfig.CACHED_BUFFER_MAX_BYTES_CONFIG, 1024 * 1024);
 
+        configs.putAll(additionalConfigs);
+
         return createConfig(configs);
     }
 
@@ -672,40 +663,6 @@ public class GroupCoordinatorConfigTest {
         configs.put(GroupCoordinatorConfig.STREAMS_GROUP_INITIAL_REBALANCE_DELAY_MS_CONFIG, 7000);
         GroupCoordinatorConfig config = createConfig(configs);
         assertEquals(7000, config.streamsGroupInitialRebalanceDelayMs());
-    }
-
-    @Test
-    public void testStreamsGroupTaskOffsetIntervalDefaultValue() {
-        Map<String, Object> configs = new HashMap<>();
-        GroupCoordinatorConfig config = createConfig(configs);
-        assertEquals(60000, config.streamsGroupTaskOffsetIntervalMs());
-        assertEquals(GroupCoordinatorConfig.STREAMS_GROUP_TASK_OFFSET_INTERVAL_MS_DEFAULT,
-            config.streamsGroupTaskOffsetIntervalMs());
-    }
-
-    @Test
-    public void testStreamsGroupTaskOffsetIntervalCustomValue() {
-        Map<String, Object> configs = new HashMap<>();
-        configs.put(GroupCoordinatorConfig.STREAMS_GROUP_TASK_OFFSET_INTERVAL_MS_CONFIG, 45000);
-        GroupCoordinatorConfig config = createConfig(configs);
-        assertEquals(45000, config.streamsGroupTaskOffsetIntervalMs());
-    }
-
-    @Test
-    public void testStreamsGroupMinTaskOffsetIntervalDefaultValue() {
-        Map<String, Object> configs = new HashMap<>();
-        GroupCoordinatorConfig config = createConfig(configs);
-        assertEquals(15000, config.streamsGroupMinTaskOffsetIntervalMs());
-        assertEquals(GroupCoordinatorConfig.STREAMS_GROUP_MIN_TASK_OFFSET_INTERVAL_MS_DEFAULT,
-            config.streamsGroupMinTaskOffsetIntervalMs());
-    }
-
-    @Test
-    public void testStreamsGroupMinTaskOffsetIntervalCustomValue() {
-        Map<String, Object> configs = new HashMap<>();
-        configs.put(GroupCoordinatorConfig.STREAMS_GROUP_MIN_TASK_OFFSET_INTERVAL_MS_CONFIG, 20000);
-        GroupCoordinatorConfig config = createConfig(configs);
-        assertEquals(20000, config.streamsGroupMinTaskOffsetIntervalMs());
     }
 
     public static GroupCoordinatorConfig createConfig(Map<String, Object> configs) {

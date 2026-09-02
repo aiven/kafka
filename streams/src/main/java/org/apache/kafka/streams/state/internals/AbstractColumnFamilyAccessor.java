@@ -69,8 +69,6 @@ abstract class AbstractColumnFamilyAccessor implements RocksDBStore.ColumnFamily
                 }
             }
         }
-        // We need to remove this flush call when implementing KAFKA-19712
-        this.flush(accessor, offsetColumnFamilyHandle);
     }
 
     @Override
@@ -98,9 +96,18 @@ abstract class AbstractColumnFamilyAccessor implements RocksDBStore.ColumnFamily
 
     @Override
     public void close(final RocksDBStore.DBAccessor accessor) throws RocksDBException {
-        accessor.put(offsetColumnFamilyHandle, statusKey, closedState);
-        offsetColumnFamilyHandle.close();
-        storeOpen.set(false);
+        // Only persist the closed state if the store was previously open.
+        // After an unclean shutdown, RocksDB may still be running background recovery,
+        // causing accessor.put() to block. The put can also throw if RocksDB is in a
+        // failed state (e.g. during an EOSv2 fencing cascade); the handle close must
+        // still happen, otherwise the native ColumnFamilyHandle leaks every cycle.
+        try {
+            if (storeOpen.compareAndSet(true, false)) {
+                accessor.put(offsetColumnFamilyHandle, statusKey, closedState);
+            }
+        } finally {
+            offsetColumnFamilyHandle.close();
+        }
     }
 
     @Override
@@ -112,15 +119,11 @@ abstract class AbstractColumnFamilyAccessor implements RocksDBStore.ColumnFamily
         return null;
     }
 
-    /**
-     * Invokes commit in the underlying ColumnFamilyAccessor.
-     * Subclasses should implement this method to define specific commit behavior.
-     * This method will be removed when implementing KAFKA-19712
-     *
-     * @param accessor the RocksDB accessor used to interact with the database
-     * @throws RocksDBException if an error occurs during the commit operation
-     */
-    protected abstract void flush(final RocksDBStore.DBAccessor accessor, final ColumnFamilyHandle offsetColumnFamilyHandle) throws RocksDBException;
+
+    // Visible for testing
+    ColumnFamilyHandle offsetColumnFamilyHandle() {
+        return offsetColumnFamilyHandle;
+    }
 
     private void wipeOffsets(final RocksDBStore.DBAccessor accessor) throws RocksDBException {
         try (final RocksIterator iter = accessor.newIterator(offsetColumnFamilyHandle)) {

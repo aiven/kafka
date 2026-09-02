@@ -137,7 +137,7 @@ public class ConfigCommandIntegrationTest {
             "--describe"));
         message = captureStandardOut(run(command));
         assertTrue(message.contains("Dynamic configs for group group are:"));
-        assertTrue(message.contains("consumer.session.timeout.ms=50000 sensitive=false synonyms={DYNAMIC_GROUP_CONFIG:consumer.session.timeout.ms=50000}"));
+        assertTrue(message.contains("consumer.session.timeout.ms=50000 sensitive=false synonyms={DYNAMIC_GROUP_CONFIG:consumer.session.timeout.ms=50000, DEFAULT_CONFIG:group.consumer.session.timeout.ms=45000}"));
 
         command = Stream.concat(quorumArgs(), Stream.of(
             "--entity-type", "groups",
@@ -145,7 +145,7 @@ public class ConfigCommandIntegrationTest {
             "--describe"));
         message = captureStandardOut(run(command));
         assertTrue(message.contains("Dynamic configs for group group are:"));
-        assertTrue(message.contains("consumer.session.timeout.ms=50000 sensitive=false synonyms={DYNAMIC_GROUP_CONFIG:consumer.session.timeout.ms=50000}"));
+        assertTrue(message.contains("consumer.session.timeout.ms=50000 sensitive=false synonyms={DYNAMIC_GROUP_CONFIG:consumer.session.timeout.ms=50000, DEFAULT_CONFIG:group.consumer.session.timeout.ms=45000}"));
     }
 
     @ClusterTest(serverProperties = {
@@ -293,10 +293,9 @@ public class ConfigCommandIntegrationTest {
             "--describe", "--all"));
         String message = captureStandardOut(run(command));
 
-        assertTrue(message.contains("streams.heartbeat.interval.ms=5000 sensitive=false synonyms={DEFAULT_CONFIG:streams.heartbeat.interval.ms=5000}"));
-        assertTrue(message.contains("streams.num.standby.replicas=0 sensitive=false synonyms={DEFAULT_CONFIG:streams.num.standby.replicas=0}"));
-        assertTrue(message.contains("streams.session.timeout.ms=45000 sensitive=false synonyms={DEFAULT_CONFIG:streams.session.timeout.ms=45000}"));
-        assertTrue(message.contains("streams.task.offset.interval.ms=60000 sensitive=false synonyms={DEFAULT_CONFIG:streams.task.offset.interval.ms=60000}"));
+        assertTrue(message.contains("streams.heartbeat.interval.ms=5000 sensitive=false synonyms={DEFAULT_CONFIG:group.streams.heartbeat.interval.ms=5000}"));
+        assertTrue(message.contains("streams.num.standby.replicas=0 sensitive=false synonyms={DEFAULT_CONFIG:group.streams.num.standby.replicas=0}"));
+        assertTrue(message.contains("streams.session.timeout.ms=45000 sensitive=false synonyms={DEFAULT_CONFIG:group.streams.session.timeout.ms=45000}"));
     }
 
     @ClusterTest
@@ -400,41 +399,6 @@ public class ConfigCommandIntegrationTest {
             "--alter", "--add-config", "streams.num.standby.replicas=3"));
         message = captureStandardErr(run(command));
         assertTrue(message.contains("streams.num.standby.replicas must be less than or equal to group.streams.max.standby.replicas"));
-    }
-
-    @ClusterTest
-    public void testAlterStreamsGroupTaskOffsetInterval() {
-        // Verify the initial config
-        Stream<String> command = Stream.concat(quorumArgs(), Stream.of(
-            "--entity-type", "groups",
-            "--entity-name", "group",
-            "--describe", "--all"));
-        String message = captureStandardOut(run(command));
-        assertTrue(message.contains("streams.task.offset.interval.ms=60000"));
-
-        // Alter task offset interval
-        command = Stream.concat(quorumArgs(), Stream.of(
-            "--entity-type", "groups",
-            "--entity-name", "group",
-            "--alter", "--add-config", "streams.task.offset.interval.ms=45000"));
-        message = captureStandardOut(run(command));
-        assertEquals("Completed updating config for group group.", message);
-
-        // Verify the updated config
-        command = Stream.concat(quorumArgs(), Stream.of(
-            "--entity-type", "groups",
-            "--describe"));
-        message = captureStandardOut(run(command));
-        assertTrue(message.contains("streams.task.offset.interval.ms=45000"));
-
-        // Should fail to set below min interval
-        command = Stream.concat(quorumArgs(), Stream.of(
-            "--entity-type", "groups",
-            "--entity-name", "group",
-            "--alter", "--add-config", "streams.task.offset.interval.ms=1"));
-        message = captureStandardErr(run(command));
-        assertTrue(message.contains("streams.task.offset.interval.ms must be greater than or equal to group.streams.min.task.offset.interval.ms"));
-
     }
 
     private void verifyGroupConfigUpdate(List<String> alterOpts) throws Exception {
@@ -649,6 +613,29 @@ public class ConfigCommandIntegrationTest {
                     () -> "Timeout waiting for topic config propagating to broker",
                     org.apache.kafka.test.TestUtils.DEFAULT_MAX_WAIT_MS,
                     100L);
+        }
+    }
+
+    @ClusterTest
+    public void testDeleteNonExistentConfigIsIdempotent() throws Exception {
+        String topicName = "test-delete-nonexistent-topic";
+        try (Admin client = cluster.admin()) {
+            client.createTopics(List.of(new NewTopic(topicName, 1, (short) 1))).all().get();
+
+            ConfigCommand.alterConfig(client, new ConfigCommand.ConfigCommandOptions(toArray(
+                List.of("--bootstrap-server", cluster.bootstrapServers(),
+                    "--entity-type", "topics", "--entity-name", topicName,
+                    "--alter", "--delete-config", "non.existent.config"))));
+
+            ConfigCommand.alterConfig(client, new ConfigCommand.ConfigCommandOptions(toArray(
+                List.of("--bootstrap-server", cluster.bootstrapServers(),
+                    "--entity-type", "brokers", "--entity-name", defaultBrokerId,
+                    "--alter", "--delete-config", "non.existent.config"))));
+
+            ConfigCommand.alterConfig(client, new ConfigCommand.ConfigCommandOptions(toArray(
+                List.of("--bootstrap-server", cluster.bootstrapServers(),
+                    "--entity-type", "brokers", "--entity-default",
+                    "--alter", "--delete-config", "non.existent.config"))));
         }
     }
 

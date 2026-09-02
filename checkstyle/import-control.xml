@@ -140,6 +140,8 @@
         <allow pkg="org.testcontainers" />
         <allow pkg="org.keycloak" />
         <allow pkg="dasniko.testcontainers" />
+        <!-- For asserting log output in tests via LogCaptureAppender -->
+        <allow class="org.apache.logging.log4j.Level" />
       </subpackage>
     </subpackage>
 
@@ -275,6 +277,7 @@
     <allow pkg="org.apache.kafka.queue"/>
     <allow pkg="org.apache.kafka.raft"/>
     <allow pkg="org.apache.kafka.server.common" />
+    <allow pkg="org.apache.kafka.server.config" />
     <allow pkg="org.apache.kafka.server.fault" />
     <allow pkg="org.apache.kafka.server.util" />
     <allow pkg="org.apache.kafka.shell"/>

@@ -349,17 +349,33 @@ class KafkaConfigTest {
   }
 
   @Test
-  def testEffectAdvertiseControllerListenerForControllerWithoutAdvertisement(): Unit = {
+  def testEffectAdvertiseControllerListenerForControllerWithoutAdvertisementAndVotersConfig(): Unit = {
     val props = new Properties()
     props.setProperty(KRaftConfigs.PROCESS_ROLES_CONFIG, "controller")
-    props.setProperty(SocketServerConfigs.LISTENERS_CONFIG, "CONTROLLER://localhost:9093")
     props.setProperty(KRaftConfigs.NODE_ID_CONFIG, "2")
-    props.setProperty(QuorumConfig.QUORUM_VOTERS_CONFIG, "2@localhost:9093")
     props.setProperty(KRaftConfigs.CONTROLLER_LISTENER_NAMES_CONFIG, "CONTROLLER")
+    props.setProperty(QuorumConfig.QUORUM_VOTERS_CONFIG, "2@lb1.example.com:9092")
+    props.setProperty(SocketServerConfigs.LISTENERS_CONFIG, "CONTROLLER://:9093")
 
     val config = KafkaConfig.fromProps(props)
     assertEquals(
-      Seq(new Endpoint("CONTROLLER", SecurityProtocol.PLAINTEXT, "localhost", 9093)),
+      Seq(new Endpoint("CONTROLLER", SecurityProtocol.PLAINTEXT, "lb1.example.com", 9092)),
+      config.effectiveAdvertisedControllerListeners
+    )
+  }
+
+  @Test
+  def testEffectAdvertiseControllerListenerForControllerWithoutAdvertisementOrVotersConfig(): Unit = {
+    val props = new Properties()
+    props.setProperty(KRaftConfigs.PROCESS_ROLES_CONFIG, "controller")
+    props.setProperty(KRaftConfigs.NODE_ID_CONFIG, "2")
+    props.setProperty(KRaftConfigs.CONTROLLER_LISTENER_NAMES_CONFIG, "CONTROLLER")
+    props.setProperty(QuorumConfig.QUORUM_BOOTSTRAP_SERVERS_CONFIG, "localhost:9092")
+    props.setProperty(SocketServerConfigs.LISTENERS_CONFIG, "CONTROLLER://:9093")
+
+    val config = KafkaConfig.fromProps(props)
+    assertEquals(
+      Seq(new Endpoint("CONTROLLER", SecurityProtocol.PLAINTEXT, null, 9093)),
       config.effectiveAdvertisedControllerListeners
     )
   }
@@ -368,17 +384,17 @@ class KafkaConfigTest {
   def testEffectAdvertiseControllerListenerForControllerWithMixedAdvertisement(): Unit = {
     val props = new Properties()
     props.setProperty(KRaftConfigs.PROCESS_ROLES_CONFIG, "controller")
-    props.setProperty(SocketServerConfigs.LISTENERS_CONFIG, "CONTROLLER://localhost:9093,CONTROLLER_NEW://localhost:9094")
     props.setProperty(KRaftConfigs.NODE_ID_CONFIG, "2")
-    props.setProperty(QuorumConfig.QUORUM_VOTERS_CONFIG, "2@localhost:9093")
     props.setProperty(KRaftConfigs.CONTROLLER_LISTENER_NAMES_CONFIG, "CONTROLLER,CONTROLLER_NEW")
     props.setProperty(SocketServerConfigs.ADVERTISED_LISTENERS_CONFIG, "CONTROLLER://lb1.example.com:9000")
+    props.setProperty(QuorumConfig.QUORUM_VOTERS_CONFIG, "2@lb2.example.com:9092")
+    props.setProperty(SocketServerConfigs.LISTENERS_CONFIG, "CONTROLLER://:9093,CONTROLLER_NEW://:9094")
 
     val config = KafkaConfig.fromProps(props)
     assertEquals(
       Seq(
         new Endpoint("CONTROLLER", SecurityProtocol.PLAINTEXT, "lb1.example.com", 9000),
-        new Endpoint("CONTROLLER_NEW", SecurityProtocol.PLAINTEXT, "localhost", 9094)
+        new Endpoint("CONTROLLER_NEW", SecurityProtocol.PLAINTEXT, null, 9094)
       ),
       config.effectiveAdvertisedControllerListeners
     )
@@ -806,7 +822,6 @@ class KafkaConfigTest {
         case MetadataLogConfig.METADATA_MAX_RETENTION_MILLIS_CONFIG => assertPropertyInvalid(baseProperties, name, "not_a_number")
         case MetadataLogConfig.INTERNAL_METADATA_LOG_SEGMENT_BYTES_CONFIG => // no op
         case MetadataLogConfig.INTERNAL_METADATA_MAX_BATCH_SIZE_IN_BYTES_CONFIG => // no op
-        case MetadataLogConfig.INTERNAL_METADATA_MAX_FETCH_SIZE_IN_BYTES_CONFIG => // no op
         case MetadataLogConfig.INTERNAL_METADATA_DELETE_DELAY_MILLIS_CONFIG => // no op
         case KRaftConfigs.CONTROLLER_LISTENER_NAMES_CONFIG => // ignore string
         case MetadataLogConfig.METADATA_MAX_IDLE_INTERVAL_MS_CONFIG  => assertPropertyInvalid(baseProperties, name, "not_a_number")
@@ -1091,8 +1106,6 @@ class KafkaConfigTest {
         case GroupCoordinatorConfig.STREAMS_GROUP_MIN_ASSIGNMENT_INTERVAL_MS_CONFIG => assertPropertyInvalid(baseProperties, name, "not_a_number", -1)
         case GroupCoordinatorConfig.STREAMS_GROUP_MAX_ASSIGNMENT_INTERVAL_MS_CONFIG => assertPropertyInvalid(baseProperties, name, "not_a_number", -1)
         case GroupCoordinatorConfig.STREAMS_GROUP_INITIAL_REBALANCE_DELAY_MS_CONFIG => assertPropertyInvalid(baseProperties, name, "not_a_number", -1)
-        case GroupCoordinatorConfig.STREAMS_GROUP_TASK_OFFSET_INTERVAL_MS_CONFIG => assertPropertyInvalid(baseProperties, name, "not_a_number", -1)
-        case GroupCoordinatorConfig.STREAMS_GROUP_MIN_TASK_OFFSET_INTERVAL_MS_CONFIG => assertPropertyInvalid(baseProperties, name, "not_a_number", -1)
 
         /** Share coordinator configs */
         case ShareCoordinatorConfig.APPEND_LINGER_MS_CONFIG => assertPropertyInvalid(baseProperties, name, "not_a_number", -2, -0.5)
@@ -1480,7 +1493,7 @@ class KafkaConfigTest {
   @Test
   def testValidQuorumVotersParsingWithIpAddress(): Unit = {
     val expected = new util.HashMap[Integer, InetSocketAddress]()
-    expected.put(1, new InetSocketAddress("127.0.0.1", 9092))
+    expected.put(1, InetSocketAddress.createUnresolved("127.0.0.1", 9092))
     assertValidQuorumVoters(expected, "1@127.0.0.1:9092")
   }
 

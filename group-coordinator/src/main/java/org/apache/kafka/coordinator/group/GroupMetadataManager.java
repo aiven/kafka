@@ -1392,6 +1392,23 @@ public class GroupMetadataManager {
     }
 
     /**
+     * Validates whether a classic member is allowed to join or rejoin the consumer group. When the
+     * migration policy is disabled, no classic member may join or rejoin the consumer group.
+     *
+     * @param consumerGroup The consumer group the classic member wants to join.
+     * @throws InconsistentGroupProtocolException if the classic member cannot join the consumer group.
+     */
+    private void throwIfClassicMemberCannotJoinConsumerGroup(ConsumerGroup consumerGroup) {
+        if (config.consumerGroupMigrationPolicy() == ConsumerGroupMigrationPolicy.DISABLED) {
+            log.info("Cannot join the consumer group {} with the classic protocol because the group migration is disabled.",
+                consumerGroup.groupId());
+            throw Errors.INCONSISTENT_GROUP_PROTOCOL.exception(
+                String.format("Cannot join the consumer group %s with the classic protocol because the group migration is disabled.", consumerGroup.groupId())
+            );
+        }
+    }
+
+    /**
      * Creates a ConsumerGroup corresponding to the given classic group.
      *
      * @param classicGroup  The ClassicGroup to convert.
@@ -2140,8 +2157,7 @@ public class GroupMetadataManager {
         StreamsGroupHeartbeatResponseData response = new StreamsGroupHeartbeatResponseData()
             .setMemberId(updatedMember.memberId())
             .setMemberEpoch(updatedMember.memberEpoch())
-            .setHeartbeatIntervalMs(streamsGroupHeartbeatIntervalMs(groupId))
-            .setTaskOffsetIntervalMs(streamsGroupTaskOffsetIntervalMs(groupId));
+            .setHeartbeatIntervalMs(streamsGroupHeartbeatIntervalMs(groupId));
         // The assignment is only provided in the following cases:
         // 1. The member is joining.
         // 2. The member's assignment has been updated.
@@ -2473,6 +2489,8 @@ public class GroupMetadataManager {
         JoinGroupRequestData request,
         CompletableFuture<JoinGroupResponseData> responseFuture
     ) throws ApiException {
+        throwIfClassicMemberCannotJoinConsumerGroup(group);
+
         final long currentTimeMs = time.milliseconds();
         final List<CoordinatorRecord> records = new ArrayList<>();
         final String groupId = request.groupId();
@@ -8776,7 +8794,9 @@ public class GroupMetadataManager {
      */
     // package private for testing
     int consumerGroupAssignmentIntervalMs(String groupId) {
-        return config.consumerGroupAssignmentIntervalMs();
+        Optional<GroupConfig> groupConfig = groupConfigManager.groupConfig(groupId);
+        return groupConfig.flatMap(GroupConfig::consumerAssignmentIntervalMs)
+            .orElse(config.consumerGroupAssignmentIntervalMs());
     }
 
     /**
@@ -8784,7 +8804,9 @@ public class GroupMetadataManager {
      */
     // package private for testing
     boolean consumerGroupAssignorOffloadEnable(String groupId) {
-        return config.consumerGroupAssignorOffloadEnable();
+        Optional<GroupConfig> groupConfig = groupConfigManager.groupConfig(groupId);
+        return groupConfig.flatMap(GroupConfig::consumerAssignorOffloadEnable)
+            .orElse(config.consumerGroupAssignorOffloadEnable());
     }
 
     /**
@@ -8810,7 +8832,9 @@ public class GroupMetadataManager {
      */
     // package private for testing
     int shareGroupAssignmentIntervalMs(String groupId) {
-        return config.shareGroupAssignmentIntervalMs();
+        Optional<GroupConfig> groupConfig = groupConfigManager.groupConfig(groupId);
+        return groupConfig.flatMap(GroupConfig::shareAssignmentIntervalMs)
+            .orElse(config.shareGroupAssignmentIntervalMs());
     }
 
     /**
@@ -8818,7 +8842,9 @@ public class GroupMetadataManager {
      */
     // package private for testing
     boolean shareGroupAssignorOffloadEnable(String groupId) {
-        return config.shareGroupAssignorOffloadEnable();
+        Optional<GroupConfig> groupConfig = groupConfigManager.groupConfig(groupId);
+        return groupConfig.flatMap(GroupConfig::shareAssignorOffloadEnable)
+            .orElse(config.shareGroupAssignorOffloadEnable());
     }
 
     /**
@@ -8844,7 +8870,9 @@ public class GroupMetadataManager {
      */
     // package private for testing
     int streamsGroupAssignmentIntervalMs(String groupId) {
-        return config.streamsGroupAssignmentIntervalMs();
+        Optional<GroupConfig> groupConfig = groupConfigManager.groupConfig(groupId);
+        return groupConfig.flatMap(GroupConfig::streamsAssignmentIntervalMs)
+            .orElse(config.streamsGroupAssignmentIntervalMs());
     }
 
     /**
@@ -8852,16 +8880,9 @@ public class GroupMetadataManager {
      */
     // package private for testing
     boolean streamsGroupAssignorOffloadEnable(String groupId) {
-        return config.streamsGroupAssignorOffloadEnable();
-    }
-
-    /**
-     * Get the task offset interval of the provided streams group.
-     */
-    private int streamsGroupTaskOffsetIntervalMs(String groupId) {
         Optional<GroupConfig> groupConfig = groupConfigManager.groupConfig(groupId);
-        return groupConfig.map(GroupConfig::streamsTaskOffsetIntervalMs)
-            .orElse(config.streamsGroupTaskOffsetIntervalMs());
+        return groupConfig.flatMap(GroupConfig::streamsAssignorOffloadEnable)
+            .orElse(config.streamsGroupAssignorOffloadEnable());
     }
 
     /**

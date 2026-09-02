@@ -52,7 +52,6 @@ import java.util.function.Function;
 import static org.apache.kafka.common.utils.Utils.mkEntry;
 import static org.apache.kafka.common.utils.Utils.mkMap;
 import static org.apache.kafka.streams.processor.internals.metrics.StreamsMetricsImpl.maybeMeasureLatency;
-import static org.apache.kafka.streams.state.internals.ValueTimestampHeadersDeserializer.headers;
 
 
 /**
@@ -150,7 +149,7 @@ public class MeteredTimestampedKeyValueStoreWithHeaders<K, V>
                             internalContext.setRecordContext(currentContext);
                         }
                     } else {
-                        // it's ok to only pass header into `serializeKey`, because for the value case passed-in headers are
+                        // it's ok to only pass headers into `serializeKey`, because for the value case passed-in headers are
                         // getting ignored anyway, because the value (of type `ValueTimestampHeaders`) itself carries the headers
                         final Headers headers = value.headers();
                         wrapped().put(serializeKey(key, headers), serializeValue(value));
@@ -195,7 +194,7 @@ public class MeteredTimestampedKeyValueStoreWithHeaders<K, V>
                         internalContext.setRecordContext(currentContext);
                     }
                 } else {
-                    // it's ok to only pass header into `serializeKey`, because for the value case passed-in headers are
+                    // it's ok to only pass headers into `serializeKey`, because for the value case passed-in headers are
                     // getting ignored anyway, because the value (of type `ValueTimestampHeaders`) itself carries the headers
                     final Headers headers = value.headers();
                     // `rawOldValue` returned from `wrapped().putIfAbsent(...)` is type ValueTimestampHeader
@@ -226,7 +225,7 @@ public class MeteredTimestampedKeyValueStoreWithHeaders<K, V>
     private List<KeyValue<Bytes, byte[]>> innerEntries(final List<KeyValue<K, ValueTimestampHeaders<V>>> from) {
         final List<KeyValue<Bytes, byte[]>> byteEntries = new ArrayList<>();
         for (final KeyValue<K, ValueTimestampHeaders<V>> entry : from) {
-            // it's ok to only pass header into `serializeKey`, because for the value case passed-in headers are
+            // it's ok to only pass headers into `serializeKey`, because for the value case passed-in headers are
             // getting ignored anyway, because the value (of type `ValueTimestampHeaders`) itself carries the headers
             final Headers headers = entry.value != null ? entry.value.headers() : internalContext.headers();
             byteEntries.add(KeyValue.pair(serializeKey(entry.key, headers), serializeValue(entry.value)));
@@ -658,7 +657,7 @@ public class MeteredTimestampedKeyValueStoreWithHeaders<K, V>
         throw new UnsupportedOperationException("MeteredTimestampedKeyValueStoreWithHeaders required to pass in Headers when serializing a key.");
     }
 
-    protected Bytes serializeKey(final K key, final Headers headers) {
+    private Bytes serializeKey(final K key, final Headers headers) {
         return Bytes.wrap(serdes.rawKey(key, headers));
     }
 
@@ -667,7 +666,7 @@ public class MeteredTimestampedKeyValueStoreWithHeaders<K, V>
         throw new UnsupportedOperationException("MeteredTimestampedKeyValueStoreWithHeaders required to pass in Headers when deserializing a key.");
     }
 
-    protected K deserializeKey(final byte[] rawKey, final Headers headers) {
+    private K deserializeKey(final byte[] rawKey, final Headers headers) {
         return serdes.keyFrom(rawKey, headers);
     }
 }
