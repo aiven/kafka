@@ -50,8 +50,8 @@ class GcsStorageConfigTest {
         final GcsStorageConfig config = new GcsStorageConfig(configs);
         assertThat(config.bucketName()).isEqualTo(bucketName);
         assertThat(config.endpointUrl()).isNull();
-        assertThat(config.connectTimeout()).isNull();
-        assertThat(config.readTimeout()).isNull();
+        assertThat(config.connectTimeout()).isEqualTo(Duration.ofSeconds(3));
+        assertThat(config.readTimeout()).isEqualTo(Duration.ofSeconds(1));
 
         final GoogleCredentials mockCredentials = GoogleCredentials.newBuilder().build();
         try (final MockedStatic<GoogleCredentials> googleCredentialsMockedStatic =

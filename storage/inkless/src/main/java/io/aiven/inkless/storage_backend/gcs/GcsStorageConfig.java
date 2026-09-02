@@ -40,14 +40,14 @@ public class GcsStorageConfig extends AbstractConfig {
         + "To be used with custom GCS-compatible backends.";
 
     static final String GCS_CONNECT_TIMEOUT_CONFIG = "gcs.connect.timeout";
-    private static final String GCS_CONNECT_TIMEOUT_DOC = "GCS connection establishment timeout in milliseconds. "
-        + "When unset, the GCS client default applies.";
+    private static final String GCS_CONNECT_TIMEOUT_DOC = "GCS connection establishment timeout in milliseconds.";
+    private static final long GCS_CONNECT_TIMEOUT_DEFAULT = 3_000;
 
     static final String GCS_READ_TIMEOUT_CONFIG = "gcs.read.timeout";
     private static final String GCS_READ_TIMEOUT_DOC = "GCS response read timeout in milliseconds. "
         + "Bounds a single request attempt, not the whole operation: the GCS client retries a timed out "
-        + "attempt according to its own retry settings. "
-        + "When unset, the GCS client default applies.";
+        + "attempt according to its own retry settings.";
+    private static final long GCS_READ_TIMEOUT_DEFAULT = 1_000;
 
     static final String GCP_CREDENTIALS_JSON_CONFIG = "gcs.credentials.json";
     static final String GCP_CREDENTIALS_PATH_CONFIG = "gcs.credentials.path";
@@ -84,14 +84,14 @@ public class GcsStorageConfig extends AbstractConfig {
             .define(
                 GCS_CONNECT_TIMEOUT_CONFIG,
                 ConfigDef.Type.LONG,
-                null,
+                GCS_CONNECT_TIMEOUT_DEFAULT,
                 Null.or(ConfigDef.Range.between(1, Integer.MAX_VALUE)),
                 ConfigDef.Importance.LOW,
                 GCS_CONNECT_TIMEOUT_DOC)
             .define(
                 GCS_READ_TIMEOUT_CONFIG,
                 ConfigDef.Type.LONG,
-                null,
+                GCS_READ_TIMEOUT_DEFAULT,
                 Null.or(ConfigDef.Range.between(1, Integer.MAX_VALUE)),
                 ConfigDef.Importance.LOW,
                 GCS_READ_TIMEOUT_DOC)
