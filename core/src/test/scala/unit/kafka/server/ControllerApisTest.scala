@@ -195,7 +195,7 @@ class ControllerApisTest {
     numPartitions: Int,
     classicToDisklessStartOffsets: Map[Int, Long] = Map.empty
   ): Unit = {
-    val delta = new MetadataDelta(MetadataImage.EMPTY)
+    val delta = new MetadataDelta.Builder().setImage(MetadataImage.EMPTY).build()
     delta.replay(new TopicRecord().setName(topicName).setTopicId(topicId))
     (0 until numPartitions).foreach { partition =>
       val record = new PartitionRecord()

@@ -146,7 +146,7 @@ public class ReplicationControlManagerInklessTest {
 
             // When creating a topic with diskless enabled
             ControllerResult<CreateTopicsResponseData> result =
-                replicationControl.createTopics(requestContext, request, Collections.singleton("foo"));
+                replicationControl.createTopics(requestContext, request, Collections.singleton("foo"), false);
             // Then the topic creation should succeed, regardless of the RF
             CreateTopicsResponseData expectedResponse = new CreateTopicsResponseData();
             expectedResponse.topics().add(new CreatableTopicResult()
@@ -187,7 +187,7 @@ public class ReplicationControlManagerInklessTest {
 
             // When creating a topic with diskless enabled and already exists
             ControllerResult<CreateTopicsResponseData> result1 =
-                replicationControl.createTopics(requestContext, request, Collections.singleton("foo"));
+                replicationControl.createTopics(requestContext, request, Collections.singleton("foo"), false);
             CreateTopicsResponseData expectedResponse1 = new CreateTopicsResponseData();
             // Then the topic creation should fail with TOPIC_ALREADY_EXISTS error
             expectedResponse1.topics().add(new CreatableTopicResult().setName("foo")
@@ -225,7 +225,7 @@ public class ReplicationControlManagerInklessTest {
             // When creating a topic without brokers available
             ControllerRequestContext requestContext = anonymousContextFor(ApiKeys.CREATE_TOPICS);
             ControllerResult<CreateTopicsResponseData> result =
-                replicationControl.createTopics(requestContext, request, Set.of("foo"));
+                replicationControl.createTopics(requestContext, request, Set.of("foo"), false);
             // Then the topic creation should fail with BROKER_NOT_AVAILABLE error
             CreateTopicsResponseData expectedResponse = new CreateTopicsResponseData();
             expectedResponse.topics().add(new CreatableTopicResult().setName("foo")
@@ -239,7 +239,7 @@ public class ReplicationControlManagerInklessTest {
 
             // When creating a topic with diskless enabled
             ControllerResult<CreateTopicsResponseData> result2 =
-                replicationControl.createTopics(requestContext, request, Set.of("foo"));
+                replicationControl.createTopics(requestContext, request, Set.of("foo"), false);
             // Then the topic creation should succeed, regardless of fenced brokers
             CreateTopicsResponseData expectedResponse2 = new CreateTopicsResponseData();
             expectedResponse2.topics().add(new CreatableTopicResult()
@@ -258,7 +258,7 @@ public class ReplicationControlManagerInklessTest {
 
             // When creating a topic with diskless enabled
             ControllerResult<CreateTopicsResponseData> result3 =
-                replicationControl.createTopics(requestContext, request, Set.of("foo"));
+                replicationControl.createTopics(requestContext, request, Set.of("foo"), false);
             // Then the topic creation should succeed, regardless of the RF
             CreateTopicsResponseData expectedResponse3 = new CreateTopicsResponseData();
             expectedResponse3.topics().add(new CreatableTopicResult()
@@ -295,7 +295,7 @@ public class ReplicationControlManagerInklessTest {
 
             // When creating a topic with diskless enabled and already exists
             ControllerResult<CreateTopicsResponseData> result4 =
-                replicationControl.createTopics(requestContext, request, Set.of("foo"));
+                replicationControl.createTopics(requestContext, request, Set.of("foo"), false);
             CreateTopicsResponseData expectedResponse4 = new CreateTopicsResponseData();
             // Then the topic creation should fail with TOPIC_ALREADY_EXISTS error
             expectedResponse4.topics().add(new CreatableTopicResult().setName("foo")
@@ -333,7 +333,7 @@ public class ReplicationControlManagerInklessTest {
             // When creating a topic without brokers available
             ControllerRequestContext requestContext = anonymousContextFor(ApiKeys.CREATE_TOPICS);
             ControllerResult<CreateTopicsResponseData> result =
-                replicationControl.createTopics(requestContext, request, Set.of("foo"));
+                replicationControl.createTopics(requestContext, request, Set.of("foo"), false);
             // Then the topic creation should fail with BROKER_NOT_AVAILABLE error
             CreateTopicsResponseData expectedResponse = new CreateTopicsResponseData();
             expectedResponse.topics().add(new CreatableTopicResult().setName("foo")
@@ -347,7 +347,7 @@ public class ReplicationControlManagerInklessTest {
 
             // When creating a topic with diskless enabled
             ControllerResult<CreateTopicsResponseData> result2 =
-                replicationControl.createTopics(requestContext, request, Set.of("foo"));
+                replicationControl.createTopics(requestContext, request, Set.of("foo"), false);
             // Then the topic creation should succeed, regardless of fenced brokers
             CreateTopicsResponseData expectedResponse2 = new CreateTopicsResponseData();
             expectedResponse2.topics().add(new CreatableTopicResult()
@@ -366,7 +366,7 @@ public class ReplicationControlManagerInklessTest {
 
             // When creating a topic with diskless enabled
             ControllerResult<CreateTopicsResponseData> result3 =
-                replicationControl.createTopics(requestContext, request, Set.of("foo"));
+                replicationControl.createTopics(requestContext, request, Set.of("foo"), false);
             // Then the topic creation should succeed, regardless of the RF
             CreateTopicsResponseData expectedResponse3 = new CreateTopicsResponseData();
             expectedResponse3.topics().add(new CreatableTopicResult()
@@ -403,7 +403,7 @@ public class ReplicationControlManagerInklessTest {
 
             // When creating a topic with diskless enabled and already exists
             ControllerResult<CreateTopicsResponseData> result4 =
-                replicationControl.createTopics(requestContext, request, Set.of("foo"));
+                replicationControl.createTopics(requestContext, request, Set.of("foo"), false);
             CreateTopicsResponseData expectedResponse4 = new CreateTopicsResponseData();
             // Then the topic creation should fail with TOPIC_ALREADY_EXISTS error
             expectedResponse4.topics().add(new CreatableTopicResult().setName("foo")
@@ -444,7 +444,7 @@ public class ReplicationControlManagerInklessTest {
                 .setConfigs(disklessConfig));
 
             ControllerResult<CreateTopicsResponseData> result1 =
-                replicationControl.createTopics(requestContext, request1, Set.of("baz"));
+                replicationControl.createTopics(requestContext, request1, Set.of("baz"), false);
             assertEquals(Errors.valueOf(expectedError).code(), result1.response().topics().find("baz").errorCode());
             assertEquals(List.of(), result1.records());
         }
@@ -483,7 +483,7 @@ public class ReplicationControlManagerInklessTest {
             // When creating an internal topic with diskless enabled, disable it
             ControllerRequestContext requestContext = anonymousContextFor(ApiKeys.CREATE_TOPICS);
             ControllerResult<CreateTopicsResponseData> result =
-                replicationControl.createTopics(requestContext, request, Set.of(internalTopic));
+                replicationControl.createTopics(requestContext, request, Set.of(internalTopic), false);
             CreateTopicsResponseData expectedResponse = new CreateTopicsResponseData();
             // Then the topic creation should fail with TOPIC_ALREADY_EXISTS error
             expectedResponse.topics().add(
@@ -531,7 +531,7 @@ public class ReplicationControlManagerInklessTest {
             // When creating the system topic
             ControllerRequestContext requestContext = anonymousContextFor(ApiKeys.CREATE_TOPICS);
             ControllerResult<CreateTopicsResponseData> result =
-                replicationControl.createTopics(requestContext, request, Set.of(systemTopic));
+                replicationControl.createTopics(requestContext, request, Set.of(systemTopic), false);
             // Then the topic creation should succeed
             assertEquals(Errors.NONE.code(), result.response().topics().find(systemTopic).errorCode());
             // And diskless should not be enabled
@@ -571,7 +571,7 @@ public class ReplicationControlManagerInklessTest {
             // When creating the system topic with diskless explicitly enabled
             ControllerRequestContext requestContext = anonymousContextFor(ApiKeys.CREATE_TOPICS);
             ControllerResult<CreateTopicsResponseData> result =
-                replicationControl.createTopics(requestContext, request, Set.of(systemTopic));
+                replicationControl.createTopics(requestContext, request, Set.of(systemTopic), false);
             // Then the topic creation should be rejected
             CreatableTopicResult topicResult = result.response().topics().find(systemTopic);
             assertEquals(Errors.INVALID_REQUEST.code(), topicResult.errorCode());
@@ -596,7 +596,7 @@ public class ReplicationControlManagerInklessTest {
                 ctx.configurationControl.incrementalAlterConfigs(
                     Map.of(resource, Map.of(DISKLESS_ENABLE_CONFIG,
                         new AbstractMap.SimpleImmutableEntry<>(AlterConfigOp.OpType.SET, "true"))),
-                    false);
+                    false, false);
             // Then the alter config should be rejected
             assertEquals(Errors.INVALID_CONFIG.code(), result.response().get(resource).error().code());
             assertTrue(result.response().get(resource).message().contains("System topics cannot be diskless"));
@@ -619,7 +619,7 @@ public class ReplicationControlManagerInklessTest {
             ControllerResult<Map<ConfigResource, ApiError>> result =
                 ctx.configurationControl.legacyAlterConfigs(
                     Map.of(resource, Map.of(DISKLESS_ENABLE_CONFIG, "true")),
-                    false);
+                    false, false);
             // Then the alter config should be rejected
             assertEquals(Errors.INVALID_CONFIG.code(), result.response().get(resource).error().code());
             assertTrue(result.response().get(resource).message().contains("System topics cannot be diskless"));
@@ -646,7 +646,7 @@ public class ReplicationControlManagerInklessTest {
             // When creating an internal topic with diskless enabled, disable it
             ControllerRequestContext requestContext = anonymousContextFor(ApiKeys.CREATE_TOPICS);
             ControllerResult<CreateTopicsResponseData> result =
-                replicationControl.createTopics(requestContext, request, Set.of(internalTopic));
+                replicationControl.createTopics(requestContext, request, Set.of(internalTopic), false);
             CreateTopicsResponseData expectedResponse = new CreateTopicsResponseData();
             // Then the topic creation should fail with TOPIC_ALREADY_EXISTS error
             expectedResponse.topics().add(
@@ -686,7 +686,7 @@ public class ReplicationControlManagerInklessTest {
             // When creating an internal topic with diskless enabled, disable it
             ControllerRequestContext requestContext = anonymousContextFor(ApiKeys.CREATE_TOPICS);
             ControllerResult<CreateTopicsResponseData> result =
-                replicationControl.createTopics(requestContext, request, Set.of(topicName));
+                replicationControl.createTopics(requestContext, request, Set.of(topicName), false);
             CreateTopicsResponseData expectedResponse = new CreateTopicsResponseData();
             // Then the topic creation should fail with TOPIC_ALREADY_EXISTS error
             expectedResponse.topics().add(
@@ -723,7 +723,7 @@ public class ReplicationControlManagerInklessTest {
             // When creating the topic
             ControllerRequestContext requestContext = anonymousContextFor(ApiKeys.CREATE_TOPICS);
             ControllerResult<CreateTopicsResponseData> result =
-                replicationControl.createTopics(requestContext, request, Collections.singleton("foo"));
+                replicationControl.createTopics(requestContext, request, Collections.singleton("foo"), false);
 
             // Then the topic creation should succeed by enabling tiered storage instead of diskless
             CreatableTopicResult topicResult = result.response().topics().find("foo");
@@ -1241,7 +1241,7 @@ public class ReplicationControlManagerInklessTest {
 
             // When creating a topic with diskless disabled
             ControllerResult<CreateTopicsResponseData> result =
-                replicationControl.createTopics(requestContext, request, Collections.singleton("foo"));
+                replicationControl.createTopics(requestContext, request, Collections.singleton("foo"), false);
             // Then the topic creation should succeed as a classic topic with RF=3
             CreateTopicsResponseData expectedResponse = new CreateTopicsResponseData();
             expectedResponse.topics().add(new CreatableTopicResult().setName("foo").
@@ -1273,7 +1273,7 @@ public class ReplicationControlManagerInklessTest {
 
             // When creating a topic with diskless enabled and already exists
             ControllerResult<CreateTopicsResponseData> result1 =
-                replicationControl.createTopics(requestContext, request, Collections.singleton("foo"));
+                replicationControl.createTopics(requestContext, request, Collections.singleton("foo"), false);
             CreateTopicsResponseData expectedResponse1 = new CreateTopicsResponseData();
             // Then the topic creation should fail with TOPIC_ALREADY_EXISTS error
             expectedResponse1.topics().add(new CreatableTopicResult().setName("foo").
@@ -1310,7 +1310,7 @@ public class ReplicationControlManagerInklessTest {
             // When creating a topic without brokers available
             ControllerRequestContext requestContext = anonymousContextFor(ApiKeys.CREATE_TOPICS);
             ControllerResult<CreateTopicsResponseData> result =
-                replicationControl.createTopics(requestContext, request, Set.of("foo"));
+                replicationControl.createTopics(requestContext, request, Set.of("foo"), false);
             // Then the topic creation should fail with INVALID_REPLICATION_FACTOR
             // (standard Kafka behavior when no brokers can satisfy the requested RF)
             assertEquals(Errors.INVALID_REPLICATION_FACTOR.code(),
@@ -1322,7 +1322,7 @@ public class ReplicationControlManagerInklessTest {
 
             // When creating a topic with diskless enabled
             ControllerResult<CreateTopicsResponseData> result2 =
-                replicationControl.createTopics(requestContext, request, Set.of("foo"));
+                replicationControl.createTopics(requestContext, request, Set.of("foo"), false);
             // Then the topic creation should succeed with RF=3 (default.replication.factor),
             // regardless of fenced brokers
             CreateTopicsResponseData expectedResponse2 = new CreateTopicsResponseData();
@@ -1339,7 +1339,7 @@ public class ReplicationControlManagerInklessTest {
 
             // When creating a topic with diskless enabled
             ControllerResult<CreateTopicsResponseData> result3 =
-                replicationControl.createTopics(requestContext, request, Set.of("foo"));
+                replicationControl.createTopics(requestContext, request, Set.of("foo"), false);
             // Then the topic creation should succeed with RF=3 (default.replication.factor)
             CreateTopicsResponseData expectedResponse3 = new CreateTopicsResponseData();
             expectedResponse3.topics().add(new CreatableTopicResult().setName("foo").
@@ -1366,7 +1366,7 @@ public class ReplicationControlManagerInklessTest {
 
             // When creating a topic with diskless enabled and already exists
             ControllerResult<CreateTopicsResponseData> result4 =
-                replicationControl.createTopics(requestContext, request, Set.of("foo"));
+                replicationControl.createTopics(requestContext, request, Set.of("foo"), false);
             CreateTopicsResponseData expectedResponse4 = new CreateTopicsResponseData();
             // Then the topic creation should fail with TOPIC_ALREADY_EXISTS error
             expectedResponse4.topics().add(new CreatableTopicResult().setName("foo").
@@ -1403,7 +1403,7 @@ public class ReplicationControlManagerInklessTest {
             // When creating a topic without brokers available
             ControllerRequestContext requestContext = anonymousContextFor(ApiKeys.CREATE_TOPICS);
             ControllerResult<CreateTopicsResponseData> result =
-                replicationControl.createTopics(requestContext, request, Set.of("foo"));
+                replicationControl.createTopics(requestContext, request, Set.of("foo"), false);
             // Then the topic creation should fail with INVALID_REPLICATION_FACTOR
             // (standard Kafka behavior when no brokers can satisfy the requested RF)
             assertEquals(Errors.INVALID_REPLICATION_FACTOR.code(),
@@ -1415,7 +1415,7 @@ public class ReplicationControlManagerInklessTest {
 
             // When creating a topic with diskless enabled
             ControllerResult<CreateTopicsResponseData> result2 =
-                replicationControl.createTopics(requestContext, request, Set.of("foo"));
+                replicationControl.createTopics(requestContext, request, Set.of("foo"), false);
             // Then the topic creation should succeed, regardless of fenced brokers
             CreateTopicsResponseData expectedResponse2 = new CreateTopicsResponseData();
             expectedResponse2.topics().add(new CreatableTopicResult().setName("foo").
@@ -1431,7 +1431,7 @@ public class ReplicationControlManagerInklessTest {
 
             // When creating a topic with diskless enabled
             ControllerResult<CreateTopicsResponseData> result3 =
-                replicationControl.createTopics(requestContext, request, Set.of("foo"));
+                replicationControl.createTopics(requestContext, request, Set.of("foo"), false);
             // Then the topic creation should succeed, regardless of the RF
             CreateTopicsResponseData expectedResponse3 = new CreateTopicsResponseData();
             expectedResponse3.topics().add(new CreatableTopicResult().setName("foo").
@@ -1467,7 +1467,7 @@ public class ReplicationControlManagerInklessTest {
 
             // When creating a topic with diskless enabled and already exists
             ControllerResult<CreateTopicsResponseData> result4 =
-                replicationControl.createTopics(requestContext, request, Set.of("foo"));
+                replicationControl.createTopics(requestContext, request, Set.of("foo"), false);
             CreateTopicsResponseData expectedResponse4 = new CreateTopicsResponseData();
             // Then the topic creation should fail with TOPIC_ALREADY_EXISTS error
             expectedResponse4.topics().add(new CreatableTopicResult().setName("foo").
@@ -1508,7 +1508,7 @@ public class ReplicationControlManagerInklessTest {
                 .setConfigs(disklessConfig));
 
             ControllerResult<CreateTopicsResponseData> result1 =
-                replicationControl.createTopics(requestContext, request1, Set.of("baz"));
+                replicationControl.createTopics(requestContext, request1, Set.of("baz"), false);
             assertEquals(Errors.valueOf(expectedError).code(), result1.response().topics().find("baz").errorCode());
             assertEquals(List.of(), result1.records());
         }
@@ -1548,7 +1548,7 @@ public class ReplicationControlManagerInklessTest {
             // When creating an internal topic with diskless enabled, disable it
             ControllerRequestContext requestContext = anonymousContextFor(ApiKeys.CREATE_TOPICS);
             ControllerResult<CreateTopicsResponseData> result =
-                replicationControl.createTopics(requestContext, request, Set.of(internalTopic));
+                replicationControl.createTopics(requestContext, request, Set.of(internalTopic), false);
             CreateTopicsResponseData expectedResponse = new CreateTopicsResponseData();
             // Then the topic creation should succeed with diskless disabled for internal topics
             expectedResponse.topics().add(
@@ -1594,7 +1594,7 @@ public class ReplicationControlManagerInklessTest {
             // When creating an internal topic with diskless enabled, disable it
             ControllerRequestContext requestContext = anonymousContextFor(ApiKeys.CREATE_TOPICS);
             ControllerResult<CreateTopicsResponseData> result =
-                replicationControl.createTopics(requestContext, request, Set.of(internalTopic));
+                replicationControl.createTopics(requestContext, request, Set.of(internalTopic), false);
             CreateTopicsResponseData expectedResponse = new CreateTopicsResponseData();
             // Then the topic creation should fail with TOPIC_ALREADY_EXISTS error
             expectedResponse.topics().add(
@@ -1635,7 +1635,7 @@ public class ReplicationControlManagerInklessTest {
             // When creating an internal topic with diskless enabled, disable it
             ControllerRequestContext requestContext = anonymousContextFor(ApiKeys.CREATE_TOPICS);
             ControllerResult<CreateTopicsResponseData> result =
-                replicationControl.createTopics(requestContext, request, Set.of(topicName));
+                replicationControl.createTopics(requestContext, request, Set.of(topicName), false);
             CreateTopicsResponseData expectedResponse = new CreateTopicsResponseData();
             // Then the topic creation should fail with TOPIC_ALREADY_EXISTS error
             expectedResponse.topics().add(
@@ -2477,7 +2477,7 @@ public class ReplicationControlManagerInklessTest {
                 ).iterator())));
 
             ControllerResult<CreateTopicsResponseData> result =
-                replication.createTopics(requestContext, request, Set.of("foo"));
+                replication.createTopics(requestContext, request, Set.of("foo"), false);
             assertEquals(NONE.code(), result.response().topics().find("foo").errorCode());
             assertEquals(2, result.response().topics().find("foo").replicationFactor());
             assertEquals(2, result.response().topics().find("foo").numPartitions());
@@ -2511,7 +2511,7 @@ public class ReplicationControlManagerInklessTest {
                 ).iterator())));
 
             ControllerResult<CreateTopicsResponseData> result =
-                replication.createTopics(requestContext, request, Set.of("foo"));
+                replication.createTopics(requestContext, request, Set.of("foo"), false);
             assertEquals(Errors.INVALID_REPLICATION_FACTOR.code(),
                 result.response().topics().find("foo").errorCode());
         }
@@ -2538,7 +2538,7 @@ public class ReplicationControlManagerInklessTest {
                 ).iterator())));
 
             ControllerResult<CreateTopicsResponseData> result =
-                replication.createTopics(requestContext, request, Set.of("foo"));
+                replication.createTopics(requestContext, request, Set.of("foo"), false);
             assertEquals(Errors.INVALID_REPLICATION_FACTOR.code(),
                 result.response().topics().find("foo").errorCode());
         }
@@ -2610,7 +2610,7 @@ public class ReplicationControlManagerInklessTest {
                 .setConfigs(configs));
 
             final ControllerResult<CreateTopicsResponseData> result = ctx.replicationControl.createTopics(
-                anonymousContextFor(ApiKeys.CREATE_TOPICS), request, Set.of("foo"));
+                anonymousContextFor(ApiKeys.CREATE_TOPICS), request, Set.of("foo"), false);
             assertEquals(NONE.code(), result.response().topics().find("foo").errorCode());
             assertTrue(result.records().stream()
                 .filter(m -> m.message() instanceof ConfigRecord)
@@ -2640,7 +2640,7 @@ public class ReplicationControlManagerInklessTest {
                 .setConfigs(new CreateTopicsRequestData.CreatableTopicConfigCollection()));
 
             final ControllerResult<CreateTopicsResponseData> result = ctx.replicationControl.createTopics(
-                anonymousContextFor(ApiKeys.CREATE_TOPICS), request, Set.of("foo"));
+                anonymousContextFor(ApiKeys.CREATE_TOPICS), request, Set.of("foo"), false);
             assertEquals(NONE.code(), result.response().topics().find("foo").errorCode());
             List<ConfigRecord> configRecords = result.records().stream()
                 .filter(m -> m.message() instanceof ConfigRecord)
@@ -2682,7 +2682,7 @@ public class ReplicationControlManagerInklessTest {
                 .setConfigs(configs));
 
             final ControllerResult<CreateTopicsResponseData> result = ctx.replicationControl.createTopics(
-                anonymousContextFor(ApiKeys.CREATE_TOPICS), request, Set.of("foo"));
+                anonymousContextFor(ApiKeys.CREATE_TOPICS), request, Set.of("foo"), false);
             assertEquals(NONE.code(), result.response().topics().find("foo").errorCode());
             long remoteStorageConfigCount = result.records().stream()
                 .filter(m -> m.message() instanceof ConfigRecord)
@@ -2714,7 +2714,7 @@ public class ReplicationControlManagerInklessTest {
                 .setConfigs(new CreateTopicsRequestData.CreatableTopicConfigCollection()));
 
             final ControllerResult<CreateTopicsResponseData> result = ctx.replicationControl.createTopics(
-                anonymousContextFor(ApiKeys.CREATE_TOPICS), request, Set.of(Topic.GROUP_METADATA_TOPIC_NAME));
+                anonymousContextFor(ApiKeys.CREATE_TOPICS), request, Set.of(Topic.GROUP_METADATA_TOPIC_NAME), false);
             assertEquals(NONE.code(), result.response().topics().find(Topic.GROUP_METADATA_TOPIC_NAME).errorCode());
             assertTrue(result.records().stream()
                 .filter(m -> m.message() instanceof ConfigRecord)
@@ -2748,7 +2748,7 @@ public class ReplicationControlManagerInklessTest {
                 .setConfigs(configs));
 
             final ControllerResult<CreateTopicsResponseData> result = ctx.replicationControl.createTopics(
-                anonymousContextFor(ApiKeys.CREATE_TOPICS), request, Set.of("foo"));
+                anonymousContextFor(ApiKeys.CREATE_TOPICS), request, Set.of("foo"), false);
             assertEquals(NONE.code(), result.response().topics().find("foo").errorCode());
             assertTrue(result.records().stream()
                 .filter(m -> m.message() instanceof ConfigRecord)
@@ -2785,7 +2785,7 @@ public class ReplicationControlManagerInklessTest {
                 .setConfigs(configs));
 
             final ControllerResult<CreateTopicsResponseData> result = ctx.replicationControl.createTopics(
-                anonymousContextFor(ApiKeys.CREATE_TOPICS), request, Set.of("foo"));
+                anonymousContextFor(ApiKeys.CREATE_TOPICS), request, Set.of("foo"), false);
             assertEquals(Errors.INVALID_CONFIG.code(), result.response().topics().find("foo").errorCode(),
                 "Diskless topic with remote.storage.enable=false should be rejected");
         }
@@ -3112,7 +3112,7 @@ public class ReplicationControlManagerInklessTest {
             Map<ConfigResource, Map<String, String>> effective =
                 ctx.replicationControl.maybeAddRemoteStorageEnableForLegacyAlterConfigs(newConfigs);
             ControllerResult<Map<ConfigResource, ApiError>> configResult =
-                ctx.configurationControl.legacyAlterConfigs(effective, false,
+                ctx.configurationControl.legacyAlterConfigs(effective, false, false,
                     r -> ctx.replicationControl.validateClassicToDisklessSwitchPreconditionForLegacy(r, effective));
 
             assertEquals(Errors.INVALID_CONFIG, configResult.response().get(resource).error(),
@@ -3152,7 +3152,7 @@ public class ReplicationControlManagerInklessTest {
 
             // 2. Validate + generate config records (QuorumController step 2).
             ControllerResult<Map<ConfigResource, ApiError>> configResult =
-                ctx.configurationControl.incrementalAlterConfigs(effective, false,
+                ctx.configurationControl.incrementalAlterConfigs(effective, false, false,
                     resource -> ctx.replicationControl.validateClassicToDisklessSwitchPrecondition(resource, effective));
             assertEquals(ApiError.NONE,
                 configResult.response().get(new ConfigResource(ConfigResource.Type.TOPIC, "foo")));
@@ -4036,7 +4036,7 @@ public class ReplicationControlManagerInklessTest {
                 Map.of(new ConfigResource(ConfigResource.Type.TOPIC, "foo"),
                     Map.of(TopicConfig.UNCLEAN_LEADER_ELECTION_ENABLE_CONFIG,
                         new AbstractMap.SimpleImmutableEntry<>(AlterConfigOp.OpType.SET, "false"))),
-                false).records());
+                false, false).records());
 
             ConfigResource resource = new ConfigResource(ConfigResource.Type.TOPIC, "foo");
             Map<ConfigResource, Map<String, Map.Entry<AlterConfigOp.OpType, String>>> configChanges = Map.of(
@@ -4156,7 +4156,7 @@ public class ReplicationControlManagerInklessTest {
             Map<ConfigResource, Map<String, String>> newConfigs =
                 Map.of(resource, Map.of("retention.ms", "86400000"));
             ControllerResult<Map<ConfigResource, ApiError>> legacyResult =
-                ctx.configurationControl.legacyAlterConfigs(newConfigs, false,
+                ctx.configurationControl.legacyAlterConfigs(newConfigs, false, false,
                     r -> ctx.replicationControl.validateClassicToDisklessSwitchPreconditionForLegacy(
                         r, newConfigs));
 
@@ -4201,7 +4201,7 @@ public class ReplicationControlManagerInklessTest {
             explicitNull.put("retention.ms", "86400000");
             Map<ConfigResource, Map<String, String>> newConfigs = Map.of(resource, explicitNull);
             ControllerResult<Map<ConfigResource, ApiError>> legacyResult =
-                ctx.configurationControl.legacyAlterConfigs(newConfigs, false,
+                ctx.configurationControl.legacyAlterConfigs(newConfigs, false, false,
                     r -> ctx.replicationControl.validateClassicToDisklessSwitchPreconditionForLegacy(
                         r, newConfigs));
 
@@ -4951,7 +4951,7 @@ public class ReplicationControlManagerInklessTest {
         request.topics().add(new CreatableTopic()
             .setName("foo").setNumPartitions(-1).setReplicationFactor((short) -1).setConfigs(configs));
         ctx.replay(replicationControl.createTopics(
-            anonymousContextFor(ApiKeys.CREATE_TOPICS), request, Set.of("foo")).records());
+            anonymousContextFor(ApiKeys.CREATE_TOPICS), request, Set.of("foo"), false).records());
 
         assertThrows(InvalidRequestException.class, () ->
             replicationControl.alterDisklessSwitch(new AlterDisklessSwitchRequestData()
@@ -4998,7 +4998,7 @@ public class ReplicationControlManagerInklessTest {
                 new AbstractMap.SimpleImmutableEntry<>(AlterConfigOp.OpType.SET, "true")));
         List<ApiMessageAndVersion> switchRecords = ctx.replicationControl.markClassicToDisklessSwitchStarted(
             configChanges, Map.of(resource, ApiError.NONE));
-        ctx.replay(ctx.configurationControl.incrementalAlterConfigs(configChanges, true).records());
+        ctx.replay(ctx.configurationControl.incrementalAlterConfigs(configChanges, true, false).records());
         ctx.replay(switchRecords);
         return topicId;
     }

@@ -516,8 +516,6 @@ public class ConfigurationControlManager {
     static final ApiError DISABLED_CORDONED_LOG_DIRS_ERROR =
             new ApiError(INVALID_CONFIG, "The " + CORDONED_LOG_DIRS_CONFIG + " configuration value cannot be " +
                     "set because it requires metadata.version >= " + MetadataVersion.IBP_4_3_IV0);
-            new ApiError(INVALID_CONFIG, "The " + CORDONED_LOG_DIRS_CONFIG + " configuration value cannot be " +
-                    "set because it requires metadata.version >= " + MetadataVersion.IBP_4_3_IV0);
 
     static final ApiError INVALID_CORDONED_LOG_DIRS_ERROR =
             new ApiError(INVALID_CONFIG, "When updating " + CORDONED_LOG_DIRS_CONFIG + " via controllers, " +
