@@ -49,7 +49,7 @@
 |---|------|------------|--------|
 | 1 | gradle.properties | `version=4.3.1-inkless` (kept upstream-update NOTE comment) | Done |
 | 2 | tests/kafkatest/__init__.py | `__version__ = '4.3.1+inkless'` (initially set to `'4.3.1.inkless'`, which failed CI: `packaging.version.InvalidVersion`; fixed to use the PEP 440 local version label `+inkless`) | Done |
-| 3 | tests/kafkatest/version.py | `DEV_VERSION = KafkaVersion("4.3.1-inkless-SNAPSHOT")` | Done |
+| 3 | tests/kafkatest/version.py | `DEV_VERSION = KafkaVersion("4.3.1-inkless")` (initially set to `"4.3.1-inkless-SNAPSHOT"`, which failed the `:verifyVersionConsistency` Gradle check; fixed to match `gradle.properties` exactly) | Done |
 | 4 | docs/js/templateData.js | No conflict; not touched by this sync | N/A |
 | 5 | committer-tools/kafka-merge-pr.py | `DEFAULT_FIX_VERSION = "4.3.1-inkless"` | Done |
 | 6 | .github/workflows/ci.yml | Kept `main`/`inkless-*` triggers, replaced stale `4.0` with `4.3` (matches branch) | Done |
@@ -62,9 +62,9 @@
 ### POM Files (Keep Upstream Version)
 | # | File | Notes | Status |
 |---|------|-------|--------|
-| 1 | streams/quickstart/pom.xml | `<version>4.3.1</version>`, no -inkless suffix | Done |
-| 2 | streams/quickstart/java/pom.xml | `<version>4.3.1</version>` | Done |
-| 3 | streams/quickstart/java/src/main/resources/archetype-resources/pom.xml | `<kafka.version>4.3.1</kafka.version>` | Done |
+| 1 | streams/quickstart/pom.xml | `<version>4.3.1-inkless</version>` (initially set to plain `4.3.1`, which failed the `:verifyVersionConsistency` Gradle check; fixed to match `gradle.properties` exactly) | Done |
+| 2 | streams/quickstart/java/pom.xml | `<version>4.3.1-inkless</version>` | Done |
+| 3 | streams/quickstart/java/src/main/resources/archetype-resources/pom.xml | `<kafka.version>4.3.1-inkless</kafka.version>` | Done |
 
 ### Interleaved controller logic (Inkless + upstream feature merge)
 | # | File | Resolution Notes | Status |
