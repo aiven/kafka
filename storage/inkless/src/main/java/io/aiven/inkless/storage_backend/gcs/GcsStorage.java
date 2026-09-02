@@ -32,6 +32,7 @@ import com.groupcdg.pitest.annotations.CoverageIgnore;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.SocketTimeoutException;
 import java.nio.channels.Channels;
 import java.nio.channels.ReadableByteChannel;
 import java.util.Map;
@@ -45,6 +46,7 @@ import io.aiven.inkless.storage_backend.common.InvalidRangeException;
 import io.aiven.inkless.storage_backend.common.KeyNotFoundException;
 import io.aiven.inkless.storage_backend.common.StorageBackend;
 import io.aiven.inkless.storage_backend.common.StorageBackendException;
+import io.aiven.inkless.storage_backend.common.StorageBackendTimeoutException;
 
 @CoverageIgnore  // tested on integration level
 public class GcsStorage extends StorageBackend {
@@ -76,6 +78,12 @@ public class GcsStorage extends StorageBackend {
         this.bucketName = config.bucketName();
 
         final HttpTransportOptions.Builder httpTransportOptionsBuilder = HttpTransportOptions.newBuilder();
+        if (config.connectTimeout() != null) {
+            httpTransportOptionsBuilder.setConnectTimeout((int) config.connectTimeout().toMillis());
+        }
+        if (config.readTimeout() != null) {
+            httpTransportOptionsBuilder.setReadTimeout((int) config.readTimeout().toMillis());
+        }
 
         // Create reloadable credentials provider
         this.credentialsProvider = config.reloadableCredentials();
@@ -110,8 +118,26 @@ public class GcsStorage extends StorageBackend {
                         "Object " + key + " created with incorrect length " + transferred + " instead of " + length);
             }
         } catch (final IOException | BaseServiceException e) {
+            if (isTimeout(e)) {
+                throw new StorageBackendTimeoutException("Timed out to upload " + key, e);
+            }
             throw new StorageBackendException("Failed to upload " + key, e);
         }
+    }
+
+    /**
+     * The GCS client wraps the originating {@link SocketTimeoutException} in a
+     * {@link BaseServiceException}, so the whole cause chain is inspected.
+     */
+    private static boolean isTimeout(final Throwable e) {
+        Throwable cause = e;
+        while (cause != null) {
+            if (cause instanceof SocketTimeoutException) {
+                return true;
+            }
+            cause = cause.getCause() == cause ? null : cause.getCause();
+        }
+        return false;
     }
 
     @Override
