@@ -162,7 +162,10 @@ version=4.0.1-inkless
 
 ```python
 # tests/kafkatest/__init__.py
-__version__ = '4.0.1.inkless'
+# This value must stay PEP 440 (https://peps.python.org/pep-0440/) compliant:
+# setuptools parses it with packaging.version.Version, which rejects a bare
+# "-inkless" or ".inkless" suffix. Use "+inkless" as a local version label.
+__version__ = '4.0.1+inkless'
 
 # tests/kafkatest/version.py
 DEV_VERSION = KafkaVersion("4.0.1-inkless-SNAPSHOT")

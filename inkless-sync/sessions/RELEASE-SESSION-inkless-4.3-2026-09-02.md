@@ -48,7 +48,7 @@
 | # | File | Resolution | Status |
 |---|------|------------|--------|
 | 1 | gradle.properties | `version=4.3.1-inkless` (kept upstream-update NOTE comment) | Done |
-| 2 | tests/kafkatest/__init__.py | `__version__ = '4.3.1.inkless'` | Done |
+| 2 | tests/kafkatest/__init__.py | `__version__ = '4.3.1+inkless'` (initially set to `'4.3.1.inkless'`, which failed CI: `packaging.version.InvalidVersion`; fixed to use the PEP 440 local version label `+inkless`) | Done |
 | 3 | tests/kafkatest/version.py | `DEV_VERSION = KafkaVersion("4.3.1-inkless-SNAPSHOT")` | Done |
 | 4 | docs/js/templateData.js | No conflict; not touched by this sync | N/A |
 | 5 | committer-tools/kafka-merge-pr.py | `DEFAULT_FIX_VERSION = "4.3.1-inkless"` | Done |

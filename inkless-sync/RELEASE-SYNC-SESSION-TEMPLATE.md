@@ -47,7 +47,7 @@ git merge [TAG]
 | # | File | Resolution | Status |
 |---|------|------------|--------|
 | 1 | gradle.properties | `version=[TAG]-inkless` | |
-| 2 | tests/kafkatest/__init__.py | `__version__ = '[TAG].inkless'` | |
+| 2 | tests/kafkatest/__init__.py | `__version__ = '[TAG]+inkless'` (PEP 440 local version label; a bare `.inkless`/`-inkless` suffix fails `packaging.version.Version` parsing in CI) | |
 | 3 | tests/kafkatest/version.py | `DEV_VERSION = KafkaVersion("[TAG]-inkless-SNAPSHOT")` | |
 | 4 | docs/js/templateData.js | Update version strings | |
 | 5 | committer-tools/kafka-merge-pr.py | `DEFAULT_FIX_VERSION = "[TAG]-inkless"` | |
