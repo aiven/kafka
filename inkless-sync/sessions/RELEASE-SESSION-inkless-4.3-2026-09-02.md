@@ -121,7 +121,9 @@ make test
 ### Blockers (if any)
 | Issue | Description | Action Needed |
 |-------|-------------|---------------|
-| | | |
+| CI: `InvalidVersion` | `tests/kafkatest/__init__.py` version wasn't PEP 440 compliant | Fixed: `4.3.1+inkless` |
+| CI: `verifyVersionConsistency` | `tests/kafkatest/version.py` and `streams/quickstart/*.pom` versions didn't match `gradle.properties` | Fixed: aligned to `4.3.1-inkless` |
+| CI: `Collate Test Catalog` | `.github/scripts/junit.py`'s `clean_test_name()` crashed on parameterized test display names that don't start with a letter (for example `ObjectFetcherTest`'s `"1 byte"`, `"8 KiB"`); both the test and the script predate this sync (unchanged by the merge) and were never exercised together in CI before this PR | Fixed: fall back to the cleaned display name instead of raising when it isn't a Java-identifier-like string |
 
 ---
 
@@ -136,3 +138,10 @@ affected method overload rather than picking one side, since both features are n
 concurrently. Recommend flagging these two files for extra scrutiny in future release
 syncs, since they carry heavy interleaved Inkless logic and are prone to structural
 conflicts (not just literal value conflicts) whenever upstream touches config validation.
+
+Three CI failures surfaced only after pushing the merge (not during local `make build`/
+`make test`, which don't run the GitHub Actions version-consistency and test-catalog
+tooling): a PEP 440 version-string bug, a version-consistency mismatch across three
+files, and a pre-existing (not sync-caused) bug in the test-catalog collation script
+triggered for the first time by an unrelated parameterized test. All three are fixed on
+this branch; see commit history for details.
