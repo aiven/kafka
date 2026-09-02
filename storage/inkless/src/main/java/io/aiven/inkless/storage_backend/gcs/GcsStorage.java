@@ -57,6 +57,13 @@ public class GcsStorage extends StorageBackend {
      */
     private static final int READER_8MB_CHUNK_SIZE = 1024 * 1024 * 8;
 
+    /**
+     * Uploads up to this size are sent as a single request, which costs one round trip instead of the
+     * two a resumable session needs (initiate, then upload). Above it, the resumable path is kept so
+     * that an arbitrarily large object never has to be buffered into a single array.
+     */
+    private static final int DIRECT_UPLOAD_MAX_SIZE = 1024 * 1024 * 32;
+
     private volatile Storage storage;
     private String bucketName;
     private ReloadableCredentialsProvider credentialsProvider;
@@ -111,7 +118,14 @@ public class GcsStorage extends StorageBackend {
         }
         try {
             final BlobInfo blobInfo = BlobInfo.newBuilder(this.bucketName, key.value()).build();
-            Blob blob = storage.createFrom(blobInfo, inputStream);
+            final Blob blob;
+            if (length <= DIRECT_UPLOAD_MAX_SIZE) {
+                // Read one byte past the threshold rather than up to length, so that a stream longer than
+                // the declared length is reported by the check below instead of being silently truncated.
+                blob = storage.create(blobInfo, inputStream.readNBytes(DIRECT_UPLOAD_MAX_SIZE + 1));
+            } else {
+                blob = storage.createFrom(blobInfo, inputStream);
+            }
             long transferred = blob.getSize();
             if (transferred != length) {
                 throw new StorageBackendException(
