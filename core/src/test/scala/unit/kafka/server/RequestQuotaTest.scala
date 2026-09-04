@@ -612,6 +612,10 @@ class RequestQuotaTest extends BaseRequestTest {
         case ApiKeys.UNREGISTER_BROKER =>
           new UnregisterBrokerRequest.Builder(new UnregisterBrokerRequestData())
 
+        // Aiven fork addition (KAFKA-20295)
+        case ApiKeys.DECOMMISSION_CONTROLLER =>
+          new DecommissionControllerRequest.Builder(new DecommissionControllerRequestData())
+
         case ApiKeys.DESCRIBE_TRANSACTIONS =>
           new DescribeTransactionsRequest.Builder(new DescribeTransactionsRequestData()
             .setTransactionalIds(List("test-transactional-id").asJava))
