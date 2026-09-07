@@ -362,6 +362,8 @@ public abstract class AbstractRequest implements AbstractRequestResponse {
                 return RepairDisklessLogRequest.parse(readable, apiVersion);
             case SET_CLASSIC_PREFIX_IN_REMOTE_STORAGE:
                 return SetClassicPrefixInRemoteStorageRequest.parse(readable, apiVersion);
+            case DECOMMISSION_CONTROLLER:
+                return DecommissionControllerRequest.parse(readable, apiVersion);
             default:
                 throw new AssertionError(String.format("ApiKey %s is not currently handled in `parseRequest`, the " +
                         "code should be updated to do so.", apiKey));
