@@ -3891,7 +3891,7 @@ public class ReplicationControlManagerTest {
         request1.topics().add(new CreatableTopic().setName(excludedTopic1).
             setNumPartitions(1).setReplicationFactor((short) 1));
         ControllerResult<CreateTopicsResponseData> result1 =
-            replicationControl.createTopics(anonymousContextFor(ApiKeys.CREATE_TOPICS), request1, Set.of(excludedTopic1));
+            replicationControl.createTopics(anonymousContextFor(ApiKeys.CREATE_TOPICS), request1, Set.of(excludedTopic1), false);
         CreatableTopicResult topicResult = result1.response().topics().find(excludedTopic1);
         assertEquals(NONE.code(), topicResult.errorCode());
         ctx.replay(result1.records());
@@ -3901,7 +3901,7 @@ public class ReplicationControlManagerTest {
         request2.topics().add(new CreatableTopic().setName(topic1).
             setNumPartitions(1).setReplicationFactor((short) 1));
         ControllerResult<CreateTopicsResponseData> result2 =
-            replicationControl.createTopics(anonymousContextFor(ApiKeys.CREATE_TOPICS), request2, Set.of(topic1));
+            replicationControl.createTopics(anonymousContextFor(ApiKeys.CREATE_TOPICS), request2, Set.of(topic1), false);
         topicResult = result2.response().topics().find(topic1);
         assertEquals(NONE.code(), topicResult.errorCode());
         ctx.replay(result2.records());
@@ -3911,7 +3911,7 @@ public class ReplicationControlManagerTest {
         request3.topics().add(new CreatableTopic().setName(topic2).
             setNumPartitions(1).setReplicationFactor((short) 1));
         ControllerResult<CreateTopicsResponseData> result3 =
-            replicationControl.createTopics(anonymousContextFor(ApiKeys.CREATE_TOPICS), request3, Set.of(topic2));
+            replicationControl.createTopics(anonymousContextFor(ApiKeys.CREATE_TOPICS), request3, Set.of(topic2), false);
         topicResult = result3.response().topics().find(topic2);
         assertEquals(POLICY_VIOLATION.code(), topicResult.errorCode());
         assertEquals("Topic limit exceeded: maximum 1 user topics allowed", topicResult.errorMessage());
@@ -3922,7 +3922,7 @@ public class ReplicationControlManagerTest {
         request4.topics().add(new CreatableTopic().setName(excludedTopic2).
             setNumPartitions(1).setReplicationFactor((short) 1));
         ControllerResult<CreateTopicsResponseData> result4 =
-            replicationControl.createTopics(anonymousContextFor(ApiKeys.CREATE_TOPICS), request4, Set.of(excludedTopic2));
+            replicationControl.createTopics(anonymousContextFor(ApiKeys.CREATE_TOPICS), request4, Set.of(excludedTopic2), false);
         topicResult = result4.response().topics().find(excludedTopic2);
         assertEquals(NONE.code(), topicResult.errorCode());
         ctx.replay(result4.records());
@@ -3941,7 +3941,7 @@ public class ReplicationControlManagerTest {
             request.topics().add(new CreatableTopic().setName(topic).
                     setNumPartitions(1).setReplicationFactor((short) 1));
             ControllerResult<CreateTopicsResponseData> result2 =
-                    replicationControl.createTopics(anonymousContextFor(ApiKeys.CREATE_TOPICS), request, Set.of(topic));
+                    replicationControl.createTopics(anonymousContextFor(ApiKeys.CREATE_TOPICS), request, Set.of(topic), false);
             CreatableTopicResult topicResult = result2.response().topics().find(topic);
             assertEquals(NONE.code(), topicResult.errorCode());
             ctx.replay(result2.records());
@@ -3989,7 +3989,7 @@ public class ReplicationControlManagerTest {
                 setAssignments(assignments));
         }
         ControllerResult<CreateTopicsResponseData> result1 =
-            replicationControl.createTopics(anonymousContextFor(ApiKeys.CREATE_TOPICS), request1, Set.of(excludedTopic1));
+            replicationControl.createTopics(anonymousContextFor(ApiKeys.CREATE_TOPICS), request1, Set.of(excludedTopic1), false);
         CreatableTopicResult topicResult = result1.response().topics().find(excludedTopic1);
         assertEquals(NONE.code(), topicResult.errorCode());
         ctx.replay(result1.records());
@@ -4009,7 +4009,7 @@ public class ReplicationControlManagerTest {
                 setAssignments(assignments));
         }
         ControllerResult<CreateTopicsResponseData> result2 =
-            replicationControl.createTopics(anonymousContextFor(ApiKeys.CREATE_TOPICS), request2, Set.of(topic1));
+            replicationControl.createTopics(anonymousContextFor(ApiKeys.CREATE_TOPICS), request2, Set.of(topic1), false);
         topicResult = result2.response().topics().find(topic1);
         assertEquals(POLICY_VIOLATION.code(), topicResult.errorCode());
         assertEquals("Partition limit exceeded: maximum 1 user partitions allowed", topicResult.errorMessage());
@@ -4029,7 +4029,7 @@ public class ReplicationControlManagerTest {
                 setAssignments(assignments));
         }
         ControllerResult<CreateTopicsResponseData> result3 =
-                replicationControl.createTopics(anonymousContextFor(ApiKeys.CREATE_TOPICS), request3, Set.of(topic1));
+                replicationControl.createTopics(anonymousContextFor(ApiKeys.CREATE_TOPICS), request3, Set.of(topic1), false);
         topicResult = result3.response().topics().find(topic1);
         assertEquals(NONE.code(), topicResult.errorCode());
         ctx.replay(result3.records());
@@ -4048,7 +4048,7 @@ public class ReplicationControlManagerTest {
                 setAssignments(assignments));
         }
         ControllerResult<CreateTopicsResponseData> result4 =
-                replicationControl.createTopics(anonymousContextFor(ApiKeys.CREATE_TOPICS), request4, Set.of(topic2));
+                replicationControl.createTopics(anonymousContextFor(ApiKeys.CREATE_TOPICS), request4, Set.of(topic2), false);
         topicResult = result4.response().topics().find(topic2);
         assertEquals(POLICY_VIOLATION.code(), topicResult.errorCode());
         assertEquals("Partition limit exceeded: maximum 1 user partitions allowed", topicResult.errorMessage());
@@ -4068,7 +4068,7 @@ public class ReplicationControlManagerTest {
                 setAssignments(assignments));
         }
         ControllerResult<CreateTopicsResponseData> result5 =
-                replicationControl.createTopics(anonymousContextFor(ApiKeys.CREATE_TOPICS), request5, Set.of(excludedTopic2));
+                replicationControl.createTopics(anonymousContextFor(ApiKeys.CREATE_TOPICS), request5, Set.of(excludedTopic2), false);
         topicResult = result5.response().topics().find(excludedTopic2);
         assertEquals(NONE.code(), topicResult.errorCode());
         ctx.replay(result5.records());
@@ -4108,7 +4108,7 @@ public class ReplicationControlManagerTest {
                 setAssignments(assignments));
         }
         ControllerResult<CreateTopicsResponseData> result1 =
-            replicationControl.createTopics(anonymousContextFor(ApiKeys.CREATE_TOPICS), request1, Set.of(topic1));
+            replicationControl.createTopics(anonymousContextFor(ApiKeys.CREATE_TOPICS), request1, Set.of(topic1), false);
         CreatableTopicResult topicResult = result1.response().topics().find(topic1);
         assertEquals(POLICY_VIOLATION.code(), topicResult.errorCode());
         assertEquals("Partition limit exceeded: maximum 1 partitions per user topic allowed", topicResult.errorMessage());
@@ -4128,7 +4128,7 @@ public class ReplicationControlManagerTest {
                 setAssignments(assignments));
         }
         ControllerResult<CreateTopicsResponseData> result2 =
-            replicationControl.createTopics(anonymousContextFor(ApiKeys.CREATE_TOPICS), request2, Set.of(topic1));
+            replicationControl.createTopics(anonymousContextFor(ApiKeys.CREATE_TOPICS), request2, Set.of(topic1), false);
         topicResult = result2.response().topics().find(topic1);
         assertEquals(NONE.code(), topicResult.errorCode());
         ctx.replay(result2.records());
@@ -4148,7 +4148,7 @@ public class ReplicationControlManagerTest {
                 setAssignments(assignments));
         }
         ControllerResult<CreateTopicsResponseData> result3 =
-            replicationControl.createTopics(anonymousContextFor(ApiKeys.CREATE_TOPICS), request3, Set.of(excludedTopic1));
+            replicationControl.createTopics(anonymousContextFor(ApiKeys.CREATE_TOPICS), request3, Set.of(excludedTopic1), false);
         topicResult = result3.response().topics().find(excludedTopic1);
         assertEquals(NONE.code(), topicResult.errorCode());
         ctx.replay(result3.records());
@@ -4167,7 +4167,7 @@ public class ReplicationControlManagerTest {
         request.topics().add(new CreatableTopic().setName(topic).
                 setNumPartitions(100).setReplicationFactor((short) 1));
         ControllerResult<CreateTopicsResponseData> result =
-                replicationControl.createTopics(anonymousContextFor(ApiKeys.CREATE_TOPICS), request, Set.of(topic));
+                replicationControl.createTopics(anonymousContextFor(ApiKeys.CREATE_TOPICS), request, Set.of(topic), false);
         CreatableTopicResult topicResult = result.response().topics().find(topic);
         assertEquals(NONE.code(), topicResult.errorCode());
     }
@@ -4193,7 +4193,7 @@ public class ReplicationControlManagerTest {
         request1.topics().add(new CreatableTopic().setName(excludedTopic1).
             setNumPartitions(2).setReplicationFactor((short) 1));
         ControllerResult<CreateTopicsResponseData> result1 =
-            replicationControl.createTopics(anonymousContextFor(ApiKeys.CREATE_TOPICS), request1, Set.of(excludedTopic1));
+            replicationControl.createTopics(anonymousContextFor(ApiKeys.CREATE_TOPICS), request1, Set.of(excludedTopic1), false);
         CreatableTopicResult topicResult = result1.response().topics().find(excludedTopic1);
         assertEquals(NONE.code(), topicResult.errorCode());
         ctx.replay(result1.records());
@@ -4203,7 +4203,7 @@ public class ReplicationControlManagerTest {
         request2.topics().add(new CreatableTopic().setName(topic1).
             setNumPartitions(1).setReplicationFactor((short) 1));
         ControllerResult<CreateTopicsResponseData> result2 =
-            replicationControl.createTopics(anonymousContextFor(ApiKeys.CREATE_TOPICS), request2, Set.of(topic1));
+            replicationControl.createTopics(anonymousContextFor(ApiKeys.CREATE_TOPICS), request2, Set.of(topic1), false);
         topicResult = result2.response().topics().find(topic1);
         assertEquals(NONE.code(), topicResult.errorCode());
         ctx.replay(result2.records());
@@ -4258,7 +4258,7 @@ public class ReplicationControlManagerTest {
         request1.topics().add(new CreatableTopic().setName(topic1).
             setNumPartitions(1).setReplicationFactor((short) 1));
         ControllerResult<CreateTopicsResponseData> result1 =
-            replicationControl.createTopics(anonymousContextFor(ApiKeys.CREATE_TOPICS), request1, Set.of(topic1));
+            replicationControl.createTopics(anonymousContextFor(ApiKeys.CREATE_TOPICS), request1, Set.of(topic1), false);
         CreatableTopicResult topicResult = result1.response().topics().find(topic1);
         assertEquals(NONE.code(), topicResult.errorCode());
         ctx.replay(result1.records());
@@ -4278,7 +4278,7 @@ public class ReplicationControlManagerTest {
         request3.topics().add(new CreatableTopic().setName(excludedTopic1).
             setNumPartitions(1).setReplicationFactor((short) 1));
         ControllerResult<CreateTopicsResponseData> result3 =
-            replicationControl.createTopics(anonymousContextFor(ApiKeys.CREATE_TOPICS), request3, Set.of(excludedTopic1));
+            replicationControl.createTopics(anonymousContextFor(ApiKeys.CREATE_TOPICS), request3, Set.of(excludedTopic1), false);
         topicResult = result3.response().topics().find(excludedTopic1);
         assertEquals(NONE.code(), topicResult.errorCode());
         ctx.replay(result3.records());
@@ -4306,7 +4306,7 @@ public class ReplicationControlManagerTest {
         request1.topics().add(new CreatableTopic().setName(topic).
             setNumPartitions(1).setReplicationFactor((short) 1));
         ControllerResult<CreateTopicsResponseData> result1 =
-            replicationControl.createTopics(anonymousContextFor(ApiKeys.CREATE_TOPICS), request1, Set.of(topic));
+            replicationControl.createTopics(anonymousContextFor(ApiKeys.CREATE_TOPICS), request1, Set.of(topic), false);
         CreatableTopicResult topicResult = result1.response().topics().find(topic);
         assertEquals(NONE.code(), topicResult.errorCode());
         ctx.replay(result1.records());
