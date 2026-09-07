@@ -299,6 +299,8 @@ public abstract class AbstractResponse implements AbstractRequestResponse {
                 return RepairDisklessLogResponse.parse(readable, version);
             case SET_CLASSIC_PREFIX_IN_REMOTE_STORAGE:
                 return SetClassicPrefixInRemoteStorageResponse.parse(readable, version);
+            case DECOMMISSION_CONTROLLER:
+                return DecommissionControllerResponse.parse(readable, version);
             default:
                 throw new AssertionError(String.format("ApiKey %s is not currently handled in `parseResponse`, the " +
                         "code should be updated to do so.", apiKey));
