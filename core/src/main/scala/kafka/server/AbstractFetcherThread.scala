@@ -76,7 +76,12 @@ abstract class AbstractFetcherThread(name: String,
 
   private val metricId = new ClientIdAndBroker(clientId, leader.brokerEndPoint().host, leader.brokerEndPoint().port)
   val fetcherStats = new FetcherStats(metricId)
-  val fetcherLagStats = new FetcherLagStats(metricId)
+  val fetcherLagStats = new FetcherLagStats(metricId, registerFetcherConsumerLagMetrics)
+
+  // When false, keep updating in-memory fetcherLagStats for MaxLag but skip the
+  // kafka.server:FetcherLagMetrics/ConsumerLag JMX gauge. ConsolidationFetcherThread
+  // overrides this so ConsolidationLocalLag is the external consolidation lag signal.
+  protected def registerFetcherConsumerLagMetrics: Boolean = true
 
   /* callbacks to be defined in subclass */
 
@@ -885,7 +890,7 @@ object FetcherMetrics {
   val BytesPerSec = "BytesPerSec"
 }
 
-class FetcherLagMetrics(metricId: ClientIdTopicPartition) {
+class FetcherLagMetrics(metricId: ClientIdTopicPartition, registerConsumerLag: Boolean = true) {
   private val metricsGroup = new KafkaMetricsGroup(this.getClass)
 
   private[this] val lagVal = new AtomicLong(-1L)
@@ -894,7 +899,9 @@ class FetcherLagMetrics(metricId: ClientIdTopicPartition) {
     "topic" -> metricId.topicPartition.topic,
     "partition" -> metricId.topicPartition.partition.toString).asJava
 
-  metricsGroup.newGauge(FetcherMetrics.ConsumerLag, () => lagVal.get, tags)
+  if (registerConsumerLag) {
+    metricsGroup.newGauge(FetcherMetrics.ConsumerLag, () => lagVal.get, tags)
+  }
 
   def lag_=(newLag: Long): Unit = {
     lagVal.set(newLag)
@@ -903,15 +910,18 @@ class FetcherLagMetrics(metricId: ClientIdTopicPartition) {
   def lag: Long = lagVal.get
 
   def unregister(): Unit = {
-    metricsGroup.removeMetric(FetcherMetrics.ConsumerLag, tags)
+    if (registerConsumerLag) {
+      metricsGroup.removeMetric(FetcherMetrics.ConsumerLag, tags)
+    }
   }
 }
 
-class FetcherLagStats(metricId: ClientIdAndBroker) {
+class FetcherLagStats(metricId: ClientIdAndBroker, registerConsumerLag: Boolean = true) {
   val stats = new ConcurrentHashMap[TopicPartition, FetcherLagMetrics]
 
   def getAndMaybePut(topicPartition: TopicPartition): FetcherLagMetrics = {
-    stats.computeIfAbsent(topicPartition, k => new FetcherLagMetrics(ClientIdTopicPartition(metricId.clientId, k)))
+    stats.computeIfAbsent(topicPartition, k =>
+      new FetcherLagMetrics(ClientIdTopicPartition(metricId.clientId, k), registerConsumerLag))
   }
 
   def unregister(topicPartition: TopicPartition): Unit = {
