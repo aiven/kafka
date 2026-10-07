@@ -65,6 +65,8 @@ Since 2.6.0 release, Kafka Streams depends on a RocksDB version that requires Ma
 
 ## Streams API changes in 4.2.0
 
+Processors returning the same `StoreBuilder` instance from `ConnectedStoreProvider#stores()` are now grouped into one subtopology ([KAFKA-20464](https://issues.apache.org/jira/browse/KAFKA-20464)). For affected applications, task IDs change and state is restored from the changelog on first startup after upgrading. Linking processors to a store by name is unaffected.
+
 ### General Availability for a core feature set of the Streams Rebalance Protocol (KIP-1071)
 
 The Streams Rebalance Protocol is a broker-driven rebalancing system designed specifically for Kafka Streams applications. 
@@ -72,7 +74,7 @@ This release marks the General Availability for the core functionality detailed 
 For more information about the feature set, design, usage and migration, 
 please refer to the [developer guide](/{version}/streams/developer-guide/streams-rebalance-protocol).
 
-**Note:** Due to a critical broker-side bug in the offline migration code ([KAFKA-20254](https://issues.apache.org/jira/browse/KAFKA-20254)), we recommend against doing migrations from classic to streams groups in 4.2.0. Newly created streams groups are not impacted. The fix will be targeted for a future release.
+**Note:** Due to a critical broker-side bug in the offline migration code ([KAFKA-20254](https://issues.apache.org/jira/browse/KAFKA-20254)), we recommend against doing migrations from classic to streams groups in 4.2.0. Newly created streams groups are not impacted. The fix is available in 4.2.1.
 
 ### Other changes
 

@@ -153,7 +153,7 @@
               files="LoggingResource.java" />
 
     <suppress checks="ClassDataAbstractionCoupling"
-              files="(RestServer|AbstractHerder|DistributedHerder|Worker(Test)?).java"/>
+              files="(RestServer|AbstractHerder(Test)?|DistributedHerder|Worker(Test)?).java"/>
 
     <suppress checks="BooleanExpressionComplexity"
               files="JsonConverter.java"/>
@@ -239,7 +239,7 @@
 
     <!-- Streams tests -->
     <suppress checks="ClassFanOutComplexity"
-              files="(RecordCollectorTest|StreamsPartitionAssignorTest|StreamThreadTest|StreamTaskTest|TaskManagerTest|TopologyTestDriverTest|KafkaStreamsTest|EosIntegrationTest|RestoreIntegrationTest).java"/>
+              files="(RecordCollectorTest|StreamsPartitionAssignorTest|StreamThreadTest|StreamTaskTest|TaskManagerTest|TopologyTestDriverTest|KafkaStreamsTest|EosIntegrationTest|RestoreIntegrationTest|StreamsGroupHeartbeatRequestManagerTest).java"/>
 
     <suppress checks="MethodLength"
               files="(EosIntegrationTest|EosV2UpgradeIntegrationTest|KStreamKStreamJoinTest|RocksDBWindowStoreTest|StreamStreamJoinIntegrationTest).java"/>
@@ -251,7 +251,7 @@
               files="(EosV2UpgradeIntegrationTest|KStreamKStreamJoinTest|KTableKTableForeignKeyJoinIntegrationTest|RocksDBGenericOptionsToDbOptionsColumnFamilyOptionsAdapterTest|RelationalSmokeTest|MockProcessorContextStateStoreTest|IQv2StoreIntegrationTest|StreamsConfigTest).java"/>
 
     <suppress checks="JavaNCSS"
-              files="(EosV2UpgradeIntegrationTest|KStreamKStreamJoinTest|StreamThreadTest|TaskManagerTest|StreamTaskTest).java"/>
+              files="(EosV2UpgradeIntegrationTest|KStreamKStreamJoinTest|StoreChangelogReaderTest|StreamThreadTest|TaskManagerTest|StreamTaskTest).java"/>
 
     <suppress checks="NPathComplexity"
               files="(EosV2UpgradeIntegrationTest|EosTestDriver|KStreamKStreamJoinTest|KTableKTableForeignKeyJoinIntegrationTest|RelationalSmokeTest|MockProcessorContextStateStoreTest|TopologyTestDriverTest|IQv2StoreIntegrationTest).java"/>
@@ -267,7 +267,7 @@
 
     <!-- Streams test-utils -->
     <suppress checks="ClassFanOutComplexity"
-              files="TopologyTestDriver.java"/>
+              files="(TopologyTestDriver|StreamsGroupHeartbeatRequestManagerTest).java"/>
     <suppress checks="ClassDataAbstractionCoupling"
               files="TopologyTestDriver.java"/>
 
@@ -374,9 +374,11 @@
               files="(LocalLog|LogLoader|LogValidator|RemoteLogManager|RemoteIndexCache|UnifiedLog).java"/>
     <suppress checks="ParameterNumber"
               files="(LogAppendInfo|LogLoader|RemoteLogManagerConfig|UnifiedLog).java"/>
+    <suppress checks="ParameterNumber"
+              files="[/\\]Cleaner\.java"/>
     <suppress checks="(ClassDataAbstractionCoupling|ClassFanOutComplexity)"
               files="(UnifiedLog|RemoteLogManager|RemoteLogManagerTest).java"/>
-    <suppress checks="MethodLength" files="(RemoteLogManager|RemoteLogManagerConfig).java"/>
+    <suppress checks="MethodLength" files="(RemoteLogManager|RemoteLogManagerConfig|UnifiedLog).java"/>
     <suppress checks="JavaNCSS" files="RemoteLogManagerTest.java"/>
 
     <!-- benchmarks -->
