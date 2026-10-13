@@ -8756,7 +8756,6 @@ class ReplicaManagerInklessTest {
     if (disklessRemoteStorageConsolidationEnabled) {
       props.put(ServerConfigs.DISKLESS_REMOTE_STORAGE_CONSOLIDATION_ENABLE_CONFIG, "true")
       props.put(RemoteLogManagerConfig.REMOTE_LOG_STORAGE_SYSTEM_ENABLE_PROP, "true")
-      // Consolidation requires the switch flag (KafkaConfig.validateValues).
       props.put(ServerConfigs.DISKLESS_ALLOW_FROM_CLASSIC_ENABLE_CONFIG, "true")
     }
     props.put(
