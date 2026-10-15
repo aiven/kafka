@@ -37,6 +37,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public class AppInfoParserTest {
     private static final String EXPECTED_COMMIT_VERSION = AppInfoParser.DEFAULT_VALUE;
     private static final String EXPECTED_VERSION = AppInfoParser.DEFAULT_VALUE;
+    private static final String EXPECTED_INKLESS_TAG = AppInfoParser.DEFAULT_VALUE;
+    private static final String EXPECTED_KAFKA_VERSION = AppInfoParser.DEFAULT_VALUE;
     private static final Long EXPECTED_START_MS = 1552313875722L;
     private static final String METRICS_PREFIX = "app-info-test";
     private static final String METRICS_ID = "test";
@@ -70,6 +72,8 @@ public class AppInfoParserTest {
         assertNull(metrics.metric(metrics.metricName("commit-id", "app-info")));
         assertNull(metrics.metric(metrics.metricName("version", "app-info")));
         assertNull(metrics.metric(metrics.metricName("start-time-ms", "app-info")));
+        assertNull(metrics.metric(metrics.metricName("inkless-tag", "app-info")));
+        assertNull(metrics.metric(metrics.metricName("kafka-version", "app-info")));
     }
 
     // INKLESS: without a baked kafka-version.properties on the test classpath the inkless
@@ -78,6 +82,14 @@ public class AppInfoParserTest {
     public void testInklessTagDefaultsToUnknownAndSuppressesSuffix() {
         assertEquals(AppInfoParser.DEFAULT_VALUE, AppInfoParser.getInklessTag());
         assertEquals("", AppInfoParser.getInklessTagSuffix());
+    }
+
+    @Test
+    public void testKafkaVersionStripsInklessQualifier() {
+        assertEquals("4.3.1", AppInfoParser.kafkaVersion("4.3.1-inkless"));
+        assertEquals("4.3.0-SNAPSHOT", AppInfoParser.kafkaVersion("4.3.0-inkless-SNAPSHOT"));
+        assertEquals("4.3.1", AppInfoParser.kafkaVersion("4.3.1"));
+        assertEquals(AppInfoParser.DEFAULT_VALUE, AppInfoParser.kafkaVersion(AppInfoParser.DEFAULT_VALUE));
     }
 
     private void registerAppInfo() throws JMException {
@@ -90,6 +102,8 @@ public class AppInfoParserTest {
         assertEquals(EXPECTED_COMMIT_VERSION, metrics.metric(metrics.metricName("commit-id", "app-info")).metricValue());
         assertEquals(EXPECTED_VERSION, metrics.metric(metrics.metricName("version", "app-info")).metricValue());
         assertEquals(EXPECTED_START_MS, metrics.metric(metrics.metricName("start-time-ms", "app-info")).metricValue());
+        assertEquals(EXPECTED_INKLESS_TAG, metrics.metric(metrics.metricName("inkless-tag", "app-info")).metricValue());
+        assertEquals(EXPECTED_KAFKA_VERSION, metrics.metric(metrics.metricName("kafka-version", "app-info")).metricValue());
     }
 
     private void registerAppInfoMultipleTimes() throws JMException {
@@ -103,6 +117,8 @@ public class AppInfoParserTest {
         assertEquals(EXPECTED_COMMIT_VERSION, metrics.metric(metrics.metricName("commit-id", "app-info")).metricValue());
         assertEquals(EXPECTED_VERSION, metrics.metric(metrics.metricName("version", "app-info")).metricValue());
         assertEquals(EXPECTED_START_MS, metrics.metric(metrics.metricName("start-time-ms", "app-info")).metricValue());
+        assertEquals(EXPECTED_INKLESS_TAG, metrics.metric(metrics.metricName("inkless-tag", "app-info")).metricValue());
+        assertEquals(EXPECTED_KAFKA_VERSION, metrics.metric(metrics.metricName("kafka-version", "app-info")).metricValue());
     }
 
     private ObjectName expectedAppObjectName() throws MalformedObjectNameException {

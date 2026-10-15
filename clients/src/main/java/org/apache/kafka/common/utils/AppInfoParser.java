@@ -61,7 +61,17 @@ public class AppInfoParser {
         return COMMIT_ID;
     }
 
-    // INKLESS: the inkless release tag description (e.g. "inkless-4.2.1-0.45"), from git describe.
+    // INKLESS: the upstream Kafka version: the version without the "-inkless" qualifier, such as "4.3.1".
+    public static String getKafkaVersion() {
+        return kafkaVersion(VERSION);
+    }
+
+    // Visible for testing
+    static String kafkaVersion(String version) {
+        return version.replaceFirst("-inkless", "");
+    }
+
+    // INKLESS: the inkless release tag description (for example "inkless-4.2.1-0.45"), from git describe.
     public static String getInklessTag() {
         return INKLESS_TAG;
     }
@@ -118,6 +128,8 @@ public class AppInfoParser {
             metrics.addMetric(metricName(metrics, "version"), new ImmutableValue<>(appInfo.getVersion()));
             metrics.addMetric(metricName(metrics, "commit-id"), new ImmutableValue<>(appInfo.getCommitId()));
             metrics.addMetric(metricName(metrics, "start-time-ms"), new ImmutableValue<>(appInfo.getStartTimeMs()));
+            metrics.addMetric(metricName(metrics, "inkless-tag"), new ImmutableValue<>(appInfo.getInklessTag()));
+            metrics.addMetric(metricName(metrics, "kafka-version"), new ImmutableValue<>(appInfo.getKafkaVersion()));
         }
     }
 
@@ -126,6 +138,8 @@ public class AppInfoParser {
             metrics.removeMetric(metricName(metrics, "version"));
             metrics.removeMetric(metricName(metrics, "commit-id"));
             metrics.removeMetric(metricName(metrics, "start-time-ms"));
+            metrics.removeMetric(metricName(metrics, "inkless-tag"));
+            metrics.removeMetric(metricName(metrics, "kafka-version"));
         }
     }
 
@@ -133,6 +147,8 @@ public class AppInfoParser {
         String getVersion();
         String getCommitId();
         Long getStartTimeMs();
+        String getInklessTag();
+        String getKafkaVersion();
     }
 
     public static class AppInfo implements AppInfoMBean {
@@ -163,6 +179,16 @@ public class AppInfoParser {
         @Override
         public Long getStartTimeMs() {
             return startTimeMs;
+        }
+
+        @Override
+        public String getInklessTag() {
+            return AppInfoParser.getInklessTag();
+        }
+
+        @Override
+        public String getKafkaVersion() {
+            return AppInfoParser.getKafkaVersion();
         }
 
     }
