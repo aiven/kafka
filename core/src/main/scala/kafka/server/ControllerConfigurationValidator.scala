@@ -122,7 +122,9 @@ class ControllerConfigurationValidator(kafkaConfig: KafkaConfig) extends Configu
           kafkaConfig.disklessAllowFromClassicEnabled,
           kafkaConfig.disklessStorageSystemEnabled,
           kafkaConfig.disklessRemoteStorageConsolidationEnabled)
-      case BROKER => validateBrokerName(resource.name())
+      case BROKER =>
+        validateBrokerName(resource.name())
+        InklessControlPlaneConnectionStringValidator.validate(resource.name(), newConfigs)
       case CLIENT_METRICS =>
         val properties = new Properties()
         newConfigs.forEach((key, value) => properties.setProperty(key, value))
