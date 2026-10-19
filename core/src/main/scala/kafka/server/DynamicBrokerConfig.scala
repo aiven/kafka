@@ -788,7 +788,7 @@ object DynamicInklessControlPlaneConfig {
 class DynamicInklessControlPlaneConfig(gate: AvailabilityGatedControlPlane) extends BrokerReconfigurable with Logging {
   import DynamicInklessControlPlaneConfig._
 
-  override def reconfigurableConfigs: util.Set[String] = ReconfigurableConfigs
+  override def reconfigurableConfigs: Set[String] = ReconfigurableConfigs.asScala
 
   // A malformed non-empty value can't be checked without connecting, and an empty value is the
   // signal that takes the control plane out of service, so neither can be rejected here.

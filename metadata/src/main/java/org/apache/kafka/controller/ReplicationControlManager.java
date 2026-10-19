@@ -1821,9 +1821,9 @@ public class ReplicationControlManager {
                     partitionId,
                     leaderAcceptorFor(topic.name, partition),
                     featureControl.metadataVersionOrThrow(),
-                    getTopicEffectiveMinIsr(topic.name),
-                    featureControl.isElrFeatureEnabled()
+                    getTopicEffectiveMinIsr(topic.name)
                 )
+                    .setEligibleLeaderReplicasEnabled(featureControl.isElrFeatureEnabled())
                     .setTargetIsr(targetIsr)
                     .setClassicPrefixInRemoteStorage()
                     .setDefaultDirProvider(clusterDescriber)

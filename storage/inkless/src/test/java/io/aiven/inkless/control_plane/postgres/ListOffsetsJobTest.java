@@ -46,7 +46,7 @@ import io.aiven.inkless.control_plane.ListOffsetsResponse;
 import io.aiven.inkless.test_utils.InklessPostgreSQLContainer;
 import io.aiven.inkless.test_utils.PostgreSQLTestContainer;
 
-import static org.apache.kafka.common.record.internal.RecordBatch.NO_TIMESTAMP;
+import static org.apache.kafka.common.record.RecordBatch.NO_TIMESTAMP;
 import static org.apache.kafka.common.requests.ListOffsetsRequest.MAX_TIMESTAMP;
 import static org.assertj.core.api.Assertions.assertThat;
 

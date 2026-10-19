@@ -568,8 +568,8 @@ public class PartitionChangeBuilderTest {
                 0,
                 r -> r != 3,
                 metadataVersionForPartitionChangeRecordVersion(version),
-                2,
-                isElrEnabled(version)).
+                2).
+                setEligibleLeaderReplicasEnabled(isElrEnabled(version)).
                 setDefaultDirProvider(DEFAULT_DIR_PROVIDER);
 
         PartitionChangeRecord record = buildClassicPrefixFlagRecord(builder);

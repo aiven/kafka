@@ -592,7 +592,7 @@ class DynamicBrokerConfigTest {
     when(quotaManagers.clientQuotaCallbackPlugin).thenReturn(Optional.empty())
     when(controllerServer.quotaManagers).thenReturn(quotaManagers)
     val socketServer: SocketServer = mock(classOf[SocketServer])
-    when(socketServer.reconfigurableConfigs).thenReturn(JSocketServer.RECONFIGURABLE_CONFIGS)
+    when(socketServer.reconfigurableConfigs).thenReturn(SocketServer.ReconfigurableConfigs)
     when(controllerServer.socketServer).thenReturn(socketServer)
     val sharedServer: SharedServer = mock(classOf[SharedServer])
     when(controllerServer.sharedServer).thenReturn(sharedServer)
@@ -603,7 +603,7 @@ class DynamicBrokerConfigTest {
     // The broker side registers the shared gate through `ReplicaManager`. Registering it again
     // here would let the controller's callback invalidate the gate from a stale config, racing
     // the broker's own callback.
-    verify(sharedServer, never()).inklessControlPlaneGate
+    verify(sharedServer, Mockito.never()).inklessControlPlaneGate
   }
 
   private def createIsolatedControllerConfig(
@@ -682,7 +682,7 @@ class DynamicBrokerConfigTest {
     when(quotaManagers.clientQuotaCallbackPlugin).thenReturn(Optional.empty())
     when(controllerServer.quotaManagers).thenReturn(quotaManagers)
     val socketServer: SocketServer = mock(classOf[SocketServer])
-    when(socketServer.reconfigurableConfigs).thenReturn(JSocketServer.RECONFIGURABLE_CONFIGS)
+    when(socketServer.reconfigurableConfigs).thenReturn(SocketServer.ReconfigurableConfigs)
     when(controllerServer.socketServer).thenReturn(socketServer)
     val sharedServer: SharedServer = mock(classOf[SharedServer])
     when(sharedServer.inklessControlPlaneGate).thenReturn(None)

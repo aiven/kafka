@@ -842,7 +842,7 @@ class DynamicConfigChangeUnitTest {
 
     val reconfigurable = new DynamicInklessControlPlaneConfig(gate)
     assertEquals(
-      util.Set.of(
+      Set(
         "inkless.control.plane.connection.string",
         "inkless.control.plane.read.connection.string",
         "inkless.control.plane.write.connection.string"),
