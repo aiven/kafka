@@ -1415,8 +1415,8 @@ public class QuorumControllerTest {
     @Test
     public void testSetClassicPrefixInRemoteStorageCommitsFlag() throws Throwable {
         try (
-            MockRaftClientTestEnv clientEnv = new MockRaftClientTestEnv.Builder(1).build();
-            QuorumControllerTestEnv controlEnv = new QuorumControllerTestEnv.Builder(clientEnv).build()
+            LocalLogManagerTestEnv logEnv = new LocalLogManagerTestEnv.Builder(1).build();
+            QuorumControllerTestEnv controlEnv = new QuorumControllerTestEnv.Builder(logEnv).build()
         ) {
             QuorumController active = controlEnv.activeController();
             Map<Integer, Long> brokerEpochs = registerBrokersAndUnfence(active, 3);

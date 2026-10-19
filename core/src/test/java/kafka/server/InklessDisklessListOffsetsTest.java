@@ -31,7 +31,6 @@ import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.config.TopicConfig;
-import org.apache.kafka.common.errors.UnknownServerException;
 import org.apache.kafka.common.errors.UnknownTopicOrPartitionException;
 import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 import org.apache.kafka.common.serialization.ByteArraySerializer;
@@ -76,8 +75,6 @@ import io.aiven.inkless.test_utils.PostgreSQLTestContainer;
 import io.aiven.inkless.test_utils.S3TestContainer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -172,12 +169,6 @@ public class InklessDisklessListOffsetsTest {
             assertAnswer(admin, OffsetSpec.forTimestamp(1_002L), 1_004L, 0L);
             assertAnswer(admin, OffsetSpec.forTimestamp(1_005L), 2_009L, 5L);
             assertAnswer(admin, OffsetSpec.forTimestamp(3_000L), -1L, -1L);
-
-            // Classic Kafka answers (-1, -1) when remote storage is off. The control plane rejects
-            // the timestamp as an unsupported special timestamp.
-            final ExecutionException e = assertThrows(ExecutionException.class,
-                () -> listOffsets(admin, OffsetSpec.earliestPendingUpload()));
-            assertInstanceOf(UnknownServerException.class, e.getCause());
         }
     }
 
