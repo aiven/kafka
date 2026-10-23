@@ -2584,6 +2584,11 @@ public class ReplicationControlManager {
         // fencing one at a time so that the effect of fencing each broker is visible
         // to the system prior to processing the next one.
         log.info("Fencing broker {} at epoch {} because its session has timed out.", id, epoch);
+        // KCON-807 debugging: a broker that hasn't heartbeated since this controller became active
+        // was fenced only because it didn't find this controller in time, healthy or not.
+        log.info("[KCON-807] Fencing broker {} {} ms after this controller became active; heartbeat received " +
+                "since activation: {}", id, clusterControl.kcon807MillisSinceActivation(),
+            clusterControl.kcon807HeardFromBrokerSinceActivation(id));
         List<ApiMessageAndVersion> records = new ArrayList<>();
         handleBrokerFenced(id, records);
         heartbeatManager.fence(id);

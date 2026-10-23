@@ -328,6 +328,9 @@ public final class KafkaRaftClient<T> implements RaftClient<T> {
                 .collect(Collectors.toList());
 
             logger.info("Starting request manager with bootstrap servers: {}", bootstrapNodes);
+            // KCON-807 debugging: the bootstrap addresses as configured, to spot several entries
+            // that resolve to the same (possibly dead) node.
+            logger.info("[KCON-807] Bootstrap server addresses: {}", bootstrapServers);
 
             requestManager = new RequestManager(
                 bootstrapNodes,
@@ -1686,6 +1689,20 @@ public final class KafkaRaftClient<T> implements RaftClient<T> {
         return String.format("%s@%d", listener.getClass().getTypeName(), System.identityHashCode(listener));
     }
 
+    /**
+     * KCON-807 debugging: log which leader a fetch response names, unless it is an ordinary response
+     * from the leader we already follow. A voter that hasn't seen the new election yet names the old
+     * (possibly dead) leader, and the observer goes back to it.
+     */
+    private void kcon807MaybeLogFetchResponse(Node source, Errors error, OptionalInt responseLeaderId, int responseEpoch) {
+        OptionalInt localLeaderId = quorum.leaderId();
+        boolean fromLocalLeader = localLeaderId.isPresent() && localLeaderId.getAsInt() == source.id();
+        if (error != Errors.NONE || !fromLocalLeader) {
+            logger.info("[KCON-807] Fetch response from {} with error {} names leader {} in epoch {}; local state {}",
+                source, error, responseLeaderId, responseEpoch, quorum.kcon807DescribeState());
+        }
+    }
+
     private boolean handleFetchResponse(
         RaftResponse.Inbound responseMetadata,
         long currentTimeMs
@@ -1709,6 +1726,8 @@ public final class KafkaRaftClient<T> implements RaftClient<T> {
         OptionalInt responseLeaderId = optionalLeaderId(currentLeaderIdAndEpoch.leaderId());
         int responseEpoch = currentLeaderIdAndEpoch.leaderEpoch();
         Errors error = Errors.forCode(partitionResponse.errorCode());
+
+        kcon807MaybeLogFetchResponse(responseMetadata.source(), error, responseLeaderId, responseEpoch);
 
         final Endpoints leaderEndpoints;
         if (responseLeaderId.isPresent()) {
@@ -3003,6 +3022,9 @@ public final class KafkaRaftClient<T> implements RaftClient<T> {
 
     private long maybeSendFetchToAnyBootstrap(long currentTimeMs) {
         Optional<Node> readyNode = requestManager.findReadyBootstrapServer(currentTimeMs);
+        // KCON-807 debugging: which bootstrap server a fetch goes to while looking for the leader.
+        readyNode.ifPresent(node -> logger.info(
+            "[KCON-807] Sending fetch to bootstrap server {} while in state {}", node, quorum.kcon807DescribeState()));
         return readyNode.map(
             node -> maybeSendRequest(
                 currentTimeMs,
@@ -3402,10 +3424,16 @@ public final class KafkaRaftClient<T> implements RaftClient<T> {
         final long backoffMs;
         Node leaderNode = state.leaderNode(channel.listenerName());
         if (requestManager.hasRequestTimedOut(leaderNode, currentTimeMs)) {
+            // KCON-807 debugging: the follower gives up on the leader for this fetch only. The leader
+            // is reset, so the next fetch goes back to it unless a bootstrap server names a new one.
+            logger.info("[KCON-807] Fetch to leader {} timed out in epoch {}; remaining fetch time {} ms; " +
+                    "trying a bootstrap server", leaderNode, state.epoch(), state.remainingFetchTimeMs(currentTimeMs));
             // Once the request has timed out backoff the connection
             requestManager.reset(leaderNode);
             backoffMs = maybeSendFetchToAnyBootstrap(currentTimeMs);
         } else if (requestManager.isBackingOff(leaderNode, currentTimeMs)) {
+            logger.info("[KCON-807] Leader {} is backing off for {} ms in epoch {}; trying a bootstrap server",
+                leaderNode, requestManager.remainingBackoffMs(leaderNode, currentTimeMs), state.epoch());
             backoffMs = maybeSendFetchToAnyBootstrap(currentTimeMs);
         } else if (!requestManager.hasAnyInflightRequest(currentTimeMs)) {
             backoffMs = maybeSendFetchOrFetchSnapshot(state, currentTimeMs);

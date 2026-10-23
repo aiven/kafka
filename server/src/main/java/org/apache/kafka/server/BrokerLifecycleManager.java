@@ -174,6 +174,13 @@ public class BrokerLifecycleManager {
     private boolean communicationInFlight = false;
 
     /**
+     * KCON-807 debugging: when the last heartbeat succeeded, and how many have failed since.
+     * This can only be accessed from the event queue thread.
+     */
+    private long kcon807LastSuccessfulHeartbeatNs = -1L;
+    private int kcon807ConsecutiveHeartbeatFailures = 0;
+
+    /**
      * True if we should schedule the next communication immediately. This is used to delay
      * an immediate scheduling of a communication event if one is already in flight.
      * This variable can only be read or written from the event queue thread.
@@ -616,10 +623,53 @@ public class BrokerLifecycleManager {
             this.currentOfflineDirs = currentOfflineDirs;
         }
 
+        /**
+         * KCON-807 debugging: log every failed heartbeat with the time since the last successful one,
+         * and the first success after failures. The controller fences the broker once that gap
+         * passes the broker session timeout, counted from when the controller became active.
+         */
+        private void kcon807RecordHeartbeatOutcome() {
+            long nowNs = time.nanoseconds();
+            long sinceLastSuccessMs = kcon807LastSuccessfulHeartbeatNs < 0 ? -1L :
+                NANOSECONDS.toMillis(nowNs - kcon807LastSuccessfulHeartbeatNs);
+            final String failure;
+            boolean fenced = false;
+            if (timedOut) {
+                failure = "expired before it could be sent";
+            } else if (response.wasDisconnected()) {
+                failure = "disconnected from " + response.destination() + " (timed out: " + response.wasTimedOut() + ")";
+            } else if (response.authenticationException() != null) {
+                failure = "authentication error: " + response.authenticationException();
+            } else if (response.versionMismatch() != null) {
+                failure = "version mismatch: " + response.versionMismatch();
+            } else if (!(response.responseBody() instanceof BrokerHeartbeatResponse message)) {
+                failure = "unexpected response body: " + response.responseBody();
+            } else if (Errors.forCode(message.data().errorCode()) != Errors.NONE) {
+                failure = "error " + Errors.forCode(message.data().errorCode()) + " from " + response.destination();
+            } else {
+                failure = null;
+                fenced = message.data().isFenced();
+            }
+            if (failure == null) {
+                if (kcon807ConsecutiveHeartbeatFailures > 0) {
+                    logger.info("[KCON-807] Heartbeat to {} succeeded after {} failed attempts, {} ms since the " +
+                            "previous successful heartbeat; isFenced={}",
+                        response.destination(), kcon807ConsecutiveHeartbeatFailures, sinceLastSuccessMs, fenced);
+                }
+                kcon807ConsecutiveHeartbeatFailures = 0;
+                kcon807LastSuccessfulHeartbeatNs = nowNs;
+            } else {
+                kcon807ConsecutiveHeartbeatFailures++;
+                logger.info("[KCON-807] Heartbeat failed ({}); {} consecutive failures, {} ms since the last " +
+                        "successful heartbeat", failure, kcon807ConsecutiveHeartbeatFailures, sinceLastSuccessMs);
+            }
+        }
+
         @SuppressWarnings({"CyclomaticComplexity"})
         @Override
         public void run() {
             communicationInFlight = false;
+            kcon807RecordHeartbeatOutcome();
             if (timedOut) {
                 scheduleNextCommunicationAfterFailure();
                 return;

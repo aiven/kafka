@@ -25,8 +25,12 @@ import org.apache.kafka.raft.RaftManager;
 import org.apache.kafka.server.common.ApiMessageAndVersion;
 import org.apache.kafka.server.config.AbstractKafkaConfig;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.Optional;
 import java.util.OptionalInt;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 
 /**
@@ -34,6 +38,10 @@ import java.util.function.Supplier;
  * This provider is used when we are using a Raft-based metadata quorum.
  */
 public class RaftControllerNodeProvider implements Supplier<ControllerInformation> {
+    private static final Logger log = LoggerFactory.getLogger(RaftControllerNodeProvider.class);
+
+    // KCON-807 debugging: the last leader returned, to log only when it changes.
+    private final AtomicReference<String> kcon807LastReported = new AtomicReference<>(null);
 
     private final RaftManager<ApiMessageAndVersion> raftManager;
     private final ListenerName listenerName;
@@ -58,11 +66,19 @@ public class RaftControllerNodeProvider implements Supplier<ControllerInformatio
     @SuppressWarnings("resource")
     @Override
     public ControllerInformation get() {
-        OptionalInt leaderIdOpt = raftManager.client().leaderAndEpoch().leaderId();
+        var leaderAndEpoch = raftManager.client().leaderAndEpoch();
+        OptionalInt leaderIdOpt = leaderAndEpoch.leaderId();
 
         Optional<Node> node = leaderIdOpt.isPresent()
                 ? raftManager.client().voterNode(leaderIdOpt.getAsInt(), listenerName)
                 : Optional.empty();
+
+        String reported = "leader=" + (leaderIdOpt.isPresent() ? leaderIdOpt.getAsInt() : "none") +
+            " epoch=" + leaderAndEpoch.epoch() + " node=" + node.map(Node::toString).orElse("none");
+        String previous = kcon807LastReported.getAndSet(reported);
+        if (!reported.equals(previous)) {
+            log.info("[KCON-807] KRaft client's controller changed from {} to {}", previous, reported);
+        }
 
         return new ControllerInformation(node, listenerName, securityProtocol, saslMechanism);
     }

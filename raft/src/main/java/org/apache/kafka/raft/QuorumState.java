@@ -305,6 +305,14 @@ public class QuorumState {
         return state.highWatermark();
     }
 
+    /**
+     * KCON-807 debugging: a short description of the current state, for logging.
+     */
+    public String kcon807DescribeState() {
+        EpochState current = state;
+        return current.name() + "(epoch=" + current.epoch() + ", leader=" + current.election().optionalLeaderId() + ")";
+    }
+
     public OptionalInt leaderId() {
         ElectionState election = state.election();
         if (election.hasLeader())

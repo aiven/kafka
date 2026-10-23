@@ -18,6 +18,9 @@ package org.apache.kafka.raft;
 
 import org.apache.kafka.common.Node;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -42,6 +45,8 @@ import java.util.Random;
  * {@code retryBackoffMs}.
  */
 public class RequestManager {
+    private static final Logger log = LoggerFactory.getLogger(RequestManager.class);
+
     private final Map<String, ConnectionState> connections = new HashMap<>();
     private final ArrayList<Node> bootstrapServers;
 
@@ -78,6 +83,9 @@ public class RequestManager {
         while (iterator.hasNext()) {
             ConnectionState connection = iterator.next();
             if (connection.hasRequestTimedOut(currentTimeMs)) {
+                // KCON-807 debugging: the node is forgotten here and can be picked again straight away.
+                log.info("[KCON-807] Request to {} timed out after {} ms; forgetting the connection",
+                    connection.node, currentTimeMs - connection.lastSendTimeMs);
                 // Mark the node as ready after request timeout
                 iterator.remove();
             } else if (connection.isBackoffComplete(currentTimeMs)) {
@@ -149,6 +157,9 @@ public class RequestManager {
         while (iterator.hasNext()) {
             ConnectionState connection = iterator.next();
             if (connection.hasRequestTimedOut(currentTimeMs)) {
+                // KCON-807 debugging: the node is forgotten here and can be picked again straight away.
+                log.info("[KCON-807] Request to {} timed out after {} ms; forgetting the connection",
+                    connection.node, currentTimeMs - connection.lastSendTimeMs);
                 // Mark the node as ready after request timeout
                 iterator.remove();
             } else if (connection.isBackoffComplete(currentTimeMs)) {
@@ -246,6 +257,8 @@ public class RequestManager {
                 // Mark the connection as ready by resetting it
                 reset(node);
             } else {
+                // KCON-807 debugging: a failed request, e.g. disconnected before a response.
+                log.info("[KCON-807] Request to {} failed; backing off for {} ms", node, retryBackoffMs);
                 // Backoff the connection
                 connections.get(node.idString()).onResponseError(correlationId, timeMs);
             }

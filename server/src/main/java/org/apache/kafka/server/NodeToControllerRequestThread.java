@@ -58,6 +58,12 @@ public class NodeToControllerRequestThread extends InterBrokerSendThread {
     private final Supplier<ControllerInformation> controllerNodeProvider;
     private final ManualMetadataUpdater metadataUpdater;
 
+    // KCON-807 debugging: when the cached controller was recorded, and when a stale cached
+    // controller was last logged.
+    private static final long KCON_807_STALE_CONTROLLER_LOG_INTERVAL_MS = 1000L;
+    private volatile long kcon807LastStaleControllerLogMs = -1L;
+    private volatile long kcon807ControllerRecordedMs = -1L;
+
     // Used for testing
     volatile boolean started = false;
     public void setStarted(boolean started) {
@@ -83,7 +89,64 @@ public class NodeToControllerRequestThread extends InterBrokerSendThread {
     }
 
     private void updateControllerAddress(Node newActiveController) {
-        activeController.set(newActiveController);
+        Node previous = activeController.getAndSet(newActiveController);
+        long nowMs = time.milliseconds();
+        if (previous != null && newActiveController == null) {
+            log.info("[KCON-807] {}: cleared cached controller {} after using it for {} ms",
+                getName(), previous.idString(), kcon807ControllerRecordedMs < 0 ? -1 : nowMs - kcon807ControllerRecordedMs);
+        }
+        if (newActiveController != null) {
+            kcon807ControllerRecordedMs = nowMs;
+        }
+    }
+
+    /**
+     * KCON-807 debugging: the network client's view of the connection to the given node.
+     */
+    private String kcon807DescribeConnection(Node node) {
+        long nowMs = time.milliseconds();
+        try {
+            return "ready=" + networkClient.isReady(node, nowMs) +
+                ", connectionFailed=" + networkClient.connectionFailed(node) +
+                ", connectionDelayMs=" + networkClient.connectionDelay(node, nowMs) +
+                ", inFlightRequests=" + networkClient.inFlightRequestCount(node.idString());
+        } catch (Throwable t) {
+            return "unavailable (" + t + ")";
+        }
+    }
+
+    /**
+     * KCON-807 debugging: what the controller node provider (the local KRaft client) reports now.
+     */
+    private String kcon807ProviderController() {
+        try {
+            return controllerNodeProvider.get().node().map(Node::idString).orElse("none");
+        } catch (Throwable t) {
+            return "unavailable (" + t + ")";
+        }
+    }
+
+    /**
+     * KCON-807 debugging: log, at most once per interval, when the cached controller differs from
+     * the one the KRaft client now reports. The cached controller is only re-resolved after a
+     * disconnect or a NOT_CONTROLLER response, so a pending connection to a dead controller keeps
+     * it in use even after the KRaft client has learnt about the new leader.
+     */
+    private void kcon807MaybeLogStaleController(Node cached) {
+        long nowMs = time.milliseconds();
+        if (kcon807LastStaleControllerLogMs >= 0 &&
+            nowMs - kcon807LastStaleControllerLogMs < KCON_807_STALE_CONTROLLER_LOG_INTERVAL_MS) {
+            return;
+        }
+        String providerController = kcon807ProviderController();
+        if (!providerController.equals(cached.idString())) {
+            kcon807LastStaleControllerLogMs = nowMs;
+            log.info("[KCON-807] {}: cached controller {} differs from the KRaft client's current controller {}; " +
+                    "cached for {} ms; queued requests: {}; connection to cached controller: {}",
+                getName(), cached.idString(), providerController,
+                kcon807ControllerRecordedMs < 0 ? -1 : nowMs - kcon807ControllerRecordedMs,
+                requestQueue.size(), kcon807DescribeConnection(cached));
+        }
     }
 
     public void enqueue(NodeToControllerQueueItem request) {
@@ -108,6 +171,12 @@ public class NodeToControllerRequestThread extends InterBrokerSendThread {
             var request = requestIter.next();
             if (currentTimeMs - request.createdTimeMs() >= retryTimeoutMs) {
                 requestIter.remove();
+                Node cached = activeController.get();
+                log.info("[KCON-807] {}: {} request expired unsent after {} ms; cached controller: {}; " +
+                        "KRaft client's current controller: {}; connection to cached controller: {}",
+                    getName(), request.request().apiKey(), currentTimeMs - request.createdTimeMs(),
+                    cached == null ? "none" : cached.idString(), kcon807ProviderController(),
+                    cached == null ? "n/a" : kcon807DescribeConnection(cached));
                 request.callback().onTimeout();
             } else {
                 Optional<Node> controllerAddress = activeControllerAddress();
@@ -141,6 +210,10 @@ public class NodeToControllerRequestThread extends InterBrokerSendThread {
                     response.versionMismatch());
             queueItem.callback().onComplete(response);
         } else if (response.wasDisconnected()) {
+            log.info("[KCON-807] {}: {} request to controller {} was disconnected after {} ms (timed out: {}); " +
+                    "KRaft client's current controller: {}",
+                getName(), queueItem.request().apiKey(), response.destination(), response.requestLatencyMs(),
+                response.wasTimedOut(), kcon807ProviderController());
             updateControllerAddress(null);
             requestQueue.addFirst(queueItem);
         } else if (response.responseBody().errorCounts().containsKey(Errors.NOT_CONTROLLER)) {
@@ -170,7 +243,9 @@ public class NodeToControllerRequestThread extends InterBrokerSendThread {
 
     @Override
     public void doWork() {
-        if (activeControllerAddress().isPresent()) {
+        Optional<Node> cachedController = activeControllerAddress();
+        if (cachedController.isPresent()) {
+            kcon807MaybeLogStaleController(cachedController.get());
             super.pollOnce(Long.MAX_VALUE);
         } else {
             log.debug("Controller isn't cached, looking for local metadata changes");

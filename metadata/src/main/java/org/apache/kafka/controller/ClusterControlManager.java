@@ -75,6 +75,7 @@ import java.util.OptionalLong;
 import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
 import static java.util.concurrent.TimeUnit.NANOSECONDS;
@@ -252,6 +253,13 @@ public class ClusterControlManager {
     private volatile BrokerHeartbeatManager heartbeatManager;
 
     /**
+     * KCON-807 debugging: when this controller last became active, and which brokers have sent a
+     * heartbeat since. Both are read from request handler threads, hence volatile and concurrent.
+     */
+    private volatile long kcon807ActivatedNs = -1L;
+    private final Set<Integer> kcon807BrokersHeardSinceActivation = ConcurrentHashMap.newKeySet();
+
+    /**
      * A future which is completed as soon as we have the given number of brokers
      * ready.
      */
@@ -317,6 +325,8 @@ public class ClusterControlManager {
     public void activate() {
         heartbeatManager = new BrokerHeartbeatManager(logContext, time, sessionTimeoutNs);
         long nowNs = time.nanoseconds();
+        kcon807BrokersHeardSinceActivation.clear();
+        kcon807ActivatedNs = nowNs;
         for (BrokerRegistration registration : brokerRegistrations.values()) {
             int brokerId = registration.id();
             heartbeatManager.register(brokerId, registration.fenced());
@@ -325,7 +335,27 @@ public class ClusterControlManager {
                 heartbeatManager.tracker().updateContactTime(
                     new BrokerIdAndEpoch(brokerId, registration.epoch()), nowNs);
             }
+            // KCON-807 debugging: every unfenced broker's session starts now, so all of them expire
+            // together unless they find this controller within the session timeout.
+            log.info("[KCON-807] Activated with broker {} at epoch {} (fenced: {}); its session expires " +
+                    "in {} ms unless it heartbeats this controller",
+                brokerId, registration.epoch(), registration.fenced(), NANOSECONDS.toMillis(sessionTimeoutNs));
         }
+    }
+
+    /**
+     * KCON-807 debugging: how long this controller has been active, or -1 if it never was.
+     */
+    long kcon807MillisSinceActivation() {
+        long activatedNs = kcon807ActivatedNs;
+        return activatedNs < 0 ? -1L : NANOSECONDS.toMillis(time.nanoseconds() - activatedNs);
+    }
+
+    /**
+     * KCON-807 debugging: whether the broker has sent a heartbeat since this controller became active.
+     */
+    boolean kcon807HeardFromBrokerSinceActivation(int brokerId) {
+        return kcon807BrokersHeardSinceActivation.contains(brokerId);
     }
 
     String clusterId() { // Visible for testing
@@ -605,6 +635,11 @@ public class ClusterControlManager {
         BrokerHeartbeatManager manager = heartbeatManager;
         if (manager == null) return false;
         manager.tracker().updateContactTime(new BrokerIdAndEpoch(brokerId, brokerEpoch));
+        // KCON-807 debugging: the first heartbeat from each broker after becoming active.
+        if (kcon807BrokersHeardSinceActivation.add(brokerId)) {
+            log.info("[KCON-807] First heartbeat from broker {} at epoch {} since becoming active, {} ms after activation",
+                brokerId, brokerEpoch, kcon807MillisSinceActivation());
+        }
         return true;
     }
 
