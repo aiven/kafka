@@ -362,7 +362,14 @@ public class RequestManager {
             node, timedOutExclusionMs);
     }
 
-    private boolean isExcludedAfterTimeout(Node node, long timeMs) {
+    /**
+     * Returns true if a request to the node timed out within {@code timedOutExclusionMs} and the node
+     * hasn't replied successfully since.
+     *
+     * @param node the node to check
+     * @param timeMs the current time
+     */
+    public boolean isExcludedAfterTimeout(Node node, long timeMs) {
         Long excludedUntilMs = timedOutExclusions.get(node.idString());
         if (excludedUntilMs == null) {
             return false;

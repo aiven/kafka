@@ -222,9 +222,11 @@ class NodeToControllerRequestThreadTest {
         int port = 1234;
         Node oldController = new Node(oldControllerId, "host1", port);
         Node newController = new Node(newControllerId, "host2", port);
-        Supplier<ControllerInformation> controllerNodeProvider = sequentialProvider(
-            controllerInfo(Optional.of(oldController)),
-            controllerInfo(Optional.of(newController)));
+        // The KRaft client learns about the new controller only after the old one answers
+        // NOT_CONTROLLER. A provider that already reports it makes the thread switch straight away.
+        AtomicReference<ControllerInformation> controllerInformation =
+            new AtomicReference<>(controllerInfo(Optional.of(oldController)));
+        Supplier<ControllerInformation> controllerNodeProvider = controllerInformation::get;
 
         MetadataResponse responseWithNotControllerError = RequestTestUtils.metadataUpdateWith("cluster1", 2,
             Map.of("a", Errors.NOT_CONTROLLER),
@@ -257,6 +259,7 @@ class NodeToControllerRequestThreadTest {
         testRequestThread.doWork();
         assertEquals(Optional.empty(), testRequestThread.activeControllerAddress());
         // reinitialize the controller to a different node
+        controllerInformation.set(controllerInfo(Optional.of(newController)));
         testRequestThread.doWork();
         // process the request again
         mockClient.prepareResponse(expectedResponse);
@@ -266,6 +269,57 @@ class NodeToControllerRequestThreadTest {
         assertEquals(Optional.of(newControllerNode), testRequestThread.activeControllerAddress());
 
         assertTrue(completionHandler.completed.get());
+    }
+
+    @Test
+    void testSwitchesToTheControllerTheKraftClientReports() {
+        MockTime time = new MockTime();
+        AbstractConfig config = createConfig();
+        Metadata metadata = mock(Metadata.class);
+        MockClient mockClient = new MockClient(time, metadata);
+
+        int port = 1234;
+        Node oldController = new Node(1, "host1", port);
+        Node newController = new Node(2, "host2", port);
+        AtomicReference<ControllerInformation> controllerInformation =
+            new AtomicReference<>(controllerInfo(Optional.of(oldController)));
+        Supplier<ControllerInformation> controllerNodeProvider = controllerInformation::get;
+
+        MetadataResponse expectedResponse = RequestTestUtils.metadataUpdateWith(3, Map.of("a", 2));
+        NodeToControllerRequestThread testRequestThread = new NodeToControllerRequestThread(
+            mockClient, new ManualMetadataUpdater(),
+            controllerNodeProvider, config, time, "", Long.MAX_VALUE);
+        testRequestThread.setStarted(true);
+
+        TestControllerRequestCompletionHandler completionHandler =
+            new TestControllerRequestCompletionHandler(expectedResponse);
+        testRequestThread.enqueue(new NodeToControllerQueueItem(
+            time.milliseconds(),
+            new MetadataRequest.Builder(new MetadataRequestData()),
+            completionHandler
+        ));
+        testRequestThread.doWork();
+        assertEquals(Optional.of(oldController), testRequestThread.activeControllerAddress());
+
+        // The request goes to the old controller, which never answers
+        testRequestThread.doWork();
+        assertEquals(1, mockClient.inFlightRequestCount());
+
+        // Once the KRaft client reports another controller, the thread drops the old one without
+        // waiting for the request to time out, and sends the request again to the new one
+        controllerInformation.set(controllerInfo(Optional.of(newController)));
+        testRequestThread.doWork();
+        assertEquals(Optional.empty(), testRequestThread.activeControllerAddress());
+        assertEquals(0, mockClient.inFlightRequestCount());
+        assertFalse(completionHandler.completed.get());
+
+        testRequestThread.doWork();
+        assertEquals(Optional.of(newController), testRequestThread.activeControllerAddress());
+        mockClient.prepareResponseFrom(expectedResponse, newController);
+        testRequestThread.doWork();
+
+        assertTrue(completionHandler.completed.get());
+        assertFalse(completionHandler.timedOut.get());
     }
 
     @Test
@@ -283,9 +337,11 @@ class NodeToControllerRequestThreadTest {
         int port = 1234;
         Node oldController = new Node(oldControllerId, "host1", port);
         Node newController = new Node(newControllerId, "host2", port);
-        Supplier<ControllerInformation> controllerNodeProvider = sequentialProvider(
-            controllerInfo(Optional.of(oldController)),
-            controllerInfo(Optional.of(newController)));
+        // The KRaft client learns about the new controller only after the old one answers
+        // NOT_CONTROLLER. A provider that already reports it makes the thread switch straight away.
+        AtomicReference<ControllerInformation> controllerInformation =
+            new AtomicReference<>(controllerInfo(Optional.of(oldController)));
+        Supplier<ControllerInformation> controllerNodeProvider = controllerInformation::get;
 
         // create an envelopeResponse with NOT_CONTROLLER error
         EnvelopeResponse envelopeResponseWithNotControllerError = new EnvelopeResponse(
@@ -329,6 +385,7 @@ class NodeToControllerRequestThreadTest {
         // expect to reset the activeControllerAddress after finding the NOT_CONTROLLER error
         assertEquals(Optional.empty(), testRequestThread.activeControllerAddress());
         // reinitialize the controller to a different node
+        controllerInformation.set(controllerInfo(Optional.of(newController)));
         testRequestThread.doWork();
         // process the request again
         mockClient.prepareResponse(expectedResponse);

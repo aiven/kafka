@@ -58,6 +58,11 @@ public class NodeToControllerRequestThread extends InterBrokerSendThread {
     private final Supplier<ControllerInformation> controllerNodeProvider;
     private final ManualMetadataUpdater metadataUpdater;
 
+    // KCON-807: how often to check, while a controller is cached, whether the KRaft client has
+    // learnt about a different one. Without the check the cached controller is only replaced after
+    // a disconnect or NOT_CONTROLLER, which for a dead controller can take several seconds.
+    static final long CONTROLLER_CHANGE_CHECK_INTERVAL_MS = 100L;
+
     // KCON-807 debugging: when the cached controller was recorded, and when a stale cached
     // controller was last logged.
     private static final long KCON_807_STALE_CONTROLLER_LOG_INTERVAL_MS = 1000L;
@@ -241,12 +246,36 @@ public class NodeToControllerRequestThread extends InterBrokerSendThread {
         });
     }
 
+    /**
+     * KCON-807: if the KRaft client reports a controller other than the cached one, disconnect from
+     * the cached controller. Requests in flight or waiting for a connection to it then come back as
+     * disconnected and are queued again, and the next call to {@code doWork} sends them to the new
+     * controller.
+     *
+     * @return true if the cached controller was dropped
+     */
+    private boolean maybeSwitchToNewController(Node cached) {
+        Optional<Node> current = controllerNodeProvider.get().node();
+        if (current.isEmpty() || current.get().id() == cached.id()) {
+            return false;
+        }
+        log.info("[KCON-807] {}: KRaft client now reports controller {}; dropping cached controller {}",
+            getName(), current.get(), cached);
+        maybeDisconnectAndUpdateController();
+        return true;
+    }
+
     @Override
     public void doWork() {
         Optional<Node> cachedController = activeControllerAddress();
         if (cachedController.isPresent()) {
             kcon807MaybeLogStaleController(cachedController.get());
-            super.pollOnce(Long.MAX_VALUE);
+            if (maybeSwitchToNewController(cachedController.get())) {
+                // Let the disconnect complete what was sent or queued to the old controller.
+                super.pollOnce(0L);
+            } else {
+                super.pollOnce(CONTROLLER_CHANGE_CHECK_INTERVAL_MS);
+            }
         } else {
             log.debug("Controller isn't cached, looking for local metadata changes");
             final ControllerInformation controllerInformation = controllerNodeProvider.get();

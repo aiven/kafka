@@ -2228,12 +2228,23 @@ class KafkaRaftClientTest {
         context.time.sleep(context.requestTimeoutMs());
         context.client.poll();
         fetchRequest = context.assertSentFetchRequest();
+        int firstBootstrapId = fetchRequest.destination().id();
+        assertNotEquals(leaderId, firstBootstrapId);
+        assertTrue(context.bootstrapIds.contains(firstBootstrapId));
+        context.assertFetchRequestData(fetchRequest, epoch, 0L, 0, context.client.highWatermark());
+
+        // KCON-807: if that times out too, observer tries the other bootstrap server rather than
+        // the leader, which timed out recently
+        context.time.sleep(context.requestTimeoutMs());
+        context.client.poll();
+        fetchRequest = context.assertSentFetchRequest();
         assertNotEquals(leaderId, fetchRequest.destination().id());
+        assertNotEquals(firstBootstrapId, fetchRequest.destination().id());
         assertTrue(context.bootstrapIds.contains(fetchRequest.destination().id()));
         context.assertFetchRequestData(fetchRequest, epoch, 0L, 0, context.client.highWatermark());
 
-        // observer will retry to the leader
-        context.time.sleep(context.requestTimeoutMs());
+        // observer will retry to the leader once the leader is no longer excluded
+        context.time.sleep((long) (RequestManager.TIMED_OUT_EXCLUSION_REQUEST_TIMEOUTS - 1) * context.requestTimeoutMs());
         context.client.poll();
         fetchRequest = context.assertSentFetchRequest();
         assertEquals(leaderId, fetchRequest.destination().id());

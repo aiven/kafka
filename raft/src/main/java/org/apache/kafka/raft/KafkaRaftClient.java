@@ -3359,14 +3359,14 @@ public final class KafkaRaftClient<T> implements RaftClient<T> {
             } else {
                 // Reset the update voter timer since there was no need to update the voter
                 resetUpdateVoterTimer = true;
-                backoffMs = maybeSendFetchToBestNode(state, currentTimeMs);
+                backoffMs = maybeSendFetchToBestNode(state, false, currentTimeMs);
             }
 
             if (resetUpdateVoterTimer) {
                 state.resetUpdateVoterSetPeriod(currentTimeMs);
             }
         } else {
-            backoffMs = maybeSendFetchToBestNode(state, currentTimeMs);
+            backoffMs = maybeSendFetchToBestNode(state, false, currentTimeMs);
         }
 
         return Math.min(
@@ -3413,11 +3413,19 @@ public final class KafkaRaftClient<T> implements RaftClient<T> {
             }
             return sendResult.timeToWaitMs();
         } else {
-            return maybeSendFetchToBestNode(state, currentTimeMs);
+            // KCON-807: an observer keeps looking for a new leader rather than waiting on a leader
+            // that just timed out.
+            return maybeSendFetchToBestNode(state, true, currentTimeMs);
         }
     }
 
-    private long maybeSendFetchToBestNode(FollowerState state, long currentTimeMs) {
+    /**
+     * @param skipTimedOutLeader send the fetch to a bootstrap server, not the leader, while the leader
+     *                           is excluded after a request timeout (KCON-807). Only for observers: a
+     *                           voter that stops fetching from a leader that recovers would start an
+     *                           election when its fetch timer expires.
+     */
+    private long maybeSendFetchToBestNode(FollowerState state, boolean skipTimedOutLeader, long currentTimeMs) {
         // If the current leader is backing off due to some failure or if the
         // request has timed out, then we attempt to send the Fetch to another
         // voter in order to discover if there has been a leader change.
@@ -3436,7 +3444,16 @@ public final class KafkaRaftClient<T> implements RaftClient<T> {
                 leaderNode, requestManager.remainingBackoffMs(leaderNode, currentTimeMs), state.epoch());
             backoffMs = maybeSendFetchToAnyBootstrap(currentTimeMs);
         } else if (!requestManager.hasAnyInflightRequest(currentTimeMs)) {
-            backoffMs = maybeSendFetchOrFetchSnapshot(state, currentTimeMs);
+            if (skipTimedOutLeader && requestManager.isExcludedAfterTimeout(leaderNode, currentTimeMs)) {
+                // KCON-807: the leader timed out recently. Going back to it would spend another
+                // request timeout on a leader that is probably dead, while a bootstrap server can
+                // name the new one.
+                logger.info("[KCON-807] Leader {} timed out recently in epoch {}; trying a bootstrap server instead",
+                    leaderNode, state.epoch());
+                backoffMs = maybeSendFetchToAnyBootstrap(currentTimeMs);
+            } else {
+                backoffMs = maybeSendFetchOrFetchSnapshot(state, currentTimeMs);
+            }
         } else {
             backoffMs = requestManager.backoffBeforeAvailableBootstrapServer(currentTimeMs);
         }
