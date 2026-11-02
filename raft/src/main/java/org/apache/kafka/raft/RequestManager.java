@@ -43,15 +43,26 @@ import java.util.Random;
  *
  * When a request completes with an error it still transitions to the backoff state until
  * {@code retryBackoffMs}.
+ *
+ * When a request times out, the node is also excluded from {@code findReadyBootstrapServer(long)}
+ * for {@code timedOutExclusionMs}, unless every ready bootstrap server is excluded.
  */
 public class RequestManager {
     private static final Logger log = LoggerFactory.getLogger(RequestManager.class);
 
+    // KCON-807: a node that timed out is skipped as a bootstrap server for this many request
+    // timeouts, 10 seconds by default. That is longer than the default broker session timeout of
+    // 9 seconds, so a dead controller is not tried again while the brokers look for the new one.
+    static final int TIMED_OUT_EXCLUSION_REQUEST_TIMEOUTS = 5;
+
     private final Map<String, ConnectionState> connections = new HashMap<>();
+    // KCON-807: node id to the time until which the node is not picked as a bootstrap server
+    private final Map<String, Long> timedOutExclusions = new HashMap<>();
     private final ArrayList<Node> bootstrapServers;
 
     private final int retryBackoffMs;
     private final int requestTimeoutMs;
+    private final long timedOutExclusionMs;
     private final Random random;
 
     public RequestManager(
@@ -60,9 +71,26 @@ public class RequestManager {
         int requestTimeoutMs,
         Random random
     ) {
+        this(
+            bootstrapServers,
+            retryBackoffMs,
+            requestTimeoutMs,
+            (long) requestTimeoutMs * TIMED_OUT_EXCLUSION_REQUEST_TIMEOUTS,
+            random
+        );
+    }
+
+    public RequestManager(
+        Collection<Node> bootstrapServers,
+        int retryBackoffMs,
+        int requestTimeoutMs,
+        long timedOutExclusionMs,
+        Random random
+    ) {
         this.bootstrapServers = new ArrayList<>(bootstrapServers);
         this.retryBackoffMs = retryBackoffMs;
         this.requestTimeoutMs = requestTimeoutMs;
+        this.timedOutExclusionMs = timedOutExclusionMs;
         this.random = random;
     }
 
@@ -86,6 +114,7 @@ public class RequestManager {
                 // KCON-807 debugging: the node is forgotten here and can be picked again straight away.
                 log.info("[KCON-807] Request to {} timed out after {} ms; forgetting the connection",
                     connection.node, currentTimeMs - connection.lastSendTimeMs);
+                excludeTimedOut(connection.node, currentTimeMs);
                 // Mark the node as ready after request timeout
                 iterator.remove();
             } else if (connection.isBackoffComplete(currentTimeMs)) {
@@ -109,6 +138,9 @@ public class RequestManager {
      * method is used to send Fetch requests. Fetch requests have the invariant that there can
      * only be one pending Fetch request for the LEO.
      *
+     * Nodes whose last request timed out within {@code timedOutExclusionMs} are skipped, unless
+     * every ready bootstrap node is excluded.
+     *
      * @param currentTimeMs the current time
      * @return a random ready bootstrap node
      */
@@ -121,14 +153,25 @@ public class RequestManager {
 
         int startIndex = random.nextInt(bootstrapServers.size());
         Optional<Node> result = Optional.empty();
+        Optional<Node> firstExcluded = Optional.empty();
         for (int i = 0; i < bootstrapServers.size(); i++) {
             int index = (startIndex + i) % bootstrapServers.size();
             Node node = bootstrapServers.get(index);
 
             if (isReady(node, currentTimeMs)) {
-                result = Optional.of(node);
-                break;
+                if (!isExcludedAfterTimeout(node, currentTimeMs)) {
+                    result = Optional.of(node);
+                    break;
+                } else if (firstExcluded.isEmpty()) {
+                    firstExcluded = Optional.of(node);
+                }
             }
+        }
+
+        if (result.isEmpty() && firstExcluded.isPresent()) {
+            log.info("[KCON-807] Every ready bootstrap server timed out recently; trying {} anyway",
+                firstExcluded.get());
+            result = firstExcluded;
         }
 
         return result;
@@ -160,6 +203,7 @@ public class RequestManager {
                 // KCON-807 debugging: the node is forgotten here and can be picked again straight away.
                 log.info("[KCON-807] Request to {} timed out after {} ms; forgetting the connection",
                     connection.node, currentTimeMs - connection.lastSendTimeMs);
+                excludeTimedOut(connection.node, currentTimeMs);
                 // Mark the node as ready after request timeout
                 iterator.remove();
             } else if (connection.isBackoffComplete(currentTimeMs)) {
@@ -199,6 +243,9 @@ public class RequestManager {
             return true;
         }
 
+        if (state.hasRequestTimedOut(timeMs)) {
+            excludeTimedOut(node, timeMs);
+        }
         boolean ready = state.isReady(timeMs);
         if (ready) {
             reset(node);
@@ -254,6 +301,8 @@ public class RequestManager {
     public void onResponseResult(Node node, long correlationId, boolean success, long timeMs) {
         if (isResponseExpected(node, correlationId)) {
             if (success) {
+                // The node replied, so it no longer needs to be skipped as a bootstrap server
+                timedOutExclusions.remove(node.idString());
                 // Mark the connection as ready by resetting it
                 reset(node);
             } else {
@@ -281,12 +330,47 @@ public class RequestManager {
         state.onRequestSent(correlationId, timeMs);
     }
 
+    /**
+     * Forgets the connection with a node whose request has timed out, and skips the node as a
+     * bootstrap server for {@code timedOutExclusionMs}.
+     *
+     * @param node the node whose request timed out
+     * @param timeMs the current time
+     */
+    public void onRequestTimedOut(Node node, long timeMs) {
+        excludeTimedOut(node, timeMs);
+        reset(node);
+    }
+
     public void reset(Node node) {
         connections.remove(node.idString());
     }
 
+    // Timed-out exclusions are kept: they expire on their own, and a node that is still dead
+    // should not be picked again just because the local replica changed state.
     public void resetAll() {
         connections.clear();
+    }
+
+    private void excludeTimedOut(Node node, long timeMs) {
+        if (timedOutExclusionMs <= 0) {
+            return;
+        }
+        timedOutExclusions.put(node.idString(), timeMs + timedOutExclusionMs);
+        // KCON-807 debugging: the node is skipped by findReadyBootstrapServer until then.
+        log.info("[KCON-807] Skipping {} as a bootstrap server for {} ms after a request timeout",
+            node, timedOutExclusionMs);
+    }
+
+    private boolean isExcludedAfterTimeout(Node node, long timeMs) {
+        Long excludedUntilMs = timedOutExclusions.get(node.idString());
+        if (excludedUntilMs == null) {
+            return false;
+        } else if (timeMs >= excludedUntilMs) {
+            timedOutExclusions.remove(node.idString());
+            return false;
+        }
+        return true;
     }
 
     private enum State {

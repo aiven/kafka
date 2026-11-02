@@ -3429,7 +3429,7 @@ public final class KafkaRaftClient<T> implements RaftClient<T> {
             logger.info("[KCON-807] Fetch to leader {} timed out in epoch {}; remaining fetch time {} ms; " +
                     "trying a bootstrap server", leaderNode, state.epoch(), state.remainingFetchTimeMs(currentTimeMs));
             // Once the request has timed out backoff the connection
-            requestManager.reset(leaderNode);
+            requestManager.onRequestTimedOut(leaderNode, currentTimeMs);
             backoffMs = maybeSendFetchToAnyBootstrap(currentTimeMs);
         } else if (requestManager.isBackingOff(leaderNode, currentTimeMs)) {
             logger.info("[KCON-807] Leader {} is backing off for {} ms in epoch {}; trying a bootstrap server",

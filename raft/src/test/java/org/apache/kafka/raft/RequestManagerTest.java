@@ -24,6 +24,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 import java.util.Optional;
 import java.util.Random;
+import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -310,6 +311,100 @@ public class RequestManagerTest {
         cache.onRequestSent(otherNode, 12, time.milliseconds());
         cache.onResponseResult(otherNode, 12, true, time.milliseconds());
         assertFalse(cache.hasAnyInflightRequest(time.milliseconds()));
+    }
+
+    @Test
+    public void testTimedOutBootstrapServerIsSkipped() {
+        long exclusionMs = 3 * requestTimeoutMs;
+        List<Node> bootstrapList = makeBootstrapList(2);
+        RequestManager cache = new RequestManager(
+            bootstrapList,
+            retryBackoffMs,
+            requestTimeoutMs,
+            exclusionMs,
+            random
+        );
+
+        Node timedOutNode = cache.findReadyBootstrapServer(time.milliseconds()).get();
+        Node otherNode = bootstrapList.get(0).equals(timedOutNode) ? bootstrapList.get(1) : bootstrapList.get(0);
+        cache.onRequestSent(timedOutNode, 1, time.milliseconds());
+        time.sleep(requestTimeoutMs);
+
+        // Every pick avoids the node that timed out while it is excluded
+        for (int i = 0; i < 10; i++) {
+            assertEquals(Optional.of(otherNode), cache.findReadyBootstrapServer(time.milliseconds()));
+        }
+
+        // The node can be picked again once the exclusion expires
+        time.sleep(exclusionMs);
+        Set<Node> picked = IntStream.range(0, 20)
+            .mapToObj(i -> cache.findReadyBootstrapServer(time.milliseconds()).get())
+            .collect(Collectors.toSet());
+        assertEquals(Set.copyOf(bootstrapList), picked);
+    }
+
+    @Test
+    public void testTimedOutBootstrapServerIsUsedWhenAllAreExcluded() {
+        List<Node> bootstrapList = makeBootstrapList(2);
+        RequestManager cache = new RequestManager(
+            bootstrapList,
+            retryBackoffMs,
+            requestTimeoutMs,
+            3L * requestTimeoutMs,
+            random
+        );
+
+        for (int correlationId = 0; correlationId < bootstrapList.size(); correlationId++) {
+            Node node = cache.findReadyBootstrapServer(time.milliseconds()).get();
+            cache.onRequestSent(node, correlationId, time.milliseconds());
+            time.sleep(requestTimeoutMs);
+        }
+
+        Node node = cache.findReadyBootstrapServer(time.milliseconds()).get();
+        assertTrue(bootstrapList.contains(node));
+    }
+
+    @Test
+    public void testSuccessfulResponseClearsTimedOutExclusion() {
+        List<Node> bootstrapList = makeBootstrapList(2);
+        RequestManager cache = new RequestManager(
+            bootstrapList,
+            retryBackoffMs,
+            requestTimeoutMs,
+            3L * requestTimeoutMs,
+            random
+        );
+
+        Node node = bootstrapList.get(0);
+        cache.onRequestSent(node, 1, time.milliseconds());
+        time.sleep(requestTimeoutMs);
+        cache.onRequestTimedOut(node, time.milliseconds());
+        cache.onRequestSent(node, 2, time.milliseconds());
+        cache.onResponseResult(node, 2, true, time.milliseconds());
+
+        Set<Node> picked = IntStream.range(0, 20)
+            .mapToObj(i -> cache.findReadyBootstrapServer(time.milliseconds()).get())
+            .collect(Collectors.toSet());
+        assertEquals(Set.copyOf(bootstrapList), picked);
+    }
+
+    @Test
+    public void testFailedResponseDoesNotExcludeBootstrapServer() {
+        List<Node> bootstrapList = makeBootstrapList(1);
+        RequestManager cache = new RequestManager(
+            bootstrapList,
+            retryBackoffMs,
+            requestTimeoutMs,
+            3L * requestTimeoutMs,
+            random
+        );
+
+        Node node = bootstrapList.get(0);
+        cache.onRequestSent(node, 1, time.milliseconds());
+        cache.onResponseResult(node, 1, false, time.milliseconds());
+        time.sleep(retryBackoffMs);
+
+        assertEquals(Optional.of(node), cache.findReadyBootstrapServer(time.milliseconds()));
     }
 
     private List<Node> makeBootstrapList(int numberOfNodes) {
