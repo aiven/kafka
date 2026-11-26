@@ -22,6 +22,7 @@ on:
       - '4.1'
       - 'main'
       - 'inkless-*'
+      - 'aiven-patches/**'
 
   schedule:
     - cron: '0 0 * * 6,0'    # Run on Saturday and Sunday at midnight UTC
@@ -33,6 +34,7 @@ on:
     branches:
       - 'trunk'
       - '4.1'
+      - 'aiven-patches/**'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
