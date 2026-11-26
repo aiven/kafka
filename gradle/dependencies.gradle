@@ -134,7 +134,7 @@ versions += [
   scalafmt: "3.7.14",
   scoverage: "2.0.11",
   slf4j: "1.7.36",
-  snappy: "1.1.10.7",
+  snappy: "1.1.10.11",
   spotbugs: "4.8.6",
   testcontainers: "1.21.4",
   tieredStorageForKafka: "1.0.0",
