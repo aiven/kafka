@@ -30,6 +30,7 @@ on:
 
 jobs:
   add-labeler-labels:
+    if: github.repository == 'apache/kafka'
     name: Labeler
     permissions:
       contents: read
@@ -49,7 +50,7 @@ jobs:
         ./.github/scripts/label_small.sh
 
   add-triage-label:
-    if: github.event.action == 'opened' || github.event.action == 'reopened'
+    if: github.repository == 'apache/kafka' && (github.event.action == 'opened' || github.event.action == 'reopened')
     name: Add triage label
     runs-on: ubuntu-latest
     permissions:
