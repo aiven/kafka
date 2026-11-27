@@ -69,7 +69,8 @@ versions += [
   gradle: "8.14.1",
   grgit: "4.1.1",
   httpclient: "4.5.14",
-  jackson: "2.19.4",
+  jackson: "2.21.7",
+  jacksonAnnotations: "2.21",
   jacoco: "0.8.13",
   javassist: "3.30.2-GA",
   jetty: "12.0.25",
@@ -117,7 +118,7 @@ versions += [
   // When updating lz4 make sure the compression levels in org.apache.kafka.common.record.CompressionType are still valid
   // https://github.com/apache/kafka/blob/trunk/clients/src/main/java/org/apache/kafka/common/record/CompressionType.java#L73-L74
   // https://github.com/yawkat/lz4-java/blob/main/src/java/net/jpountz/lz4/LZ4Constants.java#L23-L24
-  lz4: "1.10.1",
+  lz4: "1.11.4",
   mavenArtifact: "3.9.6",
   metrics: "2.2.0",
   mockito: "5.14.2",
@@ -134,7 +135,7 @@ versions += [
   scalafmt: "3.7.14",
   scoverage: "2.0.11",
   slf4j: "1.7.36",
-  snappy: "1.1.10.7",
+  snappy: "1.1.10.11",
   spotbugs: "4.8.6",
   testcontainers: "1.21.4",
   tieredStorageForKafka: "1.0.0",
@@ -175,7 +176,7 @@ libs += [
   commonsLang: "org.apache.commons:commons-lang3:$versions.commonsLang",
   commonsValidator: "commons-validator:commons-validator:$versions.commonsValidator",
   gcsSdk: "com.google.cloud:google-cloud-storage:$versions.gcsSdk",
-  jacksonAnnotations: "com.fasterxml.jackson.core:jackson-annotations:$versions.jackson",
+  jacksonAnnotations: "com.fasterxml.jackson.core:jackson-annotations:$versions.jacksonAnnotations",
   jacksonDatabind: "com.fasterxml.jackson.core:jackson-databind:$versions.jackson",
   jacksonDatabindYaml: "com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:$versions.jackson",
   jacksonDataformatCsv: "com.fasterxml.jackson.dataformat:jackson-dataformat-csv:$versions.jackson",
